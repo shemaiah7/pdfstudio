@@ -19,11 +19,10 @@ export default function PageCanvas({ source, entry, scale, className, lazy = fal
 
   useEffect(() => {
     if (!visible || !ref.current) return;
-    let cancelled = false;
-    renderPage(source, entry.sourcePageIndex, entry.rotation, scale, ref.current).catch((err) => {
-      if (!cancelled) console.error("render failed", err);
-    });
-    return () => { cancelled = true; };
+    // Cancel the in-flight render on rerender/unmount so tasks never overlap on this canvas.
+    const handle = renderPage(source, entry.sourcePageIndex, entry.rotation, scale, ref.current);
+    handle.promise.catch((err) => console.error("render failed", err));
+    return () => handle.cancel();
   }, [visible, source, entry.sourcePageIndex, entry.rotation, scale]);
 
   return <canvas ref={ref} className={className} data-page-id={entry.id} />;
