@@ -4,6 +4,10 @@ import type { PageEntry, SourceFile, SourceId } from "../pdf/types";
 
 export const SIZE_WARNING_BYTES = 100 * 1024 * 1024;
 
+// Hooks called with each source id that is dropped when openFiles replaces the document.
+// Lets the renderer free pdf.js documents without the store importing pdf.js.
+export const sourceReleasers: Array<(id: SourceId) => void> = [];
+
 export interface OpenResult { skipped: string[]; oversized: string[] }
 
 export interface DocumentState {
@@ -89,6 +93,7 @@ export const useDocumentStore = create<DocumentState>((set, get) => {
         set({ error: files.length ? `Couldn't read ${result.skipped.join(", ")} as a PDF.` : null });
         return result;
       }
+      for (const id of get().sources.keys()) sourceReleasers.forEach((release) => release(id));
       const map = new Map(sources.map((s) => [s.id, s]));
       const pages = sources.flatMap(entriesFor);
       set({ ...initial(), sources: map, pages, savedPages: pages });

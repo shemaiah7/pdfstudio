@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeEach } from "vitest";
-import { useDocumentStore } from "./document";
+import { describe, it, expect, beforeEach, vi } from "vitest";
+import { useDocumentStore, sourceReleasers } from "./document";
 import { loadFixture } from "../test/loadFixture";
 
 const three = () => ({ name: "three.pdf", bytes: loadFixture("three") });
@@ -42,6 +42,21 @@ describe("open and add", () => {
     const res = await s().addFiles([big], 10); // 10-byte limit for the test
     expect(res.oversized).toEqual(["big.pdf"]);
     expect(s().pages.length).toBe(2); // still opened
+  });
+});
+
+describe("source release", () => {
+  it("calls releasers for previous source ids when files are replaced", async () => {
+    const spy = vi.fn();
+    sourceReleasers.push(spy);
+    try {
+      await s().openFiles([three()]);
+      const firstId = [...s().sources.keys()][0];
+      await s().openFiles([two()]);
+      expect(spy).toHaveBeenCalledWith(firstId);
+    } finally {
+      sourceReleasers.splice(sourceReleasers.indexOf(spy), 1);
+    }
   });
 });
 

@@ -1,5 +1,6 @@
 import * as pdfjs from "pdfjs-dist";
 import type { PDFDocumentProxy, RenderTask } from "pdfjs-dist";
+import { sourceReleasers } from "../store/document";
 import type { Rotation, SourceFile, SourceId } from "./types";
 
 pdfjs.GlobalWorkerOptions.workerSrc = new URL(
@@ -79,3 +80,5 @@ export function releaseSource(sourceId: SourceId): void {
   docs.delete(sourceId);
   p?.then((d) => d.loadingTask.destroy()).catch(() => {});
 }
+
+sourceReleasers.push(releaseSource);
