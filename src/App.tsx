@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useDocumentStore } from "./store/document";
 import DropZone from "./components/DropZone";
+import ThumbnailSidebar from "./components/ThumbnailSidebar";
 import PageView from "./components/PageView";
 import ErrorBanner from "./components/ErrorBanner";
 
@@ -40,10 +41,12 @@ export default function App() {
     <div className="app">
       <ErrorBanner />
       {empty ? <DropZone onFiles={handleFiles} empty /> : (
-        <>
-          <DropZone onFiles={handleFiles} empty={false} forceOver={dragging} />
+        <div className="workspace">
+          <ThumbnailSidebar />
           <PageView scale={scale} />
-        </>
+          <aside className="rightpanel" />
+          <DropZone onFiles={handleFiles} empty={false} forceOver={dragging} />
+        </div>
       )}
     </div>
   );
