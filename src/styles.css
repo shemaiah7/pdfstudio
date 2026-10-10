@@ -43,3 +43,15 @@ body { background: var(--bg); color: var(--text); font-family: system-ui, sans-s
 .thumb canvas { width: 100% !important; height: auto !important; display: block; }
 .thumb-label { position: absolute; bottom: 8px; right: 8px; font-size: 11px; background: rgba(0,0,0,0.6); color: white; padding: 1px 5px; border-radius: 4px; }
 @media (max-width: 700px) { .workspace { grid-template-columns: 96px 1fr 0; } }
+.toolbar { display: flex; align-items: center; gap: 6px; padding: 8px 12px; background: var(--panel); border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+.toolbar button { padding: 6px 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--text); cursor: pointer; }
+.toolbar button:disabled { opacity: 0.4; cursor: default; }
+.toolbar button.primary { background: var(--accent); color: white; border-color: transparent; }
+.toolbar .sep { width: 1px; height: 20px; background: var(--border); margin: 0 4px; }
+.toolbar .grow { flex: 1; }
+.toolbar .zoom, .toolbar .count { font-size: 13px; opacity: 0.8; padding: 0 4px; }
+/* Banner, toolbar and workspace stack in a column; the last row takes the remaining height. */
+.app { display: flex; flex-direction: column; }
+.app > .workspace { flex: 1; height: auto; }
+.app > .dropzone.empty { flex: 1; height: auto; }
+.workspace { grid-template-rows: minmax(0, 1fr); }
