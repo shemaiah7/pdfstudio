@@ -11,7 +11,7 @@ async function toBytes(files: File[]) {
 }
 
 export default function App() {
-  const pages = useDocumentStore((s) => s.pages);
+  const hasSources = useDocumentStore((s) => s.sources.size > 0);
   const openFiles = useDocumentStore((s) => s.openFiles);
   const addFiles = useDocumentStore((s) => s.addFiles);
   const setError = useDocumentStore((s) => s.setError);
@@ -45,7 +45,7 @@ export default function App() {
 
   const handleFiles = useCallback(async (files: File[], mode: "open" | "add" | "auto" = "auto") => {
     if (files.length === 0) return;
-    const empty = useDocumentStore.getState().pages.length === 0;
+    const empty = useDocumentStore.getState().sources.size === 0;
     const useOpen = mode === "open" || (mode === "auto" && empty);
     const res = await (useOpen ? openFiles : addFiles)(await toBytes(files));
     const msgs: string[] = [];
@@ -54,7 +54,7 @@ export default function App() {
     if (msgs.length) setError(msgs.join(" "));
   }, [openFiles, addFiles, setError]);
 
-  const empty = pages.length === 0;
+  const empty = !hasSources;
   return (
     <div className="app">
       <ErrorBanner />
