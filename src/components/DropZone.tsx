@@ -8,6 +8,7 @@ export default function DropZone({ onFiles, empty, forceOver = false }: Props) {
 
   const handle = useCallback((e: DragEvent) => {
     e.preventDefault();
+    e.stopPropagation();
     setOver(false);
     onFiles(Array.from(e.dataTransfer.files));
   }, [onFiles]);

@@ -19,15 +19,6 @@ export default function App() {
   const [dragging, setDragging] = useState(false);
 
   useEffect(() => {
-    const on = (e: globalThis.DragEvent) => { e.preventDefault(); setDragging(true); };
-    const off = () => setDragging(false);
-    window.addEventListener("dragover", on);
-    window.addEventListener("dragleave", off);
-    window.addEventListener("drop", off);
-    return () => { window.removeEventListener("dragover", on); window.removeEventListener("dragleave", off); window.removeEventListener("drop", off); };
-  }, []);
-
-  useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const st = useDocumentStore.getState();
       const mod = e.metaKey || e.ctrlKey;
@@ -53,6 +44,23 @@ export default function App() {
     if (res.oversized.length) msgs.push(`${res.oversized.join(", ")} is very large; editing may be slow.`);
     if (msgs.length) setError(msgs.join(" "));
   }, [openFiles, addFiles, setError]);
+
+  useEffect(() => {
+    const on = (e: globalThis.DragEvent) => { e.preventDefault(); setDragging(true); };
+    const off = () => setDragging(false);
+    // Drops that miss the overlay would make the browser navigate to the file; handle them here.
+    // The overlay's own onDrop stops propagation, so files are never handled twice.
+    const onDrop = (e: globalThis.DragEvent) => {
+      e.preventDefault();
+      setDragging(false);
+      const files = Array.from(e.dataTransfer?.files ?? []);
+      if (files.length) void handleFiles(files);
+    };
+    window.addEventListener("dragover", on);
+    window.addEventListener("dragleave", off);
+    window.addEventListener("drop", onDrop);
+    return () => { window.removeEventListener("dragover", on); window.removeEventListener("dragleave", off); window.removeEventListener("drop", onDrop); };
+  }, [handleFiles]);
 
   const empty = !hasSources;
   return (
