@@ -1,4 +1,4 @@
-export interface Box { x: number; y: number; width: number; height: number }
+import type { Box } from "./types";
 export interface PageSelection { pageEntryId: string; text: string; boxes: Box[]; fontSize: number; bold: boolean; serif: boolean }
 
 // Plain rect (DOMRectReadOnly-compatible) so geometry helpers also run without a DOM.

@@ -137,3 +137,34 @@ describe("selection", () => {
     expect([...s().selection]).toEqual([c]);
   });
 });
+
+describe("edits", () => {
+  beforeEach(async () => { await s().openFiles([three()]); });
+  const edit = (pageEntryId: string) => ({ pageEntryId, boxes: [{ x: 10, y: 300, width: 100, height: 20 }], text: "New", fontSize: 12, font: "sans" as const, color: [0, 0, 0] as [number, number, number] });
+
+  it("adds an edit, undo removes it, redo restores it", () => {
+    const id = s().addEdit(edit(s().pages[0].id));
+    expect(s().edits.map((e) => e.id)).toEqual([id]);
+    expect(s().isDirty()).toBe(true);
+    s().undo();
+    expect(s().edits).toEqual([]);
+    s().redo();
+    expect(s().edits.map((e) => e.id)).toEqual([id]);
+  });
+  it("survives rotate and reorder, is dropped when its page is deleted", () => {
+    const [a, b] = s().pages.map((p) => p.id);
+    s().addEdit(edit(a));
+    s().rotate([a], 90);
+    s().reorder([a], 3);
+    expect(s().edits.length).toBe(1);
+    s().remove([b]);
+    expect(s().edits.length).toBe(1);
+    s().remove([a]);
+    expect(s().edits).toEqual([]);
+  });
+  it("openFiles clears edits", async () => {
+    s().addEdit(edit(s().pages[0].id));
+    await s().openFiles([two()]);
+    expect(s().edits).toEqual([]);
+  });
+});

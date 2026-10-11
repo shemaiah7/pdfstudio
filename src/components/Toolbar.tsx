@@ -15,9 +15,10 @@ export default function Toolbar({ scale, setScale, onFiles }: Props) {
   const firstName = s.pages[0] ? s.sources.get(s.pages[0].sourceId)!.name : "document.pdf";
 
   const exportPages = async (entries: typeof s.pages, kind: "edited" | "pages") => {
+    const ids = new Set(entries.map((p) => p.id));
     setBusy(true);
     try {
-      const bytes = await buildDocument(s.sources, entries);
+      const bytes = await buildDocument(s.sources, entries, s.edits.filter((e) => ids.has(e.pageEntryId)));
       saveBlob(bytes, outputName(firstName, kind));
       if (kind === "edited") s.markClean();
     } catch (err) {
