@@ -1,9 +1,12 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useSearchStore } from "../../store/search";
 import AiPanel from "../ai/AiPanel";
 import SearchTab from "./SearchTab";
 
 export default function RightPanel() {
   const [tab, setTab] = useState<"ai" | "search">("ai");
+  const init = useSearchStore((st) => st.init);
+  useEffect(() => { void init(); }, [init]);
   return (
     <div className="ai-panel">
       <div className="ai-tabs panel-tabs">

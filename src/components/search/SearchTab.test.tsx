@@ -19,12 +19,6 @@ describe("SearchTab", () => {
     fireEvent.click(screen.getByTestId("search-enable"));
     expect(enable).toHaveBeenCalled();
   });
-  it("calls init on mount when enabled and the model is idle", () => {
-    const init = vi.fn(async () => {});
-    useSearchStore.setState({ ...base, init, enabled: true, model: { status: "idle", loaded: 0, total: 0 } });
-    render(<SearchTab />);
-    expect(init).toHaveBeenCalled();
-  });
   it("shows download progress in MB", () => {
     useSearchStore.setState({ ...base, enabled: true, model: { status: "downloading", loaded: 52_428_800, total: 209_715_200 } });
     render(<SearchTab />);
@@ -60,5 +54,17 @@ describe("SearchTab", () => {
     useSearchStore.setState({ ...base, persistent: true, lastWriteFailed: true });
     render(<SearchTab />);
     expect(screen.getByText("One document could not be saved on this device")).toBeTruthy();
+  });
+  it("opens a hit with Enter, and Find similar with Enter does not open it", () => {
+    const openHit = vi.fn(async () => {}); const findSimilar = vi.fn(async () => {});
+    useSearchStore.setState({ ...base, findSimilar, enabled: true, model: { status: "ready", loaded: 0, total: 0, device: "webgpu" }, results: [{ hash: "h", page: 0, chunkIndex: 0, score: 0.9, snippet: "x" }], library: [], openHit, query: "x" });
+    render(<SearchTab />);
+    fireEvent.keyDown(screen.getByTestId("search-hit"), { key: "Enter" });
+    expect(openHit).toHaveBeenCalledTimes(1);
+    fireEvent.keyDown(screen.getByTestId("search-similar"), { key: "Enter" });
+    expect(openHit).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByTestId("search-similar"));
+    expect(findSimilar).toHaveBeenCalled();
+    expect(openHit).toHaveBeenCalledTimes(1);
   });
 });

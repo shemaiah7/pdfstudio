@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useSearchStore } from "../../store/search";
 import { useDocumentStore } from "../../store/document";
 import LibraryPanel from "./LibraryPanel";
@@ -7,12 +7,9 @@ const mb = (n: number) => `${Math.round(n / 1_048_576)} MB`;
 
 export default function SearchTab() {
   const s = useSearchStore();
-  const init = useSearchStore((st) => st.init);
   const sources = useDocumentStore((d) => d.sources);
   const [libraryOpen, setLibraryOpen] = useState(false);
   const nameOf = (hash: string) => s.library.find((r) => r.hash === hash)?.name ?? "document";
-
-  useEffect(() => { void init(); }, [init]);
 
   if (!s.enabled || s.model.status === "idle") {
     return (
@@ -58,9 +55,9 @@ export default function SearchTab() {
         {s.searching && <p className="muted">Searching…</p>}
         {!s.searching && s.query.trim() && s.results.length === 0 && <p className="muted">No matches</p>}
         {s.results.map((h) => (
-          <div key={`${h.hash}:${h.chunkIndex}`} className="search-hit" data-testid="search-hit" onClick={() => void s.openHit(h)}>
+          <div key={`${h.hash}:${h.chunkIndex}`} className="search-hit" data-testid="search-hit" role="link" tabIndex={0} onClick={() => void s.openHit(h)} onKeyDown={(e) => { if ((e.key === "Enter" || e.key === " ") && e.target === e.currentTarget) { e.preventDefault(); void s.openHit(h); } }}>
             <div className="search-hit-head">{nameOf(h.hash)} · p. {h.page + 1}
-              <button data-testid="search-similar" onClick={(e) => { e.stopPropagation(); void s.findSimilar(h.hash, h.chunkIndex); }}>Find similar</button>
+              <button data-testid="search-similar" onClick={(e) => { e.stopPropagation(); void s.findSimilar(h.hash, h.chunkIndex); }} onKeyDown={(e) => e.stopPropagation()}>Find similar</button>
             </div>
             <div className="search-snippet">{h.snippet}</div>
           </div>

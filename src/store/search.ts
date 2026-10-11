@@ -58,15 +58,24 @@ async function start() {
   if (getState().model.status === "ready") { await getState().refreshIndex(); await getState().indexOpen(); }
 }
 
-function reveal(sourceId: SourceId, hit: Hit, waited = 0) {
+let revealTimer: ReturnType<typeof setTimeout> | null = null;
+function cancelReveal() { if (revealTimer) { clearTimeout(revealTimer); revealTimer = null; } }
+
+function reveal(sourceId: SourceId, hit: Hit) {
+  cancelReveal();
+  attemptReveal(sourceId, hit, 0);
+}
+function attemptReveal(sourceId: SourceId, hit: Hit, waited: number) {
   const entry = useDocumentStore.getState().pages.find((p) => p.sourceId === sourceId && p.sourcePageIndex === hit.page);
   if (!entry || typeof document === "undefined") return;
   const el = document.getElementById(`page-${entry.id}`);
-  if (!el) {
-    // A document just opened from the library may not have rendered yet: retry for up to 3 s.
-    if (waited < 3000) setTimeout(() => reveal(sourceId, hit, waited + 100), 100);
+  // A document just opened from the library may not have rendered (page or text layer) yet: retry for up to 3 s.
+  if (!el || !el.querySelector(".textLayer span")) {
+    if (waited < 3000) revealTimer = setTimeout(() => attemptReveal(sourceId, hit, waited + 100), 100);
+    else el?.scrollIntoView({ block: "start", behavior: "smooth" });
     return;
   }
+  revealTimer = null;
   el.scrollIntoView({ block: "start", behavior: "smooth" });
   const chunk = index.find((d) => d.hash === hit.hash)?.chunks[hit.chunkIndex];
   if (chunk) flashChunk(entry.id, chunk.text);
@@ -182,6 +191,7 @@ export const useSearchStore = create<SearchState>((set, get) => ({
   async clearLibrary() {
     for (const [hash, c] of controllers) { c.abort(); getEmbedClient().cancel(hash); }
     controllers.clear();
+    cancelReveal();
     queue = Promise.resolve();
     await library.clear();
     try { localStorage.removeItem(ENABLED_KEY); } catch { /* ignore */ }
