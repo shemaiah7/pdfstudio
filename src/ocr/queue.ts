@@ -4,7 +4,9 @@ import type { OcrEngineName, OcrPage } from "./types";
 
 export type OcrJobState = "queued" | "running" | "done" | "empty" | "failed";
 export interface OcrJob { sourceId: string; pageIndex: number; engine: OcrEngineName }
-export interface OcrQueueEvents { onState(job: OcrJob, state: OcrJobState, extra?: { page?: OcrPage; error?: string }): void }
+/** `cause` is the original thrown value of a failed run (e.g. a quota error carrying `resetAt`). */
+export interface OcrStateExtra { page?: OcrPage; error?: string; cause?: unknown }
+export interface OcrQueueEvents { onState(job: OcrJob, state: OcrJobState, extra?: OcrStateExtra): void }
 export const OCR_TIMEOUT_MS = 60_000;
 
 interface Entry { job: OcrJob; controller: AbortController; running: boolean; cancelled: boolean; timedOut: boolean; timer?: ReturnType<typeof setTimeout> }
@@ -37,7 +39,7 @@ export function createOcrQueue(run: (job: OcrJob, signal: AbortSignal) => Promis
     head.timer = setTimeout(() => { head.timedOut = true; head.controller.abort(new Error("timeout")); }, timeoutMs);
     let attempt: Promise<OcrPage>;
     try { attempt = run(head.job, signal); } catch (err) { attempt = Promise.reject(err); }
-    const finish = (state: OcrJobState, extra?: { page?: OcrPage; error?: string }) => {
+    const finish = (state: OcrJobState, extra?: OcrStateExtra) => {
       clearTimeout(head.timer);
       if (head.cancelled) return; // cancelSource already removed it and advanced the lane
       remove(engine, head); // before emitting, so a handler may re-enqueue the same job
@@ -45,7 +47,7 @@ export function createOcrQueue(run: (job: OcrJob, signal: AbortSignal) => Promis
     };
     Promise.race([attempt, aborted]).then(
       (page) => finish(isEmpty(page) ? "empty" : "done", { page }),
-      (err) => finish("failed", { error: head.timedOut ? "timeout" : err instanceof Error ? err.message : String(err) }),
+      (err) => finish("failed", { error: head.timedOut ? "timeout" : err instanceof Error ? err.message : String(err), cause: err }),
     );
   };
 
@@ -72,6 +74,19 @@ export function createOcrQueue(run: (job: OcrJob, signal: AbortSignal) => Promis
           remove(engine, e);
         }
         pump(engine);
+      }
+    },
+    /** Drops queued jobs and aborts the running one of a single engine lane. Emits no state, like cancelSource. */
+    cancelLane(engine: OcrEngineName) {
+      const lane = lanes.get(engine);
+      if (!lane) return;
+      for (const e of [...lane]) {
+        if (e.running) {
+          e.cancelled = true;
+          clearTimeout(e.timer);
+          e.controller.abort(new Error("cancelled"));
+        }
+        remove(engine, e);
       }
     },
     cancelAll() { for (const lane of lanes.values()) for (const e of [...lane]) this.cancelSource(e.job.sourceId); },

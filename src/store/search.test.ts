@@ -14,7 +14,10 @@ const indexSource = vi.fn(async (s: { bytes: Uint8Array }, _signal?: AbortSignal
 vi.mock("../search/indexer", () => ({ indexSource: (s: never, _d: never, _p: never, signal?: AbortSignal) => indexSource(s, signal), defaultDeps: () => ({}) }));
 
 const clearAll = vi.hoisted(() => vi.fn(async () => {}));
-vi.mock("./ocr", () => ({ useOcrStore: Object.assign(() => undefined, { getState: () => ({ clearAll }), subscribe: () => () => {} }) }));
+type OcrPages = Record<string, { state: string; engine?: string }>;
+const ocrMock = vi.hoisted(() => ({ pages: {} as Record<string, { state: string; engine?: string }>, subs: [] as ((s: { pages: Record<string, { state: string; engine?: string }> }, prev: { pages: Record<string, { state: string; engine?: string }> }) => void)[] }));
+vi.mock("./ocr", () => ({ useOcrStore: Object.assign(() => undefined, { getState: () => ({ clearAll, pages: ocrMock.pages }), subscribe: (fn: (typeof ocrMock.subs)[number]) => { ocrMock.subs.push(fn); return () => {}; } }) }));
+const setOcrPages = (pages: OcrPages) => { const prev = ocrMock.pages; ocrMock.pages = pages; for (const fn of ocrMock.subs) fn({ pages }, { pages: prev }); };
 
 import { useSearchStore, retrievePassages } from "./search";
 import { useDocumentStore } from "./document";
@@ -220,5 +223,27 @@ describe("search store", () => {
     useSearchStore.setState({ query: "the a" });
     await useSearchStore.getState().search();
     expect(embed).not.toHaveBeenCalled();
+  });
+  it("re-indexes after OCR drains, and retries sources it had to skip while they were indexing", async () => {
+    await useSearchStore.getState().enable();
+    await vi.waitFor(() => expect(useSearchStore.getState().docs.h1?.status).toBe("indexed"));
+    expect(indexSource).toHaveBeenCalledTimes(1);
+    vi.useFakeTimers();
+    try {
+      // Pages still recognizing: nothing happens, but the trigger is kept.
+      setOcrPages({ "s1:0": { state: "done", engine: "tesseract" }, "s1:1": { state: "queued", engine: "tesseract" } });
+      await vi.advanceTimersByTimeAsync(2100);
+      expect(indexSource).toHaveBeenCalledTimes(1);
+      // Drained, but the source is mid-index: skipped, trigger still kept.
+      useSearchStore.setState((x) => ({ docs: { ...x.docs, h1: { ...x.docs.h1, status: "indexing" } } }));
+      setOcrPages({ "s1:0": { state: "done", engine: "tesseract" }, "s1:1": { state: "empty", engine: "tesseract" } });
+      await vi.advanceTimersByTimeAsync(2100);
+      expect(indexSource).toHaveBeenCalledTimes(1);
+      // The index run ends: the search store's own transition re-arms the debounce.
+      useSearchStore.setState((x) => ({ docs: { ...x.docs, h1: { ...x.docs.h1, status: "indexed" } } }));
+      await vi.advanceTimersByTimeAsync(2100);
+    } finally { vi.useRealTimers(); }
+    await vi.waitFor(() => expect(indexSource).toHaveBeenCalledTimes(2));
+    ocrMock.pages = {};
   });
 });

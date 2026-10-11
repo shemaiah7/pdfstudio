@@ -15,6 +15,11 @@ export const AUTO_KEY = "pdfstudio.ocr.auto";
 export const pageKey = (sourceId: string, pageIndex: number) => `${sourceId}:${pageIndex}`;
 export type OcrPageState = { state: OcrJobState; engine?: OcrEngineName; error?: string };
 
+/** Pushes the quota reported by a successful Deep OCR call into the AI store. */
+export function applyQuota(r: { remaining: { requests: number; tokens: number }; resetAt: number }): void {
+  useAiStore.setState({ remaining: { ...r.remaining, resetAt: r.resetAt }, ...(r.remaining.requests <= 0 ? { limitedUntil: r.resetAt } : {}) });
+}
+
 export interface OcrDeps {
   rasterize: typeof rasterizePage;
   tesseract: () => OcrEngine & { load(): Promise<void>; status: string };
@@ -25,7 +30,7 @@ export interface OcrDeps {
 const deps: OcrDeps = {
   rasterize: rasterizePage,
   tesseract: getTesseractEngine,
-  claude: () => createClaudeEngine(() => useAiStore.getState().client),
+  claude: () => createClaudeEngine(() => useAiStore.getState().client, { onQuota: applyQuota }),
   store: defaultOcrStore,
   // "Has native text": OCR-backed text does not count, so cached scans still get a badge and can be Deep OCR'd.
   hasText: async (source, page) => { const t = await extractPageText(source, page); return !t.ocr && t.text.trim().length > 0; },
@@ -47,6 +52,7 @@ export interface OcrState {
   retryPage(sourceId: SourceId, pageIndex: number): void;
   retryEngine(): Promise<void>;
   cancelAll(): void;
+  cancelRecognition(): void;
   clearToast(): void;
   clearAll(): Promise<void>;
   scannedPageEntries(): string[];
@@ -57,11 +63,40 @@ export interface OcrState {
 const readEnabled = () => { try { return localStorage.getItem(AUTO_KEY) !== "0"; } catch { return true; } };
 const scanning = new Map<string, Promise<void>>(); // single-flight per source: auto-scan on open + explicit calls share one pass
 const deepPrev = new Map<string, OcrPageState>(); // Tesseract result kept while Deep OCR is in flight, restored if it fails
+const claudePending = new Set<string>(); // pageKeys with a Deep OCR job queued or running
 const scanned = new Set<string>(); // pageKeys known to have no pdf.js text
-const errorCopy = (code: string): string => {
-  const m = useAiStore.getState().errorMessage(code);
+let cancelEpoch = 0; // bumped on cancel so an in-flight scan stops enqueuing the rest of its pages
+const errorCopy = (code: string, cause?: unknown): string => {
+  const resetAt = (cause as { resetAt?: unknown } | null | undefined)?.resetAt;
+  const m = useAiStore.getState().errorMessage(code, resetAt === undefined ? undefined : { resetAt });
   return code === "Page image too large" ? code : m;
 };
+// Errors that will hit every remaining page too, so the rest of the Deep OCR batch is dropped.
+const BATCH_FATAL = new Set(["daily_limit", "too_fast", "verification_failed", "network"]);
+
+/** Cancels all Deep OCR jobs; their pages return to the Tesseract text if any, else fail with `code`. */
+function failClaudeJobs(code: string) {
+  queue.cancelLane("claude");
+  const keys = [...claudePending];
+  claudePending.clear();
+  if (!keys.length) return;
+  useOcrStore.setState((s) => {
+    const pages = { ...s.pages };
+    for (const k of keys) {
+      const prev = deepPrev.get(k);
+      deepPrev.delete(k);
+      pages[k] = prev ?? { state: "failed", engine: "claude", error: code };
+    }
+    return { pages };
+  });
+}
+function failTesseractPages() {
+  useOcrStore.setState((s) => {
+    const pages = { ...s.pages };
+    for (const [k, st] of Object.entries(s.pages)) if ((st.state === "queued" || st.state === "running") && st.engine === "tesseract") pages[k] = { state: "failed", engine: "tesseract", error: "cancelled" };
+    return { pages };
+  });
+}
 
 const queue = createOcrQueue(async (job, signal) => {
   const source = useDocumentStore.getState().sources.get(job.sourceId);
@@ -86,21 +121,26 @@ const queue = createOcrQueue(async (job, signal) => {
         }
         if (!useDocumentStore.getState().sources.has(job.sourceId)) return; // closed while saving
         invalidatePageText(job.sourceId, job.pageIndex);
-        deepPrev.delete(k);
-        setState((s) => ({ pages: { ...s.pages, [k]: { state: "done", engine: job.engine } } }));
+        const doneState: OcrPageState = { state: "done", engine: job.engine };
+        // A Tesseract result landing while Deep OCR is pending becomes the state to restore if Deep OCR fails.
+        if (job.engine === "tesseract" && claudePending.has(k)) deepPrev.set(k, doneState); else deepPrev.delete(k);
+        if (job.engine === "claude") claudePending.delete(k);
+        setState((s) => ({ pages: { ...s.pages, [k]: doneState } }));
       })();
       return;
     }
     if (job.engine === "claude") {
-      if (state === "queued") { const cur = getState().pages[k]; if (cur?.state === "done") deepPrev.set(k, cur); }
+      if (state === "queued") { claudePending.add(k); const cur = getState().pages[k]; if (cur?.state === "done") deepPrev.set(k, cur); }
       else if (state === "failed" || state === "empty") {
         // Keep the Tesseract text if any; report the reason once.
         const prev = deepPrev.get(k);
         deepPrev.delete(k);
+        claudePending.delete(k);
         setState((s) => ({
-          ...(state === "failed" ? { toast: errorCopy(extra?.error ?? "upstream") } : {}),
+          ...(state === "failed" ? { toast: errorCopy(extra?.error ?? "upstream", extra?.cause) } : {}),
           pages: { ...s.pages, [k]: prev ?? { state, engine: "claude", ...(extra?.error ? { error: extra.error } : {}) } },
         }));
+        if (state === "failed" && extra?.error && BATCH_FATAL.has(extra.error)) failClaudeJobs(extra.error);
         return;
       }
     }
@@ -112,6 +152,7 @@ const queue = createOcrQueue(async (job, signal) => {
 });
 
 async function enqueueTesseract(sourceId: string, pageIndex: number) {
+  const epoch = cancelEpoch;
   useOcrStore.setState({ engineStatus: deps.tesseract().status === "unavailable" ? "unavailable" : "loading" });
   const open = () => useDocumentStore.getState().sources.has(sourceId);
   try { await deps.tesseract().load(); useOcrStore.setState({ engineStatus: "ready", engineError: null }); }
@@ -122,17 +163,18 @@ async function enqueueTesseract(sourceId: string, pageIndex: number) {
     useOcrStore.setState((s) => ({ engineStatus: "unavailable", engineError: message, pages: { ...s.pages, [pageKey(sourceId, pageIndex)]: { state: "failed", engine: "tesseract", error: message } } }));
     return;
   }
-  if (!open()) return;
+  if (!open() || epoch !== cancelEpoch) return;
   queue.enqueue({ sourceId, pageIndex, engine: "tesseract" });
 }
 
 async function scanSourceOnce(sourceId: string): Promise<void> {
   const source = useDocumentStore.getState().sources.get(sourceId);
   if (!source) return;
+  const epoch = cancelEpoch;
   for (let p = 0; p < source.pageCount; p++) {
     const open = () => useDocumentStore.getState().sources.has(sourceId);
     const hasText = await deps.hasText(source, p);
-    if (!open()) return;
+    if (!open() || epoch !== cancelEpoch) return;
     if (hasText) continue;
     const k = pageKey(sourceId, p);
     scanned.add(k);
@@ -189,12 +231,22 @@ export const useOcrStore = create<OcrState>((set, get) => ({
       queue.enqueue({ sourceId: entry.sourceId, pageIndex: entry.sourcePageIndex, engine: "claude" });
     }
   },
-  cancelAll() { queue.cancelAll(); },
+  cancelAll() {
+    cancelEpoch++;
+    queue.cancelAll();
+    failClaudeJobs("cancelled");
+    failTesseractPages();
+  },
+  cancelRecognition() {
+    cancelEpoch++;
+    queue.cancelLane("tesseract");
+    failTesseractPages();
+  },
   async clearAll() {
     queue.cancelAll();
     await deps.store.clear();
     for (const k of scanned) { const i = k.lastIndexOf(":"); invalidatePageText(k.slice(0, i), Number(k.slice(i + 1))); }
-    scanned.clear(); deepPrev.clear(); scanning.clear();
+    scanned.clear(); deepPrev.clear(); claudePending.clear(); scanning.clear();
     set({ pages: {}, toast: null, lastWriteFailed: false });
     // Open sources are re-scanned so badges and Deep OCR targets come back (and pages re-OCR if enabled).
     await Promise.all([...useDocumentStore.getState().sources.keys()].map((id) => get().scanSource(id)));
@@ -238,6 +290,7 @@ useDocumentStore.subscribe((s, prev) => {
     useOcrStore.setState((st) => { const pages = { ...st.pages }; for (const k of Object.keys(pages)) if (k.startsWith(`${id}:`)) delete pages[k]; return { pages }; });
     for (const k of [...scanned]) if (k.startsWith(`${id}:`)) scanned.delete(k);
     for (const k of [...deepPrev.keys()]) if (k.startsWith(`${id}:`)) deepPrev.delete(k);
+    for (const k of [...claudePending]) if (k.startsWith(`${id}:`)) claudePending.delete(k);
   }
   for (const id of s.sources.keys()) if (!prev.sources.has(id)) useOcrStore.getState().scanSource(id).catch((err) => console.warn("OCR scan failed", err));
 });

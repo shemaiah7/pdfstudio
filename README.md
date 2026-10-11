@@ -1,6 +1,6 @@
 # PDF Studio
 
-Browser-based PDF editor with AI assist. Files never leave the browser; AI features send extracted text through a Cloudflare Worker to Claude.
+Browser-based PDF editor with AI assist. Files never leave the browser except page images you explicitly send with Deep OCR; AI features send extracted text through a Cloudflare Worker to Claude.
 
 - `npm run dev` – app on http://localhost:5173 (copy `.env.example` to `.env`)
 - `npm run worker:dev` – AI proxy on http://localhost:8787 (see `worker/README.md`)

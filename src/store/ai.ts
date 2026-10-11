@@ -124,6 +124,8 @@ async function runTask(task: AiRequest["task"], client: AiClient) {
         case "extract": return { extract: { ...s.extract, ...common, ...(p.facts !== undefined && { facts: p.facts }) } };
       }
     });
+    // Partial text would give a misleading answer; wait until recognition finishes.
+    if (task !== "rewrite" && get().ocrTextStatus === "recognizing") { setTask({ status: "error", error: get().errorMessage("no_text") }); return; }
     const scope = task === "rewrite" ? "all" : get().scope;
     let document = await documentText(scope);
     if (stale()) return;

@@ -33,18 +33,30 @@ export function createTesseractEngine(makeRunner: () => Promise<TessRunner> = de
     }
     await runner;
   };
+  const dispose = () => { const r = runner; runner = null; status = "idle"; void r?.then((x) => x.terminate()).catch(() => {}); };
   return {
     get status() { return status; },
     load,
-    dispose() { const r = runner; runner = null; status = "idle"; void r?.then((x) => x.terminate()).catch(() => {}); },
+    dispose,
     async recognize(canvas: HTMLCanvasElement, meta: PageMetaPt, signal?: AbortSignal): Promise<OcrPage> {
       if (signal?.aborted) throw new Error("cancelled");
       await load();
       if (signal?.aborted) throw new Error("cancelled");
-      const r = await runner!;
+      const current = runner!;
+      const r = await current;
       const scale = canvas.width / meta.widthPt;
-      const blob = await canvasToBlob(canvas, "image/png");
-      return recognizeImage(r, blob, scale, meta);
+      const work = (async () => recognizeImage(r, await canvasToBlob(canvas, "image/png"), scale, meta))();
+      if (!signal) return work;
+      work.catch(() => {}); // an abandoned run may still reject later
+      let onAbort!: () => void;
+      const aborted = new Promise<never>((_, rej) => { onAbort = () => rej(new Error("cancelled")); signal.addEventListener("abort", onAbort, { once: true }); });
+      try { return await Promise.race([work, aborted]); }
+      catch (err) {
+        // The worker may still be busy with the abandoned page: replace it so the next page does not queue behind it.
+        if (signal.aborted && runner === current) dispose();
+        throw err;
+      }
+      finally { signal.removeEventListener("abort", onAbort); }
     },
   } satisfies OcrEngine & { load(): Promise<void>; dispose(): void; readonly status: string };
 }

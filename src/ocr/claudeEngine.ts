@@ -35,7 +35,7 @@ export async function encodeJpeg(canvas: HTMLCanvasElement, shrink: (c: HTMLCanv
   return toBase64(blob);
 }
 
-export function createClaudeEngine(api: () => OcrApi | null): OcrEngine {
+export function createClaudeEngine(api: () => OcrApi | null, opts: { onQuota?: (r: Pick<OcrResponse, "remaining" | "resetAt">) => void } = {}): OcrEngine {
   return {
     async recognize(canvas: HTMLCanvasElement, meta: PageMetaPt, signal?: AbortSignal): Promise<OcrPage> {
       const a = api();
@@ -43,6 +43,7 @@ export function createClaudeEngine(api: () => OcrApi | null): OcrEngine {
       const image = await encodeJpeg(canvas);
       if (signal?.aborted) throw new Error("cancelled");
       const r = await a.runOcr([{ page: 1, image }], signal);
+      opts.onQuota?.({ remaining: r.remaining, resetAt: r.resetAt });
       const got = r.pages.find((p) => p.page === 1);
       if (!got) throw new Error("upstream");
       return linesToOcrPage(got.lines, meta);

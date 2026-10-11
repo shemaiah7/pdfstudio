@@ -3,7 +3,8 @@ import "fake-indexeddb/auto";
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { useDocumentStore } from "./document";
 import { useAiStore } from "./ai";
-import { useOcrStore, configureOcrDeps, pageKey } from "./ocr";
+import { useOcrStore, configureOcrDeps, pageKey, applyQuota } from "./ocr";
+import { createClaudeEngine } from "../ocr/claudeEngine";
 import { createOcrStore } from "../ocr/store";
 import { linesToOcrPage } from "../ocr/layout";
 import type { OcrEngine } from "../ocr/types";
@@ -167,5 +168,98 @@ describe("useOcrStore", () => {
     finish(); await flush();
     expect(useOcrStore.getState().pages[pageKey(id, 0)]).toMatchObject({ state: "done", engine: "claude" });
     expect((await store.get(`h${n - 1}`, 0))?.lines[0].text).toBe("deep text");
+  });
+  const hang = (_c: HTMLCanvasElement, _m: unknown, signal?: AbortSignal) => new Promise<never>((_, rej) => signal?.addEventListener("abort", () => rej(new Error("cancelled"))));
+  it("cancelAll fails queued and running pages as cancelled, so progress and text status settle", async () => {
+    configureOcrDeps({ tesseract: () => ({ ...engine(["x"]), recognize: hang }), claude: () => ({ recognize: hang }) });
+    const id = await openScan(3);
+    void useOcrStore.getState().scanSource(id); await flush();
+    await useOcrStore.getState().deepOcr([`pg-${n - 1}-2`]); await flush();
+    expect(useOcrStore.getState().textStatus()).toBe("recognizing");
+    useOcrStore.getState().cancelAll(); await flush();
+    for (let p = 0; p < 3; p++) expect(useOcrStore.getState().pages[pageKey(id, p)]).toMatchObject({ state: "failed", error: "cancelled" });
+    expect(useOcrStore.getState().progress()).toBeNull();
+    expect(useOcrStore.getState().textStatus()).not.toBe("recognizing");
+    expect(useAiStore.getState().ocrTextStatus).not.toBe("recognizing");
+  });
+  it("cancelAll restores the Tesseract text of a page with a pending Deep OCR job", async () => {
+    configureOcrDeps({ claude: () => ({ recognize: hang }) });
+    const id = await openScan(1);
+    await useOcrStore.getState().scanSource(id); await flush();
+    await useOcrStore.getState().deepOcr([`pg-${n - 1}-0`]); await flush();
+    expect(useOcrStore.getState().pages[pageKey(id, 0)]).toMatchObject({ state: "running", engine: "claude" });
+    useOcrStore.getState().cancelAll(); await flush();
+    expect(useOcrStore.getState().pages[pageKey(id, 0)]).toEqual({ state: "done", engine: "tesseract" });
+  });
+  it("cancelRecognition fails only Tesseract pages and leaves Deep OCR jobs alone", async () => {
+    configureOcrDeps({ tesseract: () => ({ ...engine(["x"]), recognize: hang }), claude: () => ({ recognize: hang }) });
+    const id = await openScan(4);
+    void useOcrStore.getState().scanSource(id); await flush();
+    await useOcrStore.getState().deepOcr([`pg-${n - 1}-2`, `pg-${n - 1}-3`]); await flush();
+    expect(useOcrStore.getState().pages[pageKey(id, 2)]).toMatchObject({ state: "running", engine: "claude" });
+    expect(useOcrStore.getState().pages[pageKey(id, 3)]).toMatchObject({ state: "queued", engine: "claude" });
+    useOcrStore.getState().cancelRecognition(); await flush();
+    expect(useOcrStore.getState().pages[pageKey(id, 0)]).toMatchObject({ state: "failed", engine: "tesseract", error: "cancelled" });
+    expect(useOcrStore.getState().pages[pageKey(id, 1)]).toMatchObject({ state: "failed", engine: "tesseract", error: "cancelled" });
+    expect(useOcrStore.getState().pages[pageKey(id, 2)]).toMatchObject({ state: "running", engine: "claude" });
+    expect(useOcrStore.getState().pages[pageKey(id, 3)]).toMatchObject({ state: "queued", engine: "claude" });
+    useOcrStore.getState().cancelAll();
+  });
+  it("shows the formatted reset time when Deep OCR hits the daily limit", async () => {
+    const resetAt = 1_800_000_000;
+    configureOcrDeps({ claude: () => ({ recognize: async () => { throw Object.assign(new Error("daily_limit"), { resetAt }); } }) });
+    const id = await openScan(1);
+    await useOcrStore.getState().scanSource(id); await flush();
+    await useOcrStore.getState().deepOcr([`pg-${n - 1}-0`]); await flush();
+    const t = new Date(resetAt * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    expect(useOcrStore.getState().toast).toBe(`Daily limit reached. Resets at ${t}.`);
+  });
+  it("pushes remaining quota into the AI store after a Deep OCR success", async () => {
+    const api = { runOcr: async () => ({ pages: [{ page: 1, lines: ["deep"] }], failed: [], remaining: { requests: 0, tokens: 5 }, resetAt: 777 }) };
+    configureOcrDeps({ claude: () => createClaudeEngine(() => api, { onQuota: applyQuota }), rasterize: async () => ({ canvas: { width: 10, height: 10, toBlob: (cb: (b: Blob | null) => void) => cb(new Blob(["x"])) } as unknown as HTMLCanvasElement, meta: { widthPt: 300, heightPt: 400 }, scale: 1 }) });
+    useAiStore.setState({ remaining: null, limitedUntil: null });
+    const id = await openScan(1);
+    await useOcrStore.getState().scanSource(id); await flush();
+    await useOcrStore.getState().deepOcr([`pg-${n - 1}-0`]); await flush(10);
+    expect(useOcrStore.getState().pages[pageKey(id, 0)]).toMatchObject({ state: "done", engine: "claude" });
+    expect(useAiStore.getState().remaining).toEqual({ requests: 0, tokens: 5, resetAt: 777 });
+    expect(useAiStore.getState().limitedUntil).toBe(777);
+    useAiStore.setState({ remaining: null, limitedUntil: null });
+  });
+  it("a batch-fatal Deep OCR error cancels the remaining Deep OCR jobs, keeps Tesseract text, and toasts once", async () => {
+    let calls = 0;
+    configureOcrDeps({ claude: () => ({ recognize: async () => { calls++; throw new Error("too_fast"); } }) });
+    const id = await openScan(3);
+    await useOcrStore.getState().scanSource(id); await flush();
+    useOcrStore.setState({ toast: null });
+    const toasts: (string | null)[] = [];
+    const unsub = useOcrStore.subscribe((st, prev) => { if (st.toast !== prev.toast) toasts.push(st.toast); });
+    await useOcrStore.getState().deepOcr([0, 1, 2].map((p) => `pg-${n - 1}-${p}`)); await flush(10);
+    unsub();
+    expect(calls).toBe(1);
+    for (let p = 0; p < 3; p++) expect(useOcrStore.getState().pages[pageKey(id, p)]).toEqual({ state: "done", engine: "tesseract" });
+    expect(toasts).toEqual(["Slow down a little and try again in a few seconds."]);
+  });
+  it("a batch-fatal error on pages without Tesseract text marks the rest failed with that code", async () => {
+    configureOcrDeps({ claude: () => ({ recognize: async () => { throw new Error("network"); } }) });
+    const id = await openScan(2);
+    useOcrStore.getState().setEnabled(false);
+    await useOcrStore.getState().scanSource(id); // auto OCR off: pages just become Deep OCR targets
+    await useOcrStore.getState().deepOcr([`pg-${n - 1}-0`, `pg-${n - 1}-1`]); await flush(10);
+    expect(useOcrStore.getState().pages[pageKey(id, 0)]).toMatchObject({ state: "failed", engine: "claude", error: "network" });
+    expect(useOcrStore.getState().pages[pageKey(id, 1)]).toMatchObject({ state: "failed", engine: "claude", error: "network" });
+  });
+  it("a Tesseract result landing during Deep OCR is what a failed Deep OCR restores", async () => {
+    let finishTess!: () => void;
+    configureOcrDeps({
+      tesseract: () => ({ ...engine(["x"]), recognize: () => new Promise((res) => { finishTess = () => res({ ...linesToOcrPage(["tess"], { widthPt: 300, heightPt: 400 }), engine: "tesseract", confidence: 0.9 }); }) }),
+      claude: () => ({ recognize: async () => { await new Promise((r) => setTimeout(r, 30)); throw new Error("upstream"); } }),
+    });
+    const id = await openScan(1);
+    void useOcrStore.getState().scanSource(id); await flush();
+    await useOcrStore.getState().deepOcr([`pg-${n - 1}-0`]); await flush(2);
+    finishTess();
+    await new Promise((r) => setTimeout(r, 80)); await flush();
+    expect(useOcrStore.getState().pages[pageKey(id, 0)]).toEqual({ state: "done", engine: "tesseract" });
   });
 });

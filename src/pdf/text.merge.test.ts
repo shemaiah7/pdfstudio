@@ -2,7 +2,7 @@ import "fake-indexeddb/auto";
 import { describe, it, expect, beforeEach, beforeAll } from "vitest";
 import { useDocumentStore } from "../store/document";
 import { loadFixture } from "../test/loadFixture";
-import { extractPageText, clearTextCache, invalidatePageText } from "./text";
+import { extractPageText, clearTextCache, invalidatePageText, setOcrLookup } from "./text";
 import { ocrStore } from "../ocr/store";
 import { linesToOcrPage } from "../ocr/layout";
 import { sha256 } from "./hash";
@@ -38,5 +38,12 @@ describe("extractPageText OCR merge", () => {
     const { linesFromItems } = await import("./text");
     expect(linesFromItems([{ str: " ", transform: [1, 0, 0, 1, 0, 0], width: 1, height: 1 }]).trim()).toBe("");
     expect((await extractPageText(src, 0)).text).toBe("x y");
+  });
+  it("returns empty text when the OCR lookup throws", async () => {
+    await useDocumentStore.getState().openFiles([{ name: "scan.pdf", bytes: loadFixture("scan") }]);
+    const src = [...useDocumentStore.getState().sources.values()][0];
+    setOcrLookup(async () => { throw new Error("idb broke"); });
+    try { expect(await extractPageText(src, 0)).toEqual({ text: "", items: [] }); }
+    finally { setOcrLookup(); }
   });
 });

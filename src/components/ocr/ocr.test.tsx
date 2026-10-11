@@ -35,7 +35,7 @@ describe("OcrBadge", () => {
 describe("OcrPill", () => {
   it("shows progress and cancel while recognizing", () => {
     useOcrStore.setState({ pages: { "s:0": { state: "done", engine: "tesseract" }, "s:1": { state: "queued", engine: "tesseract" } } });
-    const cancel = vi.spyOn(useOcrStore.getState(), "cancelAll");
+    const cancel = vi.spyOn(useOcrStore.getState(), "cancelRecognition");
     render(<OcrPill />);
     expect(screen.getByTestId("ocr-pill").textContent).toContain("Recognizing text 1/2");
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));

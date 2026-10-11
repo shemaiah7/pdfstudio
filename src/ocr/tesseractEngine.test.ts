@@ -45,6 +45,27 @@ describe("createTesseractEngine", () => {
   });
 });
 
+describe("createTesseractEngine abort", () => {
+  it("terminates and recreates the runner when a recognize is aborted mid-run", async () => {
+    let made = 0, terminated = 0;
+    const engine = createTesseractEngine(async () => {
+      made++;
+      return { recognize: made === 1 ? () => new Promise(() => {}) : async () => ({ confidence: 0, lines: [] }), terminate: async () => { terminated++; } };
+    });
+    const canvas = { width: 200, height: 100, toBlob: (cb: (b: Blob | null) => void) => cb(new Blob(["x"])) } as unknown as HTMLCanvasElement;
+    const meta = { widthPt: 100, heightPt: 50 };
+    const c = new AbortController();
+    const p = engine.recognize(canvas, meta, c.signal);
+    await new Promise((r) => setTimeout(r, 0));
+    c.abort();
+    await expect(p).rejects.toThrow("cancelled");
+    await new Promise((r) => setTimeout(r, 0));
+    expect(terminated).toBe(1);
+    await engine.recognize(canvas, meta);
+    expect(made).toBe(2);
+  });
+});
+
 describe("real Tesseract on the scan fixture", () => {
   it("reads the printed words", async () => {
     const worker = await createWorker("eng", 1, { langPath: TESSDATA_URL, cachePath: tmpdir() });

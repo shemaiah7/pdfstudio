@@ -29,7 +29,7 @@ export function defaultDeps(): IndexDeps {
 export async function indexSource(source: SourceFile, deps: IndexDeps = defaultDeps(), onProgress?: (done: number, total: number, phase: "extract" | "embed") => void, signal?: AbortSignal): Promise<IndexResult> {
   let hash = "";
   try {
-    hash = await sha256(source.bytes);
+    hash = source.hash ?? (await sha256(source.bytes));
     const current = (await deps.ocrVersion?.(source)) ?? 0;
     const existing = await deps.lib.get(hash);
     if (existing && (existing.ocrVersion ?? 0) >= current) return { status: "cached", hash, chunks: existing.chunks.length };

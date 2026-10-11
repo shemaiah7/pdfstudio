@@ -84,4 +84,20 @@ describe("withoutCoveredWords", () => {
     expect(strs).not.toContain("secretword");
     expect(strs).toContain("keepword");
   });
+  it("writes no text layer for an edited Deep OCR page, warns once, and keeps unedited Deep OCR pages", async () => {
+    const sources = new Map<string, SourceFile>([["a", { id: "a", name: "three.pdf", bytes: loadFixture("three"), pageCount: 3 }]]);
+    const entries = [0, 1].map((i) => ({ id: `p${i}`, sourceId: "a", sourcePageIndex: i, rotation: 0 as const }));
+    const deep: OcrPage = { engine: "claude", confidence: 1, at: 1, lines: [{ text: "secret keep", box: { x: 20, y: 200, width: 200, height: 20 }, words: [
+      { text: "secretword", box: { x: 20, y: 200, width: 80, height: 20 }, confidence: 1 }, { text: "keepword", box: { x: 120, y: 200, width: 80, height: 20 }, confidence: 1 }] }] };
+    const edit: Edit = { id: "e", pageEntryId: "p0", boxes: [{ x: 10, y: 195, width: 100, height: 30 }], text: "", fontSize: 12, font: "sans", color: [0, 0, 0] };
+    const warnings: string[] = [];
+    const out = await buildDocument(sources, entries, [edit], [], new Map(), (m) => warnings.push(m), new Map([["p0", deep], ["p1", deep]]));
+    const strs = (await textItems(out)).map((i) => i.str).join(" ");
+    expect(strs).not.toContain("secretword");
+    expect(strs).not.toContain("keepword");
+    expect(warnings).toEqual(["Searchable text left out of edited Deep OCR pages."]);
+    const pdf = await getDocument({ data: out.slice() }).promise;
+    const second = (await (await pdf.getPage(2)).getTextContent()).items.map((i) => ("str" in i ? i.str : "")).join(" ");
+    expect(second).toContain("keepword");
+  });
 });

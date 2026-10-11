@@ -98,7 +98,8 @@ async function loadSources(
   for (const f of files) {
     try {
       const pageCount = await countPages(f.bytes);
-      const hash = await sha256(f.bytes);
+      let hash: string | undefined;
+      try { hash = await sha256(f.bytes); } catch { /* no crypto.subtle (e.g. plain http): open without a hash */ }
       sources.push({ id: nextId("src"), name: f.name, bytes: f.bytes, pageCount, hash });
       if (f.bytes.byteLength > limit) result.oversized.push(f.name);
     } catch {

@@ -46,6 +46,29 @@ describe("createOcrQueue", () => {
     vi.useRealTimers();
     expect(states.filter(([, s]) => s !== "queued" && s !== "running")).toEqual([[0, "empty", undefined], [1, "failed", "boom"], [2, "failed", "timeout"]]);
   });
+  it("cancelLane drops and aborts only that engine's jobs, emits no state, and passes the failure cause", async () => {
+    const aborted: string[] = [];
+    const states: [string, number, OcrJobState][] = [];
+    const q = createOcrQueue((j, signal) => new Promise((_, rej) => signal.addEventListener("abort", () => { aborted.push(`${j.engine}${j.pageIndex}`); rej(new Error("cancelled")); })), { onState: (j, s) => states.push([j.engine, j.pageIndex, s]) });
+    q.enqueue(job(0, "claude")); q.enqueue(job(1, "claude")); q.enqueue(job(0, "tesseract"));
+    await tick();
+    const before = states.length;
+    q.cancelLane("claude");
+    await tick(); await tick();
+    expect(aborted).toEqual(["claude0"]);
+    expect(states.length).toBe(before);
+    expect(q.pending).toBe(1);
+    q.enqueue(job(0, "claude")); // slot is free again
+    expect(q.pending).toBe(2);
+    q.cancelAll();
+  });
+  it("hands the original error to onState as cause", async () => {
+    const err = Object.assign(new Error("daily_limit"), { resetAt: 42 });
+    const causes: unknown[] = [];
+    const q = createOcrQueue(async () => { throw err; }, { onState: (_j, s, e) => { if (s === "failed") causes.push(e?.cause); } });
+    q.enqueue(job(0)); await tick(); await tick();
+    expect(causes).toEqual([err]);
+  });
   it("cancelSource drops queued jobs for that source and aborts the running one", async () => {
     const aborted: number[] = [];
     const states: [string, number, OcrJobState][] = [];

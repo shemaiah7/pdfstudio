@@ -42,6 +42,10 @@ export function hasAnyText(pages: { text: string }[]): boolean {
   return pages.some((p) => p.text.trim().length > 0);
 }
 
+let lookupOcr: (hash: string, pageIndex: number) => ReturnType<typeof ocrStore.get> = (h, p) => ocrStore.get(h, p);
+/** Test seam: replace (or with no argument, restore) the OCR text lookup. */
+export function setOcrLookup(fn?: typeof lookupOcr): void { lookupOcr = fn ?? ((h, p) => ocrStore.get(h, p)); }
+
 const cache = new Map<string, Promise<PageText>>();
 
 // Document lifetime is owned by render.ts (getPage / releaseSource); this clears only extracted text.
@@ -65,7 +69,8 @@ export async function extractPageText(source: SourceFile, pageIndex: number): Pr
       }));
       const text = linesFromItems(raw);
       if (text.trim().length > 0 || !source.hash) return { text, items };
-      const ocr = await ocrStore.get(source.hash, pageIndex);
+      let ocr: Awaited<ReturnType<typeof ocrStore.get>>;
+      try { ocr = await lookupOcr(source.hash, pageIndex); } catch { return { text: "", items: [] }; }
       if (!ocr) return { text: "", items: [] };
       return { text: ocrPageText(ocr), items: ocrPageToItems(ocr), ocr: true };
     })();

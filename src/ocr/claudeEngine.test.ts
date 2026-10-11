@@ -24,6 +24,12 @@ describe("createClaudeEngine", () => {
     expect(page.engine).toBe("claude");
     expect(page.lines.map((l) => l.text)).toEqual(["Hello", "world"]);
   });
+  it("reports the remaining quota from the response", async () => {
+    const got: unknown[] = [];
+    const api: OcrApi = { runOcr: async () => ({ pages: [{ page: 1, lines: ["x"] }], failed: [], remaining: { requests: 7, tokens: 9 }, resetAt: 123 }) };
+    await createClaudeEngine(() => api, { onQuota: (r) => got.push(r) }).recognize(canvas(100, 5), { widthPt: 300, heightPt: 400 });
+    expect(got).toEqual([{ remaining: { requests: 7, tokens: 9 }, resetAt: 123 }]);
+  });
   it("throws when the page is reported failed or the api is missing", async () => {
     const api: OcrApi = { runOcr: async () => ({ pages: [], failed: [1], remaining: { requests: 1, tokens: 1 }, resetAt: 0 }) };
     await expect(createClaudeEngine(() => api).recognize(canvas(100, 5), { widthPt: 300, heightPt: 400 })).rejects.toThrow("upstream");

@@ -30,6 +30,7 @@ export async function buildDocument(
   let helv: PDFFont | undefined;
   let wroteFreeText = false;
   let ocrWarned = false;
+  let deepOmitWarned = false;
   const copiedBySource = new Map<SourceId, PDFPage[]>();
 
   for (const entry of pages) {
@@ -87,7 +88,11 @@ export async function buildDocument(
     }
 
     const ocr = ocrPages?.get(entry.id);
-    if (ocr) {
+    if (ocr && ocr.engine === "claude" && pageEdits.length > 0) {
+      // Deep OCR word boxes are synthetic (evenly stacked lines), so text under an edit cannot be reliably omitted.
+      if (!deepOmitWarned) onWarning?.("Searchable text left out of edited Deep OCR pages.");
+      deepOmitWarned = true;
+    } else if (ocr) {
       helv ??= await out.embedFont(StandardFonts.Helvetica);
       try { addInvisibleText(copied, helv, withoutCoveredWords(ocr, pageEdits.flatMap((e) => e.boxes)), { x: ox, y: oy }); }
       catch { if (!ocrWarned) onWarning?.("Saved without searchable text layer."); ocrWarned = true; }
