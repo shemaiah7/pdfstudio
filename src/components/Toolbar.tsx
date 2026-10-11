@@ -2,6 +2,9 @@ import { useRef, useState } from "react";
 import { useDocumentStore } from "../store/document";
 import { buildDocument } from "../pdf/pageOps";
 import { useFields } from "./useFields";
+import { useOcrStore, pageKey } from "../store/ocr";
+import { ocrStore } from "../ocr/store";
+import type { OcrPage } from "../ocr/types";
 import { outputName, saveBlob } from "../pdf/download";
 
 interface Props { scale: number; setScale: (s: number) => void; onFiles: (files: File[], mode: "open" | "add") => void }
@@ -22,7 +25,15 @@ export default function Toolbar({ scale, setScale, onFiles }: Props) {
     const ids = new Set(entries.map((p) => p.id));
     setBusy(true);
     try {
-      const bytes = await buildDocument(s.sources, entries, s.edits.filter((e) => ids.has(e.pageEntryId)), s.annotations.filter((a) => ids.has(a.pageEntryId)), s.formValues, (msg) => s.setError(msg));
+      const ocrPages = new Map<string, OcrPage>();
+      const ocrState = useOcrStore.getState().pages;
+      for (const p of entries) {
+        const src = s.sources.get(p.sourceId);
+        if (!src?.hash || ocrState[pageKey(p.sourceId, p.sourcePageIndex)]?.state !== "done") continue;
+        const page = await ocrStore.get(src.hash, p.sourcePageIndex);
+        if (page) ocrPages.set(p.id, page);
+      }
+      const bytes = await buildDocument(s.sources, entries, s.edits.filter((e) => ids.has(e.pageEntryId)), s.annotations.filter((a) => ids.has(a.pageEntryId)), s.formValues, (msg) => s.setError(msg), ocrPages);
       saveBlob(bytes, outputName(firstName, kind));
       if (kind === "edited") s.markClean();
     } catch (err) {
