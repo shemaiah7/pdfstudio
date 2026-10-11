@@ -5,7 +5,7 @@ export const MAX_SELECTION_CHARS = 20_000;
 export const MAX_QUESTION_CHARS = 2_000;
 
 const pageSchema = z.object({ page: z.number().int().positive(), text: z.string() });
-const turnSchema = z.object({ role: z.enum(["user", "assistant"]), text: z.string().max(8_000) });
+const turnSchema = z.object({ role: z.enum(["user", "assistant"]), text: z.string().min(1).max(8_000) });
 
 const base = z.object({
   document: z.array(pageSchema).min(1).max(2_000),

@@ -28,4 +28,7 @@ describe("validateAiBody", () => {
     const history = Array.from({ length: 11 }, (_, i) => ({ role: i % 2 ? "assistant" : "user", text: "t" }));
     expect(validateAiBody({ task: "ask", document: doc, question: "q", history })).toMatchObject({ ok: false, status: 400 });
   });
+  it("rejects empty history turns", () => {
+    expect(validateAiBody({ task: "ask", document: doc, question: "q", history: [{ role: "user", text: "" }] })).toMatchObject({ ok: false, status: 400 });
+  });
 });
