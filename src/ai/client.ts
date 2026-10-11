@@ -73,18 +73,26 @@ export class AiClient {
           return;
         }
         let finished = false;
+        let bad = false;
+        const reader = res.body!.getReader();
         const parser = createSseParser((e) => {
-          const data = JSON.parse(e.data);
+          if (finished || bad) return;
+          let data: any;
+          try { data = JSON.parse(e.data); } catch {
+            bad = true; finished = true;
+            void reader.cancel().catch(() => {});
+            handlers.onError("upstream");
+            return;
+          }
           if (e.event === "delta") handlers.onDelta(data.text);
           else if (e.event === "done") { finished = true; handlers.onDone(data); }
           else if (e.event === "error") { finished = true; handlers.onError(data.error); }
         });
-        const reader = res.body!.getReader();
         const decoder = new TextDecoder();
         try {
           for (;;) {
             const { value, done: d } = await reader.read();
-            if (d) break;
+            if (d || bad) break;
             parser.push(decoder.decode(value, { stream: true }));
           }
           parser.end();

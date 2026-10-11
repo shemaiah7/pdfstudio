@@ -24,4 +24,15 @@ describe("AiPanel", () => {
     expect(screen.getByTestId("ai-footer").textContent).toMatch(/0 requests left/);
     useAiStore.setState({ limitedUntil: null, remaining: null });
   });
+
+  it("shows a not-configured message in production without VITE_AI_URL", () => {
+    vi.stubEnv("DEV", false);
+    vi.stubEnv("VITE_AI_URL", "");
+    useAiStore.setState({ client: null });
+    render(<AiPanel />);
+    expect(screen.getByText("AI features are not configured.")).toBeTruthy();
+    expect(screen.queryByTestId("ai-run")).toBeNull();
+    expect(useAiStore.getState().client).toBeNull();
+    vi.unstubAllEnvs();
+  });
 });

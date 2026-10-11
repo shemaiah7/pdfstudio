@@ -66,4 +66,17 @@ describe("AiClient", () => {
     await Promise.all([c.runTask(req, h).done, c.runTask(req, h).done]);
     expect(fetchFn.mock.calls.filter((x) => String(x[0]).endsWith("/session"))).toHaveLength(1);
   });
+
+  it("reports upstream once and stops on a malformed data frame", async () => {
+    const fetchFn = vi.fn()
+      .mockResolvedValueOnce(json({ token: "t", expiresAt: 9e9 }, 200))
+      .mockResolvedValueOnce(sse('event: delta\ndata: {not json}\n\nevent: delta\ndata: {"text":"late"}\n\nevent: done\ndata: {"usage":{"input":0,"output":0},"stop":"end_turn","remaining":{"requests":1,"tokens":1},"resetAt":1}\n\n'));
+    const c = new AiClient({ baseUrl: "https://ai.test", getTurnstileToken: async () => "tok", fetchFn });
+    const onError = vi.fn(); const onDelta = vi.fn(); const onDone = vi.fn();
+    await c.runTask({ task: "summarize", document: [{ page: 1, text: "x" }] }, { onDelta, onDone, onError }).done;
+    expect(onError).toHaveBeenCalledTimes(1);
+    expect(onError).toHaveBeenCalledWith("upstream");
+    expect(onDelta).not.toHaveBeenCalled();
+    expect(onDone).not.toHaveBeenCalled();
+  });
 });

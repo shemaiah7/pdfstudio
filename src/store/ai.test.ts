@@ -4,14 +4,15 @@ import { useAiStore } from "./ai";
 import { useDocumentStore } from "./document";
 import { loadFixture } from "../test/loadFixture";
 
+const docText = vi.hoisted(() => ({ fn: async (_scope: string): Promise<{ page: number; text: string }[]> => [{ page: 1, text: "hello" }] }));
 vi.mock("../pdf/text", () => ({
-  documentText: async () => [{ page: 1, text: "hello" }],
+  documentText: (scope: "all" | "selected") => docText.fn(scope),
   hasAnyText: (p: { text: string }[]) => p.some((x) => x.text.trim()),
 }));
 
 const s = () => useAiStore.getState();
 
-beforeEach(() => { useAiStore.getState().resetForNewDocument(); useDocumentStore.getState().reset(); });
+beforeEach(() => { docText.fn = async () => [{ page: 1, text: "hello" }]; useAiStore.getState().resetForNewDocument(); useDocumentStore.getState().reset(); });
 
 describe("ai store", () => {
   it("streams a summary into state and tracks remaining", async () => {
@@ -74,6 +75,78 @@ describe("ai store", () => {
     expect(runTask).toHaveBeenCalledTimes(1);
     await vi.waitFor(() => expect(runTask).toHaveBeenCalledTimes(1));
     release(); await first;
+  });
+});
+
+const okDone = { usage: { input: 0, output: 0 }, stop: "end_turn", remaining: { requests: 1, tokens: 1 }, resetAt: 1 };
+
+describe("document cap and scope", () => {
+  it("rejects an oversized document without calling the client", async () => {
+    docText.fn = async () => [{ page: 1, text: "x".repeat(600_001) }];
+    const runTask = vi.fn();
+    s().setClient({ runTask } as never);
+    for (const task of ["summarize", "extract"] as const) {
+      await s().run(task);
+      expect(runTask).not.toHaveBeenCalled();
+    }
+    expect(s().summary.error).toBe(s().errorMessage("document_too_large"));
+    expect(s().summary.status).toBe("error");
+    expect(s().extract.error).toBe(s().errorMessage("document_too_large"));
+    s().setDraft("Q");
+    await s().run("ask");
+    expect(runTask).not.toHaveBeenCalled();
+    expect(s().chat.error).toBe(s().errorMessage("document_too_large"));
+  });
+
+  it("rewrite sends only the selection page and its neighbours", async () => {
+    await useDocumentStore.getState().openFiles([{ name: "three.pdf", bytes: loadFixture("three") }]);
+    const pages = useDocumentStore.getState().pages;
+    docText.fn = async () => [1, 2, 3, 4, 5].map((n) => ({ page: n, text: `t${n}` }));
+    let body: { document?: { page: number }[] } = {};
+    s().setClient({ runTask: (b: typeof body, h: { onDone(d: unknown): void }) => { body = b; h.onDone(okDone); return { abort() {}, done: Promise.resolve() }; } } as never);
+    s().setSelection({ pageEntryId: pages[1].id, text: "sel", boxes: [{ x: 0, y: 0, width: 1, height: 1 }], fontSize: 12, bold: false, serif: false });
+    await s().run("rewrite");
+    expect(body.document!.map((d) => d.page)).toEqual([1, 2, 3]);
+  });
+
+  it("ask honors scope selected", async () => {
+    const seen: string[] = [];
+    docText.fn = async (scope) => { seen.push(scope); return [{ page: 2, text: "hi" }]; };
+    s().setClient({ runTask: (_b: unknown, h: { onDone(d: unknown): void }) => { h.onDone(okDone); return { abort() {}, done: Promise.resolve() }; } } as never);
+    s().setScope("selected");
+    s().setDraft("Q");
+    await s().run("ask");
+    expect(seen).toEqual(["selected"]);
+  });
+
+  it("says to select pages first when the selected scope is empty", async () => {
+    docText.fn = async () => [];
+    const runTask = vi.fn();
+    s().setClient({ runTask } as never);
+    s().setScope("selected");
+    await s().run("summarize");
+    expect(runTask).not.toHaveBeenCalled();
+    expect(s().summary.error).toBe("Select pages first.");
+  });
+});
+
+describe("document change", () => {
+  it("aborts pending streams, ignores late callbacks, and accepts a new run", async () => {
+    await useDocumentStore.getState().openFiles([{ name: "three.pdf", bytes: loadFixture("three") }]);
+    let handlers!: { onDelta(t: string): void; onDone(d: unknown): void };
+    const abort = vi.fn();
+    const runTask = vi.fn((_b: unknown, h: typeof handlers) => { handlers = h; return { abort, done: new Promise<void>(() => {}) }; });
+    s().setClient({ runTask } as never);
+    void s().run("summarize");
+    await vi.waitFor(() => expect(runTask).toHaveBeenCalledTimes(1));
+    s().resetForNewDocument();
+    expect(abort).toHaveBeenCalledTimes(1);
+    handlers.onDelta("late");
+    handlers.onDone(okDone);
+    expect(s().summary.text).toBe("");
+    expect(s().summary.status).toBe("idle");
+    void s().run("summarize");
+    await vi.waitFor(() => expect(runTask).toHaveBeenCalledTimes(2));
   });
 });
 

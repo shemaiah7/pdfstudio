@@ -2,6 +2,7 @@ import { create } from "zustand";
 import type { AiClient, AiRequest } from "../ai/client";
 import type { PageSelection } from "../pdf/selection";
 import { documentText, hasAnyText } from "../pdf/text";
+import { useDocumentStore } from "./document";
 
 export type Status = "idle" | "running" | "done" | "error";
 export type RewriteMode = "rewrite" | "simplify" | "formal" | "translate" | "explain";
@@ -13,7 +14,8 @@ export interface AiState {
   client: AiClient | null;
   remaining: { requests: number; tokens: number; resetAt: number } | null;
   limitedUntil: number | null;
-  summary: { scope: "all" | "selected"; text: string; status: Status; error: string | null };
+  scope: "all" | "selected";
+  summary: { text: string; status: Status; error: string | null };
   chat: { turns: { role: "user" | "assistant"; text: string }[]; draft: string; status: Status; error: string | null };
   rewrite: { selection: PageSelection | null; mode: RewriteMode; language: string; result: string; status: Status; error: string | null };
   extract: { facts: Fact[]; status: Status; error: string | null };
@@ -22,7 +24,7 @@ export interface AiState {
   setSelection(s: PageSelection | null): void;
   setRewriteMode(m: RewriteMode): void;
   setLanguage(l: string): void;
-  setSummaryScope(s: "all" | "selected"): void;
+  setScope(s: "all" | "selected"): void;
   setDraft(d: string): void;
   setRewriteResult(t: string): void;
   dismissNotice(): void;
@@ -33,13 +35,18 @@ export interface AiState {
 
 interface TaskPatch { status?: Status; error?: string | null; text?: string; result?: string; facts?: Fact[] }
 
-const inflight = new Set<AiRequest["task"]>();
+const MAX_DOC_CHARS = 600_000;
+const inflight = new Map<AiRequest["task"], symbol>();
+const aborts = new Map<AiRequest["task"], () => void>();
+// Bumped on every document change; callbacks from older generations are ignored.
+let generation = 0;
 
 const fmtTime = (unix: number) => new Date(unix * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
 const initial = () => ({
   remaining: null, limitedUntil: null,
-  summary: { scope: "all" as const, text: "", ...idle() },
+  scope: "all" as "all" | "selected",
+  summary: { text: "", ...idle() },
   chat: { turns: [], draft: "", ...idle() },
   rewrite: { selection: null, mode: "rewrite" as RewriteMode, language: "", result: "", ...idle() },
   extract: { facts: [] as Fact[], ...idle() },
@@ -58,11 +65,17 @@ export const useAiStore = create<AiState>((set, get) => ({
   }),
   setRewriteMode: (mode) => set((s) => ({ rewrite: { ...s.rewrite, mode } })),
   setLanguage: (language) => set((s) => ({ rewrite: { ...s.rewrite, language } })),
-  setSummaryScope: (scope) => set((s) => ({ summary: { ...s.summary, scope } })),
+  setScope: (scope) => set({ scope }),
   setDraft: (draft) => set((s) => ({ chat: { ...s.chat, draft } })),
   setRewriteResult: (result) => set((s) => ({ rewrite: { ...s.rewrite, result } })),
   dismissNotice: () => { try { localStorage.setItem("ai-notice", "1"); } catch { /* ignore */ } set({ noticeDismissed: true }); },
-  resetForNewDocument: () => set((s) => ({ ...initial(), remaining: s.remaining, limitedUntil: s.limitedUntil })),
+  resetForNewDocument: () => {
+    generation++;
+    for (const abort of aborts.values()) { try { abort(); } catch { /* ignore */ } }
+    aborts.clear();
+    inflight.clear();
+    set((s) => ({ ...initial(), remaining: s.remaining, limitedUntil: s.limitedUntil }));
+  },
 
   errorMessage(code, extra) {
     switch (code) {
@@ -74,6 +87,7 @@ export const useAiStore = create<AiState>((set, get) => ({
       case "refused": return "Claude declined this request.";
       case "interrupted": return "Response interrupted.";
       case "network": return "Couldn't reach the AI service.";
+      case "no_selection": return "Select pages first.";
       case "no_text": return "This PDF has no selectable text. OCR is coming in a later version.";
       default: return "Something went wrong talking to the AI.";
     }
@@ -84,13 +98,16 @@ export const useAiStore = create<AiState>((set, get) => ({
     if (!client) return;
     const current = { summarize: get().summary, ask: get().chat, rewrite: get().rewrite, extract: get().extract }[task];
     if (current.status === "running" || inflight.has(task)) return;
-    inflight.add(task);
-    try { await runTask(task, client); } finally { inflight.delete(task); }
+    const mine = Symbol(task);
+    inflight.set(task, mine);
+    try { await runTask(task, client); } finally { if (inflight.get(task) === mine) inflight.delete(task); }
   },
 }));
 
 async function runTask(task: AiRequest["task"], client: AiClient) {
   const { get, set } = { get: useAiStore.getState, set: useAiStore.setState };
+  const gen = generation;
+  const stale = () => gen !== generation;
   {
     const setTask = (p: TaskPatch) => set((s) => {
       const common = { ...(p.status !== undefined && { status: p.status }), ...(p.error !== undefined && { error: p.error }) };
@@ -101,8 +118,22 @@ async function runTask(task: AiRequest["task"], client: AiClient) {
         case "extract": return { extract: { ...s.extract, ...common, ...(p.facts !== undefined && { facts: p.facts }) } };
       }
     });
-    const scope = task === "summarize" ? get().summary.scope : "all";
-    const document = await documentText(scope);
+    const scope = task === "rewrite" ? "all" : get().scope;
+    let document = await documentText(scope);
+    if (stale()) return;
+    if (task === "rewrite") {
+      // Only the selection's page and its neighbours are sent for a rewrite.
+      const sel = get().rewrite.selection;
+      const idx = sel ? useDocumentStore.getState().pages.findIndex((p) => p.id === sel.pageEntryId) : -1;
+      if (idx < 0) return;
+      const p = idx + 1;
+      document = document.filter((d) => d.page >= p - 1 && d.page <= p + 1);
+    }
+    if (scope === "selected" && document.length === 0) { setTask({ status: "error", error: get().errorMessage("no_selection") }); return; }
+    if (document.reduce((n, d) => n + d.text.length, 0) > MAX_DOC_CHARS) {
+      setTask({ status: "error", error: get().errorMessage("document_too_large") });
+      return;
+    }
     if (!hasAnyText(document)) { setTask({ status: "error", error: get().errorMessage("no_text") }); return; }
 
     const body: AiRequest = { task, document };
@@ -125,14 +156,16 @@ async function runTask(task: AiRequest["task"], client: AiClient) {
     }
 
     let buffer = "";
-    await client.runTask(body, {
+    const handle = client.runTask(body, {
       onDelta: (t) => {
+        if (stale()) return;
         buffer += t;
         if (task === "summarize") setTask({ text: buffer });
         else if (task === "rewrite") setTask({ result: buffer });
         else if (task === "ask") set((s) => { const turns = [...s.chat.turns]; turns[turns.length - 1] = { role: "assistant", text: buffer }; return { chat: { ...s.chat, turns } }; });
       },
       onDone: (d) => {
+        if (stale()) return;
         set({ remaining: { ...d.remaining, resetAt: d.resetAt } });
         if (task === "extract") {
           try { setTask({ facts: (JSON.parse(buffer) as { facts: Fact[] }).facts, status: "done" }); }
@@ -144,6 +177,7 @@ async function runTask(task: AiRequest["task"], client: AiClient) {
         }
       },
       onError: (code, extra) => {
+        if (stale()) return;
         if (code === "daily_limit") set({ limitedUntil: Number(extra?.resetAt ?? 0) });
         if (task === "ask") set((s) => {
           const turns = s.chat.turns;
@@ -152,6 +186,8 @@ async function runTask(task: AiRequest["task"], client: AiClient) {
         });
         setTask({ status: "error", error: get().errorMessage(code, extra) });
       },
-    }).done;
+    });
+    aborts.set(task, handle.abort);
+    try { await handle.done; } finally { if (aborts.get(task) === handle.abort) aborts.delete(task); }
   }
 }
