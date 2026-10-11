@@ -7,13 +7,22 @@ describe("layoutBlock", () => {
   it("wraps words at the block width and places baselines by lineHeight", () => {
     const l = layoutBlock("aaaa bbbb cccc dddd", box, 10, 12, measure); // 20 chars per line max
     expect(l.lines.map((x) => x.text)).toEqual(["aaaa bbbb cccc dddd"]);
-    const l2 = layoutBlock("aaaaaaaaaa bbbbbbbbbb cccccccccc", box, 10, 12, measure);
-    expect(l2.lines.map((x) => x.text)).toEqual(["aaaaaaaaaa", "bbbbbbbbbb", "cccccccccc"]);
+    const l2 = layoutBlock("aaaaaaaaaaaa bbbbbbbbbbbb cccccccccccc", box, 10, 12, measure);
+    expect(l2.lines.map((x) => x.text)).toEqual(["aaaaaaaaaaaa", "bbbbbbbbbbbb", "cccccccccccc"]);
     expect(l2.lines[0].baseline).toBeCloseTo(136 - 8);
     expect(l2.lines[1].baseline).toBeCloseTo(136 - 8 - 12);
     expect(l2.boxes[0]).toMatchObject({ x: 10, width: 100, height: 12 });
     expect(l2.boxes[2].height).toBeCloseTo(10.5);
     expect(l2.overflowLines).toBe(0);
+  });
+  it("tolerates a 3 % overhang on one line but wraps at 10 %", () => {
+    const b = { x: 0, y: 0, width: 100, height: 36 };
+    const over = (pct: number) => ["aaaa", "b".repeat(Math.round((100 * (1 + pct)) / 5) - 5)].join(" "); // 5 per char at size 10
+    const small = layoutBlock(over(0.03), b, 10, 12, measure);
+    expect(measure(small.lines[0].text, 10)).toBeGreaterThan(100);
+    expect(small.lines).toHaveLength(1);
+    expect(small.lines[0].width).toBe(100);
+    expect(layoutBlock(over(0.1), b, 10, 12, measure).lines.length).toBeGreaterThan(1);
   });
   it("breaks on newlines and reports overflow", () => {
     const l = layoutBlock("a\nb\nc\nd", box, 10, 12, measure);
