@@ -17,6 +17,11 @@ True content-stream editing remains out of scope: no JavaScript library can rewr
 | Colours | Sampled from the rendered page bitmap (background ring, darkest text cluster), so typed pages and scans behave the same. |
 | Scans | Editing an OCR block also rewrites the OCR store words for that block, so search, AI, and the saved invisible text layer carry the change. |
 | Rotation | Editing is available only when the page is shown unrotated (page `/Rotate` plus user rotation = 0), matching the current Rewrite insert rule. |
+| Line geometry | A line's baseline is the min y of its items; paragraph join accepts a vertical gap >= 0. |
+| Region and covers | `Edit.region` persists the original block box; cover boxes are the layout boxes plus the remainder box (`coverBoxes`). |
+| Font change | Changing the font re-lays out the edit. |
+| Library cache | Library records carry `editsStamp`; they are used as a cache only when it equals the session stamp, so edited text never survives a reload in the index. |
+| Selecting edits | The first click on an existing edit selects it (handles); clicking its body reopens it. |
 | Rejected | Re-embedding original fonts (subsets lack glyphs; CFF/Type1 cannot be re-embedded). Painting the block as an image (unsearchable). |
 
 ## Data model
