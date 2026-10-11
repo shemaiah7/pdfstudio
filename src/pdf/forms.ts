@@ -12,7 +12,7 @@ sourceReleasers.push((id) => cache.delete(id));
 export async function readFields(source: SourceFile): Promise<FieldDef[]> {
   let p = cache.get(source.id);
   if (!p) {
-    p = PDFDocument.load(source.bytes, { ignoreEncryption: true }).then(readFieldsFromDoc);
+    p = PDFDocument.load(source.bytes, { ignoreEncryption: true }).then(readFieldsFromDoc).catch(() => []);
     cache.set(source.id, p);
   }
   return p;

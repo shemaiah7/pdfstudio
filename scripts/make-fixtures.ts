@@ -41,6 +41,8 @@ async function makeForm() {
   const size = form.createRadioGroup("size"); size.addOptionToPage("S", p1, { x: 20, y: 200, width: 18, height: 18 }); size.addOptionToPage("L", p1, { x: 60, y: 200, width: 18, height: 18 });
   const color = form.createDropdown("color"); color.addOptions(["red", "blue"]); color.addToPage(p1, { x: 20, y: 150, width: 120, height: 24 });
   const notes = form.createTextField("notes"); notes.addToPage(p1, { x: 20, y: 100, width: 200, height: 24 }); notes.addToPage(p2, { x: 20, y: 300, width: 200, height: 24 });
+  const addr = form.createTextField("addr.street"); addr.addToPage(p1, { x: 20, y: 60, width: 200, height: 24 });
+  const pick = form.createOptionList("pick"); pick.addOptions(["a", "b", "c"]); pick.addToPage(p1, { x: 160, y: 200, width: 100, height: 60 });
   // unsupported: a signature field dict
   const sigRef = doc.context.register(doc.context.obj({ Type: "Annot", Subtype: "Widget", FT: "Sig", T: PDFHexString.fromText("sig"), Rect: [20, 40, 200, 80], F: 4, P: p2.ref }));
   p2.node.addAnnot(sigRef);

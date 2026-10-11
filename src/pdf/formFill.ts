@@ -13,8 +13,10 @@ export function readFieldsFromDoc(doc: PDFDocument): FieldDef[] {
       if (d instanceof PDFDict && !annotPage.has(d)) annotPage.set(d, i);
     }
   });
-  let form;
-  try { form = doc.getForm(); } catch { return []; }
+  if (!doc.catalog.has(PDFName.of("AcroForm"))) return [];
+  const acro = doc.context.lookup(doc.catalog.get(PDFName.of("AcroForm"))!);
+  if (!(acro instanceof PDFDict) || !(acro.lookup(PDFName.of("Fields")) instanceof PDFArray)) throw new Error("Malformed AcroForm");
+  const form = doc.getForm(); // throws on a malformed AcroForm; callers decide how to report
   return form.getFields().map((field): FieldDef => {
     const widgets = field.acroField.getWidgets().map((w) => {
       const r = w.getRectangle();
@@ -29,90 +31,136 @@ export function readFieldsFromDoc(doc: PDFDocument): FieldDef[] {
   });
 }
 
-/** Rebuild /AcroForm in `out` from the widgets present on the copied pages (spike-proven). Merges with an existing AcroForm's DR. */
+/**
+ * Rebuild/extend /AcroForm in `out` from the widgets present on the copied pages. Accumulates across calls
+ * (one per source): fields are appended to /Fields, DR is merged, and top-level names that collide with
+ * fields from an earlier call are renamed "<name> (n)". Returns the rename map (old full name -> new).
+ */
 export function rebuildAcroForm(out: PDFDocument, src: PDFDocument, copiedPages: PDFPage[]) {
-  const fieldRefs: PDFRef[] = [];
+  const N = PDFName.of;
+  const copiedWidgetRefs = new Set(copiedPages.flatMap((p) => p.node.Annots()?.asArray().map(String) ?? []));
+  const dictOf = (o: unknown) => { const d = o instanceof PDFRef ? out.context.lookup(o) : o; return d instanceof PDFDict ? d : undefined; };
+
+  // roots: top-most ancestors of copied widget annotations
+  const roots: PDFRef[] = [];
   const seen = new Set<string>();
   for (const page of copiedPages) {
-    const annots = page.node.Annots();
-    if (!annots) continue;
-    for (const ref of annots.asArray()) {
+    for (const ref of page.node.Annots()?.asArray() ?? []) {
       if (!(ref instanceof PDFRef)) continue;
-      let top: PDFRef = ref; let dict = out.context.lookup(ref) as PDFDict;
-      while (dict?.get(PDFName.of("Parent")) instanceof PDFRef) { top = dict.get(PDFName.of("Parent")) as PDFRef; dict = out.context.lookup(top) as PDFDict; }
-      if (dict?.has(PDFName.of("FT")) && !seen.has(top.toString())) { seen.add(top.toString()); fieldRefs.push(top); }
+      const first = dictOf(ref);
+      if (!first || (first.get(N("Subtype")) !== N("Widget") && !first.has(N("Parent")))) continue;
+      let top: PDFRef = ref; let dict = first;
+      for (let i = 0; i < 64; i++) {
+        const parent = dict.get(N("Parent"));
+        const pd = parent instanceof PDFRef ? dictOf(parent) : undefined;
+        if (!(parent instanceof PDFRef) || !pd) break;
+        top = parent; dict = pd;
+      }
+      if (!seen.has(top.toString())) { seen.add(top.toString()); roots.push(top); }
     }
   }
-  // prune Kids that were not copied (widgets on pages we did not keep)
-  const copiedWidgetRefs = new Set(copiedPages.flatMap((p) => p.node.Annots()?.asArray().map(String) ?? []));
-  for (const top of fieldRefs) {
-    const dict = out.context.lookup(top) as PDFDict;
-    const kids = dict.get(PDFName.of("Kids"));
-    if (kids instanceof PDFArray) {
-      const kept = kids.asArray().filter((k) => copiedWidgetRefs.has(String(k)));
-      dict.set(PDFName.of("Kids"), out.context.obj(kept));
-    }
-  }
-  // copyPages is called once per page, so a field shared by several pages is cloned once per page: merge clones by name.
-  const fullName = (d: PDFDict): string => {
-    const t = d.lookup(PDFName.of("T"));
+
+  // prune Kids that were not copied; returns whether the node retains any copied widget
+  const prune = (ref: PDFRef | PDFDict, depth = 0): boolean => {
+    const dict = dictOf(ref);
+    if (!dict || depth > 64) return false;
+    const kids = dict.get(N("Kids"));
+    if (!(kids instanceof PDFArray)) return ref instanceof PDFRef && copiedWidgetRefs.has(ref.toString());
+    const kept = kids.asArray().filter((k) => k instanceof PDFRef && (copiedWidgetRefs.has(k.toString()) || prune(k, depth + 1)));
+    dict.set(N("Kids"), out.context.obj(kept));
+    return kept.length > 0;
+  };
+  const live = roots.filter((r) => prune(r));
+
+  const fullName = (d: PDFDict, depth = 0): string => {
+    const t = d.lookup(N("T"));
     const own = t instanceof PDFString || t instanceof PDFHexString ? t.decodeText() : "";
-    const parent = d.get(PDFName.of("Parent"));
-    const pd = parent instanceof PDFRef ? out.context.lookup(parent) : undefined;
-    const prefix = pd instanceof PDFDict ? fullName(pd) : "";
+    const parent = d.get(N("Parent"));
+    const pd = parent instanceof PDFRef && depth < 64 ? dictOf(parent) : undefined;
+    const prefix = pd ? fullName(pd, depth + 1) : "";
     return prefix && own ? `${prefix}.${own}` : prefix || own;
   };
+
+  // copyPages is called once per page, so a field shared by several pages is cloned once per page: merge clones by name.
   const byName = new Map<string, PDFRef>();
   const merged: PDFRef[] = [];
-  for (const top of fieldRefs) {
-    const dict = out.context.lookup(top) as PDFDict;
+  for (const top of live) {
+    const dict = dictOf(top)!;
     const name = fullName(dict);
     const first = name ? byName.get(name) : undefined;
-    const firstDict = first && (out.context.lookup(first) as PDFDict);
-    const firstKids = firstDict?.get(PDFName.of("Kids"));
-    const kids = dict.get(PDFName.of("Kids"));
+    const firstDict = first && dictOf(first);
+    const firstKids = firstDict?.get(N("Kids"));
+    const kids = dict.get(N("Kids"));
     if (first && firstDict && firstKids instanceof PDFArray && kids instanceof PDFArray) {
       for (const k of kids.asArray()) {
         firstKids.push(k);
-        const kd = out.context.lookup(k);
-        if (kd instanceof PDFDict) kd.set(PDFName.of("Parent"), first);
+        const kd = dictOf(k);
+        if (kd) kd.set(N("Parent"), first);
       }
       continue;
     }
     if (name && !first) byName.set(name, top);
     merged.push(top);
   }
-  fieldRefs.length = 0; fieldRefs.push(...merged);
 
-  const existingRef = out.catalog.get(PDFName.of("AcroForm"));
+  const existingRef = out.catalog.get(N("AcroForm"));
   const acro = existingRef ? (out.context.lookup(existingRef) as PDFDict) : out.context.obj({});
-  acro.set(PDFName.of("Fields"), out.context.obj(fieldRefs));
-  const srcAcro = src.catalog.get(PDFName.of("AcroForm")) ? (src.context.lookup(src.catalog.get(PDFName.of("AcroForm"))!) as PDFDict) : undefined;
-  if (srcAcro?.get(PDFName.of("DA")) && !acro.get(PDFName.of("DA"))) acro.set(PDFName.of("DA"), srcAcro.get(PDFName.of("DA"))!);
-  if (srcAcro?.get(PDFName.of("DR"))) {
-    const srcDR = src.context.lookup(srcAcro.get(PDFName.of("DR"))!) as PDFDict;
-    const cloned = srcDR.clone(out.context);
-    const existingDR = acro.get(PDFName.of("DR")) ? (out.context.lookup(acro.get(PDFName.of("DR"))!) as PDFDict) : undefined;
-    if (existingDR) { for (const [k, v] of cloned.entries()) if (!existingDR.has(k)) existingDR.set(k, v); }
-    else acro.set(PDFName.of("DR"), out.context.register(cloned));
+  let fields = acro.lookup(N("Fields"));
+  if (!(fields instanceof PDFArray)) { fields = out.context.obj([]) as PDFArray; acro.set(N("Fields"), fields); }
+  const fieldsArr = fields as PDFArray;
+  const have = new Set(fieldsArr.asArray().map(String));
+  const used = new Set(fieldsArr.asArray().map((r) => { const d = dictOf(r); return d ? fullName(d) : ""; }));
+  const renames = new Map<string, string>();
+  for (const top of merged) {
+    if (have.has(top.toString())) continue;
+    const dict = dictOf(top)!;
+    const name = fullName(dict);
+    if (name && used.has(name)) {
+      const t = dict.lookup(N("T"));
+      const own = t instanceof PDFString || t instanceof PDFHexString ? t.decodeText() : name;
+      let n = 2;
+      while (used.has(`${own} (${n})`)) n++;
+      const renamed = `${own} (${n})`;
+      dict.set(N("T"), PDFHexString.fromText(renamed));
+      renames.set(name, renamed);
+      used.add(renamed);
+    } else if (name) used.add(name);
+    fieldsArr.push(top);
+    have.add(top.toString());
   }
-  if (!existingRef) out.catalog.set(PDFName.of("AcroForm"), out.context.register(acro));
-  return { fieldCount: fieldRefs.length };
+
+  const srcAcroRef = src.catalog.get(N("AcroForm"));
+  const srcAcro = srcAcroRef ? (src.context.lookup(srcAcroRef) as PDFDict) : undefined;
+  if (srcAcro?.get(N("DA")) && !acro.get(N("DA"))) acro.set(N("DA"), srcAcro.get(N("DA"))!);
+  if (srcAcro?.get(N("DR"))) {
+    const srcDR = src.context.lookup(srcAcro.get(N("DR"))!) as PDFDict;
+    const cloned = srcDR.clone(out.context);
+    const existingDR = acro.get(N("DR")) ? (out.context.lookup(acro.get(N("DR"))!) as PDFDict) : undefined;
+    if (existingDR) { for (const [k, v] of cloned.entries()) if (!existingDR.has(k)) existingDR.set(k, v); }
+    else acro.set(N("DR"), out.context.register(cloned));
+  }
+  if (!existingRef) out.catalog.set(N("AcroForm"), out.context.register(acro));
+  return { fieldCount: merged.length, renames };
 }
 
-export function applyFormValues(out: PDFDocument, values: Map<string, FormValue>, fields: FieldDef[]) {
+export function applyFormValues(out: PDFDocument, values: Map<string, FormValue>, fields: FieldDef[], renames: Map<string, string> = new Map()) {
   const form = out.getForm();
-  const present = new Set(form.getFields().map((f) => f.getName()));
+  const translate = (name: string) => {
+    for (const [from, to] of renames) if (name === from || name.startsWith(`${from}.`)) return to + name.slice(from.length);
+    return name;
+  };
   for (const def of fields) {
-    if (!present.has(def.name) || !values.has(def.name)) continue;
+    if (!values.has(def.name)) continue;
     const v = values.get(def.name)!;
     try {
-      switch (def.type) {
-        case "text": form.getTextField(def.name).setText(String(v)); break;
-        case "checkbox": v ? form.getCheckBox(def.name).check() : form.getCheckBox(def.name).uncheck(); break;
-        case "radio": if (typeof v === "string" && def.options?.includes(v)) form.getRadioGroup(def.name).select(v); break;
-        case "dropdown": { const sel = Array.isArray(v) ? v : [String(v)]; if (sel.every((s) => def.options?.includes(s))) form.getDropdown(def.name).select(sel[0]); break; }
-      }
-    } catch { /* unsupported or malformed field: leave untouched */ }
+      const field = form.getField(translate(def.name));
+      const sel = Array.isArray(v) ? v : [String(v)];
+      const valid = sel.every((x) => def.options?.includes(x));
+      if (field instanceof PDFTextField) field.setText(String(v));
+      else if (field instanceof PDFCheckBox) { if (v) field.check(); else field.uncheck(); }
+      else if (field instanceof PDFRadioGroup) { if (typeof v === "string" && def.options?.includes(v)) field.select(v); }
+      else if (field instanceof PDFDropdown) { if (valid && sel.length) field.select(sel[0]); }
+      else if (field instanceof PDFOptionList) { if (valid && sel.length) field.select(sel); }
+    } catch { /* missing, unsupported or malformed field: leave untouched */ }
   }
 }

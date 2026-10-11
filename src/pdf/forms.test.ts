@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { PDFDocument, PDFName, PDFDict } from "pdf-lib";
+import { PDFDocument, PDFName, PDFDict, PDFArray } from "pdf-lib";
 import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
 import { readFields, fieldsOnPage } from "./forms";
 import { buildDocument } from "./pageOps";
@@ -50,7 +50,7 @@ describe("form export", () => {
   it("export without values leaves fields intact and unsupported fields untouched", async () => {
     const out = await buildDocument(new Map([["f", src()]]), pages, [], [], new Map());
     const doc = await PDFDocument.load(out);
-    expect(doc.getForm().getFields().length).toBe(6);
+    expect(doc.getForm().getFields().length).toBe(8);
   });
 
   it("keeps DR/Font/Helv and fields when a freetext annotation and filled form coexist", async () => {
@@ -58,9 +58,51 @@ describe("form export", () => {
     const out = await buildDocument(new Map([["f", src()]]), pages, [], [ann], values({ name: "Bob" }));
     const doc = await PDFDocument.load(out);
     expect(doc.getForm().getTextField("name").getText()).toBe("Bob");
-    expect(doc.getForm().getFields().length).toBe(6);
+    expect(doc.getForm().getFields().length).toBe(8);
     const acro = doc.context.lookup(doc.catalog.get(PDFName.of("AcroForm"))!) as PDFDict;
     const dr = acro.lookup(PDFName.of("DR"), PDFDict);
     expect(dr.lookup(PDFName.of("Font"), PDFDict).has(PDFName.of("Helv"))).toBe(true);
+  });
+
+  it("accumulates fields across two sources, renaming collisions", async () => {
+    const g = { ...src(), id: "g" };
+    const vals = new Map([["f", new Map([["name", "F"]])], ["g", new Map([["name", "G"]])]]);
+    const warnings: string[] = [];
+    const out = await buildDocument(new Map([["f", src()], ["g", g]]), [pages[0], { ...pages[0], id: "q0", sourceId: "g" }], [], [], vals, (m) => warnings.push(m));
+    const doc = await PDFDocument.load(out);
+    const form = doc.getForm();
+    expect(form.getTextField("name").getText()).toBe("F");
+    expect(form.getTextField("name (2)").getText()).toBe("G");
+    expect(warnings).toEqual(["Duplicate form field names in form.pdf were renamed"]);
+    const widgets = form.getFields().flatMap((f) => f.acroField.getWidgets());
+    expect(widgets.length).toBe(16);
+    for (const w of widgets) expect(doc.context.lookup(w.dict.get(PDFName.of("P"))!)).toBeDefined();
+  });
+
+  it("keeps hierarchical fields and drops them on extract of another page", async () => {
+    const fields = await readFields(src());
+    expect(fields.find((f) => f.name === "addr.street")).toMatchObject({ type: "text" });
+    const out = await buildDocument(new Map([["f", src()]]), pages, [], [], values({ "addr.street": "Main" }));
+    expect((await PDFDocument.load(out)).getForm().getTextField("addr.street").getText()).toBe("Main");
+    const p2 = await PDFDocument.load(await buildDocument(new Map([["f", src()]]), [pages[1]], [], [], new Map()));
+    expect(p2.getForm().getFields().map((f) => f.getName()).some((n) => n.startsWith("addr"))).toBe(false);
+  });
+
+  it("supports option lists", async () => {
+    const fields = await readFields(src());
+    expect(fields.find((f) => f.name === "pick")).toMatchObject({ type: "dropdown", options: ["a", "b", "c"] });
+    const out = await buildDocument(new Map([["f", src()]]), pages, [], [], values({ pick: ["a", "c"] }));
+    expect((await PDFDocument.load(out)).getForm().getOptionList("pick").getSelected()).toEqual(["a", "c"]);
+  });
+
+  it("warns and still exports when the AcroForm is malformed", async () => {
+    const d = await PDFDocument.load(loadFixture("form"));
+    (d.context.lookup(d.catalog.get(PDFName.of("AcroForm"))!) as PDFDict).set(PDFName.of("Fields"), PDFName.of("Oops"));
+    const bad: SourceFile = { id: "f", name: "bad.pdf", bytes: await d.save(), pageCount: 2 };
+    const warnings: string[] = [];
+    const out = await buildDocument(new Map([["f", bad]]), pages, [], [], values({ name: "x" }), (m) => warnings.push(m));
+    expect(out.length).toBeGreaterThan(0);
+    expect(warnings.length).toBe(1);
+    expect(warnings[0]).toContain("bad.pdf");
   });
 });

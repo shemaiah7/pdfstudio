@@ -89,8 +89,9 @@ export async function buildDocument(
     try {
       const defs = readFieldsFromDoc(srcDoc);
       if (!defs.length) continue;
-      rebuildAcroForm(out, srcDoc, copiedPages);
-      applyFormValues(out, formValues.get(id) ?? new Map(), defs);
+      const { renames } = rebuildAcroForm(out, srcDoc, copiedPages);
+      applyFormValues(out, formValues.get(id) ?? new Map(), defs, renames);
+      if (renames.size) onWarning?.(`Duplicate form field names in ${sources.get(id)!.name} were renamed`);
       anyFields = true;
     } catch {
       onWarning?.(`Form values for ${sources.get(id)!.name} could not be saved`);
