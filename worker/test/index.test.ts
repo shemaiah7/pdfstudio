@@ -29,4 +29,11 @@ describe("routing", () => {
     const res = await call("/ai", { method: "GET" });
     expect(res.status).toBe(405);
   });
+
+  it("echoes a listed Origin and falls back to the first entry otherwise", async () => {
+    const listed = await call("/ai", { method: "OPTIONS", headers: { origin: "http://localhost:5175" } });
+    expect(listed.headers.get("access-control-allow-origin")).toBe("http://localhost:5175");
+    const other = await call("/ai", { method: "OPTIONS", headers: { origin: "https://evil.example" } });
+    expect(other.headers.get("access-control-allow-origin")).toBe("http://localhost:5173");
+  });
 });

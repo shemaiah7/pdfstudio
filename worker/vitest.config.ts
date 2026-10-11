@@ -11,7 +11,7 @@ export default defineConfig({
           ANTHROPIC_API_KEY: "test-key",
           TURNSTILE_SECRET: "1x0000000000000000000000000000000AA",
           SESSION_SECRET: "test-session-secret",
-          ALLOWED_ORIGIN: "http://localhost:5173",
+          ALLOWED_ORIGIN: "http://localhost:5173,http://localhost:5175",
           TURNSTILE_HOSTNAMES: "localhost",
         },
       },

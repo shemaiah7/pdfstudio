@@ -1,5 +1,5 @@
 import type { Env } from "./env";
-import { corsHeaders, json } from "./cors";
+import { corsHeaders, json, resolveOrigin } from "./cors";
 import { sessionHandler } from "./handlers/session";
 import { aiHandler } from "./handlers/ai";
 
@@ -11,7 +11,8 @@ const routes: Record<string, Handler> = {
 };
 
 export default {
-  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+  async fetch(request: Request, baseEnv: Env, ctx: ExecutionContext): Promise<Response> {
+    const env: Env = { ...baseEnv, ALLOWED_ORIGIN: resolveOrigin(baseEnv, request) };
     if (request.method === "OPTIONS") {
       return new Response(null, { status: 204, headers: corsHeaders(env) });
     }
