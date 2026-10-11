@@ -12,21 +12,42 @@ export type WorkerOut =
 
 interface Job { id: number; texts: string[]; kind: "query" | "document"; tag?: string; resolve(v: Float32Array): void; reject(e: Error): void; sent: boolean }
 
+type Device = "webgpu" | "wasm";
+
 export class EmbedClient {
   private worker: Worker | null = null;
   private jobs: Job[] = [];
   private nextId = 1;
-  private loading: { resolve(d: "webgpu" | "wasm"): void; reject(e: Error): void; onProgress(l: number, t: number): void } | null = null;
+  private loadPromise: Promise<Device> | null = null;
+  private device: Device | null = null;
+  private loading: { resolve(d: Device): void; reject(e: Error): void; onProgress(l: number, t: number): void } | null = null;
+  private warned = false;
   private makeWorker: () => Worker;
   constructor(makeWorker: () => Worker) { this.makeWorker = makeWorker; }
 
-  load(onProgress: (loaded: number, total: number) => void): Promise<"webgpu" | "wasm"> {
-    this.worker ??= this.attach(this.makeWorker());
-    return new Promise((resolve, reject) => { this.loading = { resolve, reject, onProgress }; this.worker!.postMessage({ type: "load" } satisfies WorkerIn); });
+  load(onProgress: (loaded: number, total: number) => void): Promise<Device> {
+    if (this.loadPromise) return this.loadPromise;
+    if (this.device) return Promise.resolve(this.device);
+    const worker = (this.worker ??= this.attach(this.makeWorker()));
+    const p = new Promise<Device>((resolve, reject) => {
+      this.loading = { resolve, reject, onProgress };
+      worker.postMessage({ type: "load" } satisfies WorkerIn);
+    });
+    this.loadPromise = p;
+    p.then(
+      (d) => { if (this.loadPromise === p) { this.device = d; this.loadPromise = null; } },
+      () => { if (this.loadPromise === p) this.loadPromise = null; },
+    );
+    return p;
   }
   embed(texts: string[], kind: "query" | "document", tag?: string): Promise<Float32Array> {
-    if (!this.worker) return Promise.reject(new Error("not loaded"));
-    return new Promise((resolve, reject) => { this.jobs.push({ id: this.nextId++, texts, kind, tag, resolve, reject, sent: false }); this.pump(); });
+    const enqueue = () => new Promise<Float32Array>((resolve, reject) => {
+      if (!this.worker) { reject(new Error("not loaded")); return; }
+      this.jobs.push({ id: this.nextId++, texts, kind, tag, resolve, reject, sent: false });
+      this.pump();
+    });
+    if (this.loadPromise) return this.loadPromise.then(enqueue);
+    return enqueue();
   }
   cancel(tag: string) {
     const keep: Job[] = [];
@@ -34,7 +55,12 @@ export class EmbedClient {
     this.jobs = keep;
   }
   dispose() {
-    for (const j of this.jobs) j.reject(new Error("disposed"));
+    const err = new Error("disposed");
+    this.loading?.reject(err);
+    this.loading = null;
+    this.loadPromise = null;
+    this.device = null;
+    for (const j of this.jobs) j.reject(err);
     this.jobs = [];
     this.worker?.postMessage({ type: "dispose" } satisfies WorkerIn);
     this.worker?.terminate();
@@ -42,22 +68,40 @@ export class EmbedClient {
   }
   private pump() {
     const head = this.jobs[0];
-    if (!head || head.sent) return;
+    if (!head || head.sent || !this.worker) return;
     head.sent = true;
-    this.worker!.postMessage({ type: "embed", id: head.id, texts: head.texts, kind: head.kind } satisfies WorkerIn);
+    this.worker.postMessage({ type: "embed", id: head.id, texts: head.texts, kind: head.kind } satisfies WorkerIn);
+  }
+  private stray(id: number | undefined) {
+    if (!this.warned) { this.warned = true; console.warn("EmbedClient: ignoring response for unexpected job id", id); }
   }
   private attach(w: Worker): Worker {
     w.onmessage = (e: MessageEvent<WorkerOut>) => {
+      if (this.worker !== w) return;
       const m = e.data;
       if (m.type === "progress") this.loading?.onProgress(m.loaded, m.total);
       else if (m.type === "ready") { this.loading?.resolve(m.device); this.loading = null; }
-      else if (m.type === "embedded") { const j = this.jobs.shift(); if (j && j.id === m.id) j.resolve(m.vectors); this.pump(); }
-      else if (m.type === "error") {
-        if (m.id === undefined && this.loading) { this.loading.reject(new Error(m.message)); this.loading = null; }
-        else { const j = this.jobs.shift(); j?.reject(new Error(m.message)); this.pump(); }
+      else if (m.type === "embedded") {
+        if (this.jobs[0]?.id !== m.id) { this.stray(m.id); return; }
+        this.jobs.shift()!.resolve(m.vectors); this.pump();
+      } else if (m.type === "error") {
+        if (m.id === undefined) { if (this.loading) { this.loading.reject(new Error(m.message)); this.loading = null; } }
+        else if (this.jobs[0]?.id !== m.id) this.stray(m.id);
+        else { this.jobs.shift()!.reject(new Error(m.message)); this.pump(); }
       }
     };
-    w.onerror = (e) => { this.loading?.reject(new Error(e.message || "worker error")); this.loading = null; };
+    w.onerror = (e) => {
+      if (this.worker !== w) return;
+      const crash = new Error("worker crashed");
+      this.loading?.reject(new Error(e.message || "worker crashed"));
+      this.loading = null;
+      this.loadPromise = null;
+      this.device = null;
+      for (const j of this.jobs) j.reject(crash);
+      this.jobs = [];
+      w.terminate();
+      this.worker = null;
+    };
     return w;
   }
 }
