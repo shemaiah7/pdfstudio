@@ -214,6 +214,53 @@ describe("flatten edited native pages", () => {
     expect(text.match(/thre:9/g)).toHaveLength(1); // visible edit only; edit-font items are not duplicated invisibly
     expect(text).toContain("other");
   });
+  // Content-stream text is hex-encoded (`<74...> Tj`), so look for the literal and for its hex form in every decoded stream.
+  const allStreams = async (bytes: Uint8Array) => {
+    const doc = await PDFDocument.load(bytes);
+    let all = "";
+    for (const [, o] of doc.context.enumerateIndirectObjects()) if (o instanceof PDFRawStream) all += new TextDecoder("latin1").decode(decodePDFRawStream(o).decode()) + "\n";
+    return all;
+  };
+  const mentions = (hay: string, text: string) => hay.includes(text) || hay.toUpperCase().includes([...text].map((c) => c.charCodeAt(0).toString(16).padStart(2, "0")).join("").toUpperCase());
+  const flat = { rasterize: async () => ({ png: PNG_1X1, widthPt: 612, heightPt: 792 }), editedText: async () => items };
+  it("leaves the original string in no stream of the flattened file (positive control: it is in the unflattened one)", async () => {
+    expect(mentions(await allStreams(await buildDocument(s(), [entry("a", 0)], [edit])), "three:0")).toBe(true);
+    const out = await buildDocument(s(), [entry("a", 0)], [edit], [], new Map(), undefined, undefined, flat);
+    expect(mentions(await allStreams(out), "three:0")).toBe(false);
+    expect(mentions(await allStreams(out), "thre:9")).toBe(true); // the edit itself is there
+  });
+  it("hands the page's cover boxes and colours to the rasterizer", async () => {
+    let seen: unknown;
+    await buildDocument(s(), [entry("a", 0)], [{ ...edit, background: [0.5, 0.5, 0.5] }], [], new Map(), undefined, undefined, { ...flat, rasterize: async (_s, _p, _d, covers) => { seen = covers; return { png: PNG_1X1, widthPt: 612, heightPt: 792 }; } });
+    expect(seen).toEqual([{ box: edit.boxes[0], color: [0.5, 0.5, 0.5] }]);
+  });
+  it("flattens edited OCR pages like native ones: edited items form the invisible layer, no second layer", async () => {
+    const ocr = { engine: "tesseract" as const, confidence: 1, at: 1, lines: [{ text: "three:0", box: { x: 20, y: 352, width: 40, height: 12 }, words: [{ text: "three:0", confidence: 1, box: { x: 20, y: 352, width: 40, height: 12 } }] }] };
+    const out = await buildDocument(s(), [entry("a", 0)], [{ ...edit, source: "ocr" }], [], new Map(), undefined, new Map([["a-0", ocr]]), flat);
+    const text = await texts(out);
+    expect(text).not.toContain("three:0");
+    expect(text.match(/thre:9/g)).toHaveLength(1);
+    expect(text).toContain("other");
+    expect(mentions(await allStreams(out), "three:0")).toBe(false);
+  });
+  it("keeps Deep OCR pages without an invisible layer and warns once", async () => {
+    const warnings: string[] = [];
+    const ocr = { engine: "claude" as const, confidence: 1, at: 1, lines: [{ text: "three:0", box: { x: 20, y: 352, width: 40, height: 12 }, words: [{ text: "three:0", confidence: 1, box: { x: 20, y: 352, width: 40, height: 12 } }] }] };
+    const out = await buildDocument(s(), [entry("a", 0)], [{ ...edit, source: "ocr" }], [], new Map(), (m) => warnings.push(m), new Map([["a-0", ocr]]), flat);
+    expect(warnings).toEqual(["Searchable text left out of edited Deep OCR pages."]);
+    expect(await texts(out)).not.toContain("three:0");
+    expect(await texts(out)).not.toContain("other");
+  });
+  it("restores the original page and warns once when flattening fails after the content was cleared", async () => {
+    const warnings: string[] = [];
+    // Only the invisible-text layer reads `x`, which happens after /Contents was swapped out.
+    const bad = [{ ...items[1], get x(): number { throw new Error("late failure"); } }];
+    const two = [{ ...edit }, { ...edit, id: "e2", pageEntryId: "a-1" }];
+    const out = await buildDocument(s(), [entry("a", 0), entry("a", 1)], two, [], new Map(), (m) => warnings.push(m), undefined, { ...flat, editedText: async () => bad });
+    expect(warnings).toEqual(["Saved without flattening; covered text may remain in the file."]);
+    expect(await texts(out)).toContain("three:0");
+    expect(await texts(out)).toContain("thre:9"); // the unflattened fallback still draws the edit
+  });
   it("keeps the original text under the cover without a rasterizer", async () => {
     expect(await texts(await buildDocument(s(), [entry("a", 0)], [edit]))).toContain("three:0");
   });
