@@ -1,6 +1,6 @@
 import "fake-indexeddb/auto";
 import { describe, it, expect, beforeEach } from "vitest";
-import { createLibrary, sha256, type LibraryRecord } from "./library";
+import { createLibrary, openLibraryDb, sha256, type LibraryRecord } from "./library";
 import { DIMS, MODEL_TAG } from "./constants";
 
 const rec = (hash: string, modelId = MODEL_TAG): LibraryRecord => ({
@@ -48,5 +48,56 @@ describe("library", () => {
     expect(broken.persistent).toBe(false);
     expect((await broken.get("m"))?.hash).toBe("m");
     expect((await broken.list()).length).toBe(1);
+  });
+
+  const proxied = (name: string, flags: { failPut: boolean; getAllStores: string[] }) => async () => {
+    const real = await openLibraryDb(name);
+    return new Proxy(real, {
+      get(t, prop) {
+        const v = (t as any)[prop];
+        if (prop === "transaction") return (...a: any[]) => { if (flags.failPut) { flags.failPut = false; throw new Error("quota"); } return v.apply(t, a); };
+        if (prop === "getAll") return (store: string, ...a: any[]) => { flags.getAllStores.push(store); return v.call(t, store, ...a); };
+        return typeof v === "function" ? v.bind(t) : v;
+      },
+    });
+  };
+
+  it("keeps the database on write failure and merges an overlay", async () => {
+    const name = `wf-${Math.random()}`;
+    const flags = { failPut: false, getAllStores: [] as string[] };
+    const l = createLibrary(name, proxied(name, flags));
+    await l.put(rec("a"));
+    flags.failPut = true;
+    await l.put(rec("b"));
+    expect(l.persistent).toBe(true);
+    expect(l.lastWriteFailed).toBe(true);
+    expect((await l.get("a"))?.hash).toBe("a");
+    expect((await l.get("b"))?.hash).toBe("b");
+    expect((await l.list()).map((r) => r.hash).sort()).toEqual(["a", "b"]);
+    expect((await l.loadAll()).map((d) => d.hash).sort()).toEqual(["a", "b"]);
+    await l.remove("a");
+    const fresh = createLibrary(name);
+    expect(await fresh.list()).toEqual([]);
+    expect(await fresh.get("a")).toBeUndefined();
+    expect(await fresh.get("b")).toBeUndefined();
+  });
+  it("list reads only the summaries store", async () => {
+    const name = `sm-${Math.random()}`;
+    const flags = { failPut: false, getAllStores: [] as string[] };
+    const l = createLibrary(name, proxied(name, flags));
+    await l.put(rec("a")); await l.put(rec("old", "x@256"));
+    const list = await l.list();
+    expect(flags.getAllStores).toEqual(["summaries"]);
+    expect(list.find((r) => r.hash === "a")).toMatchObject({ chunkCount: 1, stale: false });
+    expect(list.find((r) => r.hash === "old")?.stale).toBe(true);
+  });
+  it("treats records with inconsistent vector length as absent and stale", async () => {
+    const bad = { ...rec("bad"), chunks: [{ page: 0, start: 0, end: 5, text: "hello" }, { page: 0, start: 5, end: 9, text: "more" }] };
+    await lib.put(bad); await lib.put(rec("ok"));
+    expect(await lib.get("bad")).toBeUndefined();
+    expect((await lib.loadAll()).map((d) => d.hash)).toEqual(["ok"]);
+    const list = await lib.list();
+    expect(list.find((r) => r.hash === "bad")?.stale).toBe(true);
+    expect(list.find((r) => r.hash === "ok")?.stale).toBe(false);
   });
 });
