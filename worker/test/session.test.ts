@@ -68,6 +68,25 @@ describe("POST /session", () => {
     expect(body.token.split(".").length).toBe(2);
     expect(body.expiresAt).toBeGreaterThan(Date.now() / 1000);
   });
+  it("caps expiry at the next UTC midnight", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(Date.UTC(2026, 9, 10, 23, 0, 0)));
+    try {
+      vi.stubGlobal("fetch", async () => new Response(JSON.stringify({ success: true, hostname: "localhost" })));
+      const req = new Request("https://ai.example/session", {
+        method: "POST",
+        headers: { "content-type": "application/json", "cf-connecting-ip": "9.9.9.8" },
+        body: JSON.stringify({ turnstileToken: "tok" }),
+      });
+      const res = await worker.fetch(req, env, createExecutionContext());
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { expiresAt: number };
+      expect(body.expiresAt).toBe(Date.UTC(2026, 9, 11) / 1000);
+    } finally {
+      vi.unstubAllGlobals();
+      vi.useRealTimers();
+    }
+  });
   it("403s when Turnstile fails", async () => {
     vi.stubGlobal("fetch", async () => new Response(JSON.stringify({ success: false })));
     const req = new Request("https://ai.example/session", {
