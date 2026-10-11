@@ -44,4 +44,27 @@ describe("indexSource", () => {
     expect(r).toMatchObject({ status: "failed", message: "boom" });
     expect(await lib.get(r.hash)).toBeUndefined();
   });
+  const manyWords = async () => Array.from({ length: 1000 }, (_, i) => `w${i}`).join(" ");
+  it("returns cancelled when aborted during embedding and writes nothing", async () => {
+    const lib = createLibrary(`t-${Math.random()}`);
+    const controller = new AbortController();
+    const stub = vi.fn(async (texts: string[]) => { controller.abort(); return new Float32Array(texts.length * DIMS); });
+    const r = await indexSource(src("c", [5], 3), { embed: stub, lib, extract: manyWords }, undefined, controller.signal);
+    expect(r.status).toBe("cancelled");
+    expect(await lib.get(r.hash)).toBeUndefined();
+    expect(stub.mock.calls.length).toBeLessThanOrEqual(1);
+  });
+  it("treats an embed rejection of 'cancelled' as cancelled", async () => {
+    const lib = createLibrary(`t-${Math.random()}`);
+    const r = await indexSource(src("c2", [6]), { embed: async () => { throw new Error("cancelled"); }, lib, extract });
+    expect(r.status).toBe("cancelled");
+    expect(await lib.get(r.hash)).toBeUndefined();
+  });
+  it("fails when the embedding result has the wrong length", async () => {
+    const lib = createLibrary(`t-${Math.random()}`);
+    const two = async (_s: SourceFile, p: number) => (p === 0 ? "alpha beta gamma delta" : "one two three four five");
+    const r = await indexSource(src("short", [8]), { embed: async () => new Float32Array(DIMS), lib, extract: two });
+    expect(r).toMatchObject({ status: "failed", message: `embedding returned ${DIMS} values, expected ${2 * DIMS}` });
+    expect(await lib.get(r.hash)).toBeUndefined();
+  });
 });
