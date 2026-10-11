@@ -6,6 +6,12 @@ export interface Hit { hash: string; page: number; chunkIndex: number; score: nu
 
 const STOP = new Set(["the", "and", "for", "with", "that", "this", "from", "are", "was", "were", "what", "which", "who", "how", "does", "not", "but", "has", "have", "had", "can", "any", "all", "into", "than", "then", "its", "our", "your", "their", "about", "when", "where", "there", "they", "them", "you", "did", "will", "would", "should", "could"]);
 
+const SHORT_STOP = new Set(["a", "an", "of", "to", "in", "is", "it", "on", "at", "as", "or", "be", "by", "do", "if", "so", "we", "i"]);
+/** True when the query has at least one token (of any length) that is not a stop word. */
+export function hasSearchableToken(q: string): boolean {
+  return q.toLowerCase().split(/[^\p{L}\p{N}]+/u).some((t) => t.length > 0 && !STOP.has(t) && !SHORT_STOP.has(t));
+}
+
 export function queryTerms(q: string): string[] {
   return [...new Set(q.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter((t) => t.length >= 3 && !STOP.has(t)))];
 }

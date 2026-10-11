@@ -4,8 +4,8 @@ import { getEmbedClient } from "../search/embedClient";
 import { library, sha256 } from "../search/library";
 import type { LibrarySummary } from "../search/library";
 import { indexSource, defaultDeps } from "../search/indexer";
-import { rank, queryTerms, type Hit, type RankDoc } from "../search/ranker";
-import { ASK_PASSAGES, DIMS, SEARCH_LIMIT, THRESHOLD, modelTag } from "../search/constants";
+import { rank, queryTerms, hasSearchableToken, type Hit, type RankDoc } from "../search/ranker";
+import { ASK_PASSAGES, DIMS, MODEL_TAG, SEARCH_LIMIT, THRESHOLD, modelTag } from "../search/constants";
 import { useDocumentStore } from "./document";
 import type { SourceId } from "../pdf/types";
 
@@ -14,11 +14,11 @@ type DocStatus = "queued" | "indexing" | "indexed" | "no-text" | "failed";
 export interface SearchState {
   enabled: boolean;
   model: { status: ModelStatus; loaded: number; total: number; device?: "webgpu" | "wasm"; error?: string };  // error "no-webgpu" = no adapter; CPU mode needs an explicit opt-in
-  docs: Record<string, { status: DocStatus; done: number; total: number; error?: string }>;
+  docs: Record<string, { status: DocStatus; done: number; total: number; phase?: "extract" | "embed"; error?: string }>;
   hashBySource: Record<SourceId, string>;
   persistent: boolean;
   lastWriteFailed: boolean;
-  query: string; results: Hit[]; searching: boolean;
+  query: string; results: Hit[]; searching: boolean; searchError: string | null;
   library: LibrarySummary[];
   usage: number | null;
   init(): Promise<void>;
@@ -92,7 +92,7 @@ export const useSearchStore = create<SearchState>((set, get) => ({
   enabled: (() => { try { return localStorage.getItem(ENABLED_KEY) === "1"; } catch { return false; } })(),
   model: { status: "idle", loaded: 0, total: 0 },
   docs: {}, hashBySource: {}, persistent: true, lastWriteFailed: false,
-  query: "", results: [], searching: false, library: [], usage: null,
+  query: "", results: [], searching: false, searchError: null, library: [], usage: null,
 
   async init() {
     if (!get().enabled || get().model.status !== "idle") return;
@@ -132,7 +132,7 @@ export const useSearchStore = create<SearchState>((set, get) => ({
             controller.abort(); getEmbedClient().cancel(hash); dropDoc(); return;
           }
           set((s) => ({ docs: { ...s.docs, [hash]: { ...s.docs[hash], status: "indexing" } } }));
-          const r = await indexSource(source, defaultDeps(), (done, total) => { if (isCurrent()) set((s) => ({ docs: { ...s.docs, [hash]: { ...s.docs[hash], done, total } } })); }, controller.signal);
+          const r = await indexSource(source, defaultDeps(), (done, total, phase) => { if (isCurrent()) set((s) => ({ docs: { ...s.docs, [hash]: { ...s.docs[hash], done, total, phase } } })); }, controller.signal);
           if (r.status === "cancelled") { dropDoc(); return; }
           if (!isCurrent()) return;
           if (r.status === "failed") set((s) => ({ docs: { ...s.docs, [hash]: { ...s.docs[hash], status: "failed", error: r.message } } }));
@@ -162,13 +162,18 @@ export const useSearchStore = create<SearchState>((set, get) => ({
   async search() {
     const q = get().query.trim();
     const terms = queryTerms(q);
-    if (get().model.status !== "ready" || terms.length === 0) { set({ results: [], searching: false }); return; }
-    set({ searching: true });
+    if (get().model.status !== "ready" || !hasSearchableToken(q)) { set({ results: [], searching: false, searchError: null }); return; }
+    set({ searching: true, searchError: null });
     try {
       const v = await getEmbedClient().embed([q], "query", undefined);
       if (get().query.trim() !== q) { set({ searching: false }); return; }
       set({ results: rank(v, index, terms, { limit: SEARCH_LIMIT }), searching: false });
-    } catch { set({ results: [], searching: false }); }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (get().query.trim() !== q) { set({ searching: false }); return; }
+      set({ results: [], searching: false, searchError: message });
+      if (message.includes("worker crashed") || message.includes("not loaded")) set({ model: { status: "unavailable", loaded: 0, total: 0, error: message } });
+    }
   },
   async findSimilar(hash, chunkIndex) {
     if (debounce) { clearTimeout(debounce); debounce = null; }
@@ -206,9 +211,11 @@ export const useSearchStore = create<SearchState>((set, get) => ({
     cancelReveal();
     queue = Promise.resolve();
     await library.clear();
-    try { localStorage.removeItem(ENABLED_KEY); } catch { /* ignore */ }
+    try { localStorage.removeItem(ENABLED_KEY); localStorage.removeItem(CPU_KEY); } catch { /* ignore */ }
+    library.setModelTag(MODEL_TAG);
+    if (typeof caches !== "undefined") await caches.delete("transformers-cache").catch(() => {});
     getEmbedClient().dispose();
-    set({ enabled: false, model: { status: "idle", loaded: 0, total: 0 }, docs: {}, results: [], query: "", library: [], usage: null });
+    set({ enabled: false, model: { status: "idle", loaded: 0, total: 0 }, docs: {}, results: [], query: "", searchError: null, library: [], usage: null });
     index = [];
   },
 }));
@@ -225,11 +232,16 @@ export function flashChunk(pageEntryId: string, chunkText: string) {
 }
 
 /** Top passages over the open documents for Ask; null when the model is not ready. */
-export async function retrievePassages(question: string, limit = ASK_PASSAGES): Promise<{ page: number; text: string }[] | null> {
+export async function retrievePassages(question: string, limit = ASK_PASSAGES): Promise<{ page: number; text: string }[] | null | "indexing"> {
   const s = useSearchStore.getState();
   if (s.model.status !== "ready") return null;
   const doc = useDocumentStore.getState();
   const openHashes = new Set(Object.entries(s.hashBySource).filter(([sid]) => doc.sources.has(sid)).map(([, h]) => h));
+  for (const [sid, h] of Object.entries(s.hashBySource)) {
+    if (!doc.sources.has(sid)) continue;
+    const st = s.docs[h]?.status;
+    if (st === "queued" || st === "indexing") return "indexing";
+  }
   const docs = index.filter((d) => openHashes.has(d.hash));
   if (docs.length === 0) return [];
   const v = await getEmbedClient().embed([question], "query", undefined);
@@ -239,7 +251,7 @@ export async function retrievePassages(question: string, limit = ASK_PASSAGES): 
     const sid = Object.entries(s.hashBySource).find(([id, hash]) => hash === h.hash && doc.sources.has(id))?.[0];
     const idx = doc.pages.findIndex((p) => p.sourceId === sid && p.sourcePageIndex === h.page);
     const chunk = index.find((d) => d.hash === h.hash)?.chunks[h.chunkIndex];
-    if (idx >= 0 && chunk) out.push({ page: idx + 1, text: chunk.text.slice(0, 4000) });
+    if (idx >= 0 && chunk) out.push({ page: idx + 1, text: `[${doc.sources.get(sid!)?.name ?? "document"}] ${chunk.text}`.slice(0, 4000) });
   }
   return out.slice(0, limit);
 }

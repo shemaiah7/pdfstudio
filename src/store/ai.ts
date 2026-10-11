@@ -136,12 +136,13 @@ async function runTask(task: AiRequest["task"], client: AiClient) {
     let retrieved = false;
     const q = task === "ask" ? get().chat.draft.trim() : "";
     if (task === "ask" && get().useSearch && scope === "all") {
-      let passages: { page: number; text: string }[] | null = null;
+      let passages: { page: number; text: string }[] | null | "indexing" = null;
       try {
         const { retrievePassages } = await import("./search");
         passages = q ? await retrievePassages(q) : null;
       } catch (e) { console.warn("Retrieval failed; sending the whole document", e); }
       if (stale()) return;
+      if (passages === "indexing") { setTask({ status: "error", error: "Still indexing these documents; try again when indexing finishes." }); return; }
       if (passages && passages.length > 0) { document = passages; retrieved = true; }
       else if (passages && passages.length === 0 && document.reduce((n, d) => n + d.text.length, 0) > MAX_DOC_CHARS) {
         set((s) => ({ chat: { ...s.chat, passages: null } }));

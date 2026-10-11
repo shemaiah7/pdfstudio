@@ -214,4 +214,13 @@ describe("ask with retrieval", () => {
     expect(bodies[0].retrieved).toBeUndefined();
     useAiStore.setState({ scope: "all" });
   });
+  it("shows an error and sends nothing while documents are still indexing", async () => {
+    vi.doMock("./search", () => ({ retrievePassages: async () => "indexing" }));
+    const { useAiStore } = await import("./ai");
+    const bodies: unknown[] = [];
+    useAiStore.setState({ client: fakeClient((b) => bodies.push(b)), useSearch: true, scope: "all", chat: { turns: [], draft: "why?", status: "idle", error: null, passages: null } });
+    await useAiStore.getState().run("ask");
+    expect(bodies).toHaveLength(0);
+    expect(useAiStore.getState().chat).toMatchObject({ status: "error", error: "Still indexing these documents; try again when indexing finishes." });
+  });
 });

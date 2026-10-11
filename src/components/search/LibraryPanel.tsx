@@ -24,7 +24,7 @@ export default function LibraryPanel() {
           <button data-testid="library-remove" onClick={() => void removeFromLibrary(r.hash)}>Remove</button>
         </div>
       ))}
-      <button data-testid="library-clear" onClick={() => { if (window.confirm("Remove every stored document and the search model setting?")) void clearLibrary(); }}>Clear all</button>
+      <button data-testid="library-clear" onClick={() => { if (window.confirm("Remove all stored documents, the downloaded model and turn off search?")) void clearLibrary(); }}>Clear all</button>
     </div>
   );
 }

@@ -1,6 +1,6 @@
 // src/store/search.test.ts
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { DIMS } from "../search/constants";
+import { DIMS, MODEL_TAG } from "../search/constants";
 
 const embed = vi.fn(async (texts: string[], kind: string) => { const v = new Float32Array(texts.length * DIMS); v[0] = kind === "query" ? 1 : 1; return v; });
 const load = vi.fn(async (_p?: unknown, _d?: "wasm") => "wasm" as const);
@@ -21,7 +21,7 @@ const src = (id: string, b: number) => ({ id, name: `${id}.pdf`, bytes: new Uint
 describe("search store", () => {
   beforeEach(() => {
     docs.length = 0; indexSource.mockClear(); embed.mockClear(); lib.put.mockClear();
-    useSearchStore.setState({ enabled: false, model: { status: "idle", loaded: 0, total: 0 }, docs: {}, hashBySource: {}, query: "", results: [], library: [] });
+    useSearchStore.setState({ enabled: false, model: { status: "idle", loaded: 0, total: 0 }, docs: {}, hashBySource: {}, query: "", results: [], library: [], searchError: null });
     useDocumentStore.setState({ sources: new Map([["s1", src("s1", 1)]]), pages: [{ id: "p1", sourceId: "s1", sourcePageIndex: 0, rotation: 0 }] });
   });
 
@@ -71,7 +71,7 @@ describe("search store", () => {
     docs.push({ hash: "closed", chunks: [{ page: 0, start: 0, end: 3, text: "zzz" }], vectors: v });
     await useSearchStore.getState().refreshIndex();
     const passages = await retrievePassages("warfarin", 12);
-    expect(passages).toEqual([{ page: 1, text: "hello warfarin" }]);
+    expect(passages).toEqual([{ page: 1, text: "[s1.pdf] hello warfarin" }]);
   });
   it("retrievePassages clamps passage text to 4000 characters", async () => {
     await useSearchStore.getState().enable();
@@ -79,7 +79,8 @@ describe("search store", () => {
     docs[0].chunks[0].text = "x".repeat(5000);
     await useSearchStore.getState().refreshIndex();
     const passages = await retrievePassages("warfarin", 12);
-    expect(passages?.[0].text).toHaveLength(4000);
+    expect((passages as { text: string }[])[0].text).toHaveLength(4000);
+    expect((passages as { text: string }[])[0].text.startsWith("[s1.pdf] ")).toBe(true);
   });
   it("retrievePassages returns null when the model is not ready", async () => {
     expect(await retrievePassages("x", 12)).toBeNull();
@@ -157,5 +158,54 @@ describe("search store", () => {
     await Promise.all([useSearchStore.getState().init(), useSearchStore.getState().init()]);
     expect(load).toHaveBeenCalledTimes(1);
     await vi.waitFor(() => expect(useSearchStore.getState().docs.h1?.status).toBe("indexed"));
+  });
+  it("clearLibrary removes the CPU key, resets the model tag and deletes the transformers cache", async () => {
+    const mem = new Map<string, string>([["pdfstudio.search.cpu", "1"]]);
+    const del = vi.fn(async () => true);
+    vi.stubGlobal("localStorage", { getItem: (k: string) => mem.get(k) ?? null, setItem: (k: string, v: string) => { mem.set(k, v); }, removeItem: (k: string) => { mem.delete(k); } });
+    vi.stubGlobal("caches", { delete: del });
+    lib.setModelTag.mockClear();
+    await useSearchStore.getState().clearLibrary();
+    expect(mem.has("pdfstudio.search.cpu")).toBe(false);
+    expect(lib.setModelTag).toHaveBeenCalledWith(MODEL_TAG);
+    expect(del).toHaveBeenCalledWith("transformers-cache");
+    vi.unstubAllGlobals();
+  });
+  it("a worker crash during search marks the model unavailable; other errors keep it ready", async () => {
+    useSearchStore.setState({ model: { status: "ready", loaded: 0, total: 0, device: "wasm" }, query: "warfarin" });
+    embed.mockRejectedValueOnce(new Error("boom"));
+    await useSearchStore.getState().search();
+    expect(useSearchStore.getState()).toMatchObject({ searchError: "boom", results: [], searching: false });
+    expect(useSearchStore.getState().model.status).toBe("ready");
+    embed.mockRejectedValueOnce(new Error("worker crashed"));
+    await useSearchStore.getState().search();
+    expect(useSearchStore.getState().model).toMatchObject({ status: "unavailable", error: "worker crashed" });
+    expect(useSearchStore.getState().searchError).toBe("worker crashed");
+    useSearchStore.setState({ model: { status: "ready", loaded: 0, total: 0, device: "wasm" } });
+    embed.mockRejectedValueOnce(new Error("not loaded"));
+    await useSearchStore.getState().search();
+    expect(useSearchStore.getState().model.status).toBe("unavailable");
+    useSearchStore.setState({ model: { status: "ready", loaded: 0, total: 0, device: "wasm" } });
+    await useSearchStore.getState().search();
+    expect(useSearchStore.getState().searchError).toBeNull();
+  });
+  it("retrievePassages returns 'indexing' while an open document is queued or indexing", async () => {
+    await useSearchStore.getState().enable();
+    await vi.waitFor(() => expect(useSearchStore.getState().docs.h1?.status).toBe("indexed"));
+    useSearchStore.setState({ docs: { h1: { status: "indexing", done: 0, total: 1 } } });
+    expect(await retrievePassages("warfarin", 12)).toBe("indexing");
+    useSearchStore.setState({ docs: { h1: { status: "queued", done: 0, total: 1 } } });
+    expect(await retrievePassages("warfarin", 12)).toBe("indexing");
+  });
+  it("short non-stop queries embed; stop-word-only queries do not", async () => {
+    useSearchStore.setState({ model: { status: "ready", loaded: 0, total: 0, device: "wasm" } });
+    embed.mockClear();
+    useSearchStore.setState({ query: "BP" });
+    await useSearchStore.getState().search();
+    expect(embed).toHaveBeenCalledWith(["BP"], "query", undefined);
+    embed.mockClear();
+    useSearchStore.setState({ query: "the a" });
+    await useSearchStore.getState().search();
+    expect(embed).not.toHaveBeenCalled();
   });
 });

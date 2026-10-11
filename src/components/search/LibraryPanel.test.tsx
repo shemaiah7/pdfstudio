@@ -27,8 +27,10 @@ describe("LibraryPanel", () => {
     const clearLibrary = vi.fn(async () => {});
     vi.spyOn(window, "confirm").mockReturnValueOnce(false).mockReturnValueOnce(true);
     useSearchStore.setState({ refreshLibrary: async () => {}, clearLibrary, library: [] });
+    const confirm = vi.spyOn(window, "confirm");
     render(<LibraryPanel />);
     fireEvent.click(screen.getByTestId("library-clear"));
+    expect(confirm).toHaveBeenCalledWith("Remove all stored documents, the downloaded model and turn off search?");
     expect(clearLibrary).not.toHaveBeenCalled();
     fireEvent.click(screen.getByTestId("library-clear"));
     expect(clearLibrary).toHaveBeenCalled();

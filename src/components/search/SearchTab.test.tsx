@@ -3,6 +3,7 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, screen, fireEvent, cleanup } from "@testing-library/react";
 import SearchTab from "./SearchTab";
 import { useSearchStore } from "../../store/search";
+import { useDocumentStore } from "../../store/document";
 
 vi.mock("../../search/embedClient", () => ({ getEmbedClient: () => ({ load: async () => "wasm", embed: async () => new Float32Array(256), cancel() {}, dispose() {} }) }));
 vi.mock("../../search/library", () => ({ library: { setModelTag() {}, loadAll: async () => [], list: async () => [], estimateUsage: async () => null, get: async () => undefined, remove: async () => {}, clear: async () => {}, persistent: true, lastWriteFailed: false }, sha256: async () => "h" }));
@@ -74,5 +75,37 @@ describe("SearchTab", () => {
     fireEvent.click(screen.getByTestId("search-similar"));
     expect(findSimilar).toHaveBeenCalled();
     expect(openHit).toHaveBeenCalledTimes(1);
+  });
+  it("offers CPU mode alongside Retry for a generic unavailable error", () => {
+    useSearchStore.setState({ ...base, enabled: true, model: { status: "unavailable", loaded: 0, total: 0, error: "boom" } });
+    render(<SearchTab />);
+    expect(screen.getByText("Retry")).toBeTruthy();
+    expect(screen.getByText("Use CPU mode (downloads about 1 GB each visit)")).toBeTruthy();
+  });
+  it("shows Search failed with a Retry that re-runs the search instead of No matches", () => {
+    const search = vi.fn(async () => {});
+    useSearchStore.setState({ ...base, enabled: true, model: { status: "ready", loaded: 0, total: 0, device: "webgpu" }, results: [], query: "warfarin", searching: false, searchError: "boom", search });
+    render(<SearchTab />);
+    expect(screen.getByText(/Search failed/)).toBeTruthy();
+    expect(screen.queryByText("No matches")).toBeNull();
+    fireEvent.click(screen.getByText("Retry"));
+    expect(search).toHaveBeenCalled();
+  });
+  it("shows reading and embedding progress", () => {
+    useDocumentStore.setState({ sources: new Map([["s1", { id: "s1", name: "a.pdf", bytes: new Uint8Array(1), pageCount: 300 }]]) });
+    useSearchStore.setState({ ...base, enabled: true, model: { status: "ready", loaded: 0, total: 0, device: "webgpu" }, query: "", results: [], searchError: null, hashBySource: { s1: "h" }, docs: { h: { status: "indexing", done: 12, total: 300, phase: "extract" } } });
+    render(<SearchTab />);
+    expect(screen.getByText(/reading 12\/300/)).toBeTruthy();
+    cleanup();
+    useSearchStore.setState({ docs: { h: { status: "indexing", done: 3, total: 38, phase: "embed" } } });
+    render(<SearchTab />);
+    expect(screen.getByText(/embedding 3\/38/)).toBeTruthy();
+    useDocumentStore.setState({ sources: new Map() });
+  });
+  it("marks hits whose document is not open with an Open button", () => {
+    useDocumentStore.setState({ sources: new Map() });
+    useSearchStore.setState({ ...base, enabled: true, model: { status: "ready", loaded: 0, total: 0, device: "webgpu" }, hashBySource: {}, searchError: null, results: [{ hash: "unknown", page: 0, chunkIndex: 0, score: 0.9, snippet: "x" }], library: [], query: "x", searching: false });
+    render(<SearchTab />);
+    expect(screen.getByTestId("search-hit").textContent).toMatch(/Open/);
   });
 });

@@ -12,14 +12,14 @@ const extract = async (_s: SourceFile, page: number) => (page === 0 ? "alpha bet
 describe("indexSource", () => {
   it("indexes a new file: one record, chunks across pages, progress per page", async () => {
     const lib = createLibrary(`t-${Math.random()}`);
-    const progress: number[] = [];
-    const r = await indexSource(src("s1"), { embed, lib, extract }, (d) => progress.push(d));
+    const progress: [number, string][] = [];
+    const r = await indexSource(src("s1"), { embed, lib, extract }, (d, _t, phase) => progress.push([d, phase]));
     expect(r.status).toBe("indexed");
     const rec = await lib.get(r.hash);
     expect(rec?.chunks.map((c) => c.page)).toEqual([0, 1]);
     expect(rec?.vectors.length).toBe(2 * DIMS);
     expect(rec?.bytes.size).toBe(3);
-    expect(progress).toEqual([1, 2]);
+    expect(progress).toEqual([[1, "extract"], [2, "extract"], [1, "embed"]]);
     expect(embed).toHaveBeenCalledWith(expect.any(Array), "document", r.hash);
   });
   it("skips embedding when the hash is cached, so the same file added twice indexes once", async () => {
@@ -36,6 +36,8 @@ describe("indexSource", () => {
     const r = await indexSource(src("scan", [9, 9]), { embed, lib, extract: async () => "" });
     expect(r).toMatchObject({ status: "no-text", chunks: 0 });
     expect((await lib.get(r.hash))?.chunks).toEqual([]);
+    expect((await lib.get(r.hash))?.bytes.size).toBe(0);
+    expect((await lib.get(r.hash))?.size).toBe(2);
     expect((await indexSource(src("scan2", [9, 9]), { embed, lib, extract: async () => "" })).status).toBe("cached");
   });
   it("reports failed when embedding throws and writes nothing", async () => {

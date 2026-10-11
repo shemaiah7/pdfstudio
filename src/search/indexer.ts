@@ -23,7 +23,7 @@ export function defaultDeps(): IndexDeps {
   };
 }
 
-export async function indexSource(source: SourceFile, deps: IndexDeps = defaultDeps(), onProgress?: (done: number, total: number) => void, signal?: AbortSignal): Promise<IndexResult> {
+export async function indexSource(source: SourceFile, deps: IndexDeps = defaultDeps(), onProgress?: (done: number, total: number, phase: "extract" | "embed") => void, signal?: AbortSignal): Promise<IndexResult> {
   let hash = "";
   try {
     hash = await sha256(source.bytes);
@@ -33,7 +33,7 @@ export async function indexSource(source: SourceFile, deps: IndexDeps = defaultD
     for (let p = 0; p < source.pageCount; p++) {
       if (signal?.aborted) return { status: "cancelled", hash };
       chunks.push(...chunkPage(p, await deps.extract(source, p)));
-      onProgress?.(p + 1, source.pageCount);
+      onProgress?.(p + 1, source.pageCount, "extract");
     }
     const vectors = new Float32Array(chunks.length * DIMS);
     for (let i = 0; i < chunks.length; i += EMBED_BATCH) {
@@ -42,9 +42,10 @@ export async function indexSource(source: SourceFile, deps: IndexDeps = defaultD
       const result = await deps.embed(batch.map((c) => c.text), "document", hash);
       if (result.length !== batch.length * DIMS) throw new Error(`embedding returned ${result.length} values, expected ${batch.length * DIMS}`);
       vectors.set(result, i * DIMS);
+      onProgress?.(i / EMBED_BATCH + 1, Math.ceil(chunks.length / EMBED_BATCH), "embed");
     }
     if (signal?.aborted) return { status: "cancelled", hash };
-    await deps.lib.put({ hash, name: source.name, size: source.bytes.byteLength, pageCount: source.pageCount, addedAt: Date.now(), modelId: deps.lib.modelTag, bytes: new Blob([source.bytes as BlobPart]), chunks, vectors });
+    await deps.lib.put({ hash, name: source.name, size: source.bytes.byteLength, pageCount: source.pageCount, addedAt: Date.now(), modelId: deps.lib.modelTag, bytes: chunks.length === 0 ? new Blob([]) : new Blob([source.bytes as BlobPart]), chunks, vectors });
     return { status: chunks.length === 0 ? "no-text" : "indexed", hash, chunks: chunks.length };
   } catch (err) {
     if (err instanceof Error && (err.message === "cancelled" || err.message === "disposed")) return { status: "cancelled", hash };
