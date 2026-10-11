@@ -138,4 +138,22 @@ describe("EmbedClient", () => {
     pending[1]({ type: "embedded", id: 3, vectors: vectors(1) });
     expect((await kept).length).toBe(DIMS);
   });
+  it("restarts on a fresh worker with device wasm when the worker reports a WebGPU failure", async () => {
+    const workers: FakeWorker[] = [];
+    const make = () => {
+      const n = workers.length;
+      const w = new FakeWorker((m, r) => {
+        if (m.type !== "load") return;
+        if (n === 0) r({ type: "error", message: "gpu died", retry: "wasm" });
+        else r({ type: "ready", device: "wasm" });
+      });
+      workers.push(w);
+      return w as unknown as Worker;
+    };
+    const c = new EmbedClient(make);
+    expect(await c.load(() => {})).toBe("wasm");
+    expect(workers.length).toBe(2);
+    expect(workers[0].terminated).toBe(true);
+    expect(workers[1].sent[0]).toEqual({ type: "load", device: "wasm" });
+  });
 });

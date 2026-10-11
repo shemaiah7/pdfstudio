@@ -9,13 +9,14 @@ export interface EmbedModel {
   model: Awaited<ReturnType<typeof AutoModel.from_pretrained>>;
 }
 
+// The browser WASM build of onnxruntime-web lacks GatherBlockQuantized (used by the q4 embedding table), so wasm uses fp32.
 // Text-only: dropping vision/audio configs keeps those encoders (~300 MB) from being downloaded.
 export async function loadEmbedModel(device: EmbedDevice, progress_callback?: (p: ProgressInfo) => void): Promise<EmbedModel> {
   const tokenizer = await AutoTokenizer.from_pretrained(MODEL_ID, { progress_callback });
   const config = await AutoConfig.from_pretrained(MODEL_ID, { progress_callback });
   (config as unknown as Record<string, unknown>).vision_config = null;
   (config as unknown as Record<string, unknown>).audio_config = null;
-  const model = await AutoModel.from_pretrained(MODEL_ID, { config, dtype: "q4", device, progress_callback });
+  const model = await AutoModel.from_pretrained(MODEL_ID, { config, dtype: device === "wasm" ? "fp32" : "q4", device, progress_callback });
   return { tokenizer, model };
 }
 

@@ -1,14 +1,14 @@
 import { DIMS } from "./constants";
 
 export type WorkerIn =
-  | { type: "load" }
+  | { type: "load"; device?: "wasm" }
   | { type: "embed"; id: number; texts: string[]; kind: "query" | "document" }
   | { type: "dispose" };
 export type WorkerOut =
   | { type: "progress"; loaded: number; total: number }
   | { type: "ready"; device: "webgpu" | "wasm" }
   | { type: "embedded"; id: number; vectors: Float32Array }
-  | { type: "error"; id?: number; message: string };
+  | { type: "error"; id?: number; message: string; retry?: "wasm" };
 
 interface Job { id: number; texts: string[]; kind: "query" | "document"; tag?: string; resolve(v: Float32Array): void; reject(e: Error): void; sent: boolean }
 
@@ -85,7 +85,13 @@ export class EmbedClient {
         if (this.jobs[0]?.id !== m.id) { this.stray(m.id); return; }
         this.jobs.shift()!.resolve(m.vectors); this.pump();
       } else if (m.type === "error") {
-        if (m.id === undefined) { if (this.loading) { this.loading.reject(new Error(m.message)); this.loading = null; } }
+        if (m.id === undefined && m.retry && this.loading) {
+          // onnxruntime-web's init chain is poisoned by a failed WebGPU attempt, so retry on a fresh worker.
+          this.worker = null;
+          w.terminate();
+          this.worker = this.attach(this.makeWorker());
+          this.worker.postMessage({ type: "load", device: "wasm" } satisfies WorkerIn);
+        } else if (m.id === undefined) { if (this.loading) { this.loading.reject(new Error(m.message)); this.loading = null; } }
         else if (this.jobs[0]?.id !== m.id) this.stray(m.id);
         else { this.jobs.shift()!.reject(new Error(m.message)); this.pump(); }
       }
