@@ -1,0 +1,26 @@
+import type { Env } from "./env";
+import { corsHeaders, json } from "./cors";
+
+export type Handler = (request: Request, env: Env, ctx: ExecutionContext) => Promise<Response>;
+
+const routes: Record<string, Handler> = {
+  "/session": async (_r, env) => json({ error: "not_implemented" }, 501, env),
+  "/ai": async (_r, env) => json({ error: "not_implemented" }, 501, env),
+};
+
+export default {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+    if (request.method === "OPTIONS") {
+      return new Response(null, { status: 204, headers: corsHeaders(env) });
+    }
+    const { pathname } = new URL(request.url);
+    const handler = routes[pathname];
+    if (!handler) return json({ error: "not_found" }, 404, env);
+    if (request.method !== "POST") return json({ error: "method_not_allowed" }, 405, env);
+    return handler(request, env, ctx);
+  },
+};
+
+export function registerRoute(path: string, handler: Handler): void {
+  routes[path] = handler;
+}

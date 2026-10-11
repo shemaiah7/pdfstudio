@@ -24,3 +24,6 @@ dist-ssr
 *.sw?
 test-results/
 playwright-report/
+worker/node_modules
+worker/.dev.vars
+worker/.wrangler

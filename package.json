@@ -11,7 +11,10 @@
     "test:watch": "vitest",
     "fixtures": "tsx scripts/make-fixtures.ts",
     "e2e": "playwright test",
-    "lint": "oxlint"
+    "lint": "oxlint",
+    "worker:dev": "npm --prefix worker run dev",
+    "worker:test": "npm --prefix worker test",
+    "worker:deploy": "npm --prefix worker run deploy"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
