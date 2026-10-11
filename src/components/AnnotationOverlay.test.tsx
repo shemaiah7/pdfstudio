@@ -20,13 +20,21 @@ describe("AnnotationOverlay", () => {
 import { fireEvent } from "@testing-library/react";
 import { useToolsStore } from "../store/tools";
 import { useDocumentStore } from "../store/document";
+function Live({ el }: { el: HTMLElement }) {
+  const annotations = useDocumentStore((st) => st.annotations);
+  return <AnnotationOverlay pageEntryId="p" annotations={annotations} meta={{ widthPt: 100, heightPt: 100, scale: 1, rotation: 0 }} pageEl={() => el} />;
+}
 describe("AnnotationOverlay drawing tools", () => {
-  it("switches back to Select after a note commit and opens its popover", () => {
+  it("switches back to Select after a note commit and opens its popover", async () => {
     useToolsStore.getState().setTool("note");
     const el = document.createElement("div");
-    const { container } = render(<AnnotationOverlay pageEntryId="p" annotations={[]} meta={{ widthPt: 100, heightPt: 100, scale: 1, rotation: 0 }} pageEl={() => el} />);
-    fireEvent.pointerDown(container.querySelector(".annotationOverlay")!, { button: 0, clientX: 10, clientY: 10, pointerId: 1 });
+    const { container } = render(<Live el={el} />);
+    const wrap = container.querySelector(".annotationOverlay")!;
+    fireEvent.pointerDown(wrap, { button: 0, clientX: 10, clientY: 10, pointerId: 1 });
+    fireEvent.pointerUp(wrap, { pointerId: 1 });
+    await new Promise((r) => setTimeout(r, 0));
     expect(useToolsStore.getState().tool).toBe("select");
     expect(useDocumentStore.getState().annotations.some((a) => a.kind === "note")).toBe(true);
+    expect(container.querySelector(".notePopover")).not.toBeNull();
   });
 });

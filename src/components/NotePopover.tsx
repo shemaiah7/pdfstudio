@@ -8,13 +8,16 @@ export default function NotePopover({ left, top, text, onDone, onDelete, onClose
   const latest = useRef({ value, text, onDone, onClose });
   latest.current = { value, text, onDone, onClose };
   useEffect(() => {
+    // Ignore the pointerdown that created this popover (it may still be dispatching when effects flush).
+    const openedAt = performance.now();
     const onDown = (e: PointerEvent) => {
+      if (e.timeStamp <= openedAt) return;
       if (ref.current?.contains(e.target as Node)) return;
       const l = latest.current;
       if (l.value !== l.text) l.onDone(l.value); else l.onClose();
     };
-    document.addEventListener("pointerdown", onDown);
-    return () => document.removeEventListener("pointerdown", onDown);
+    const timer = setTimeout(() => document.addEventListener("pointerdown", onDown), 0);
+    return () => { clearTimeout(timer); document.removeEventListener("pointerdown", onDown); };
   }, []);
   return (
     <div ref={ref} className="notePopover" style={{ left, top }} onClick={(e) => e.stopPropagation()}>
