@@ -29,6 +29,11 @@ describe("FormLayer", () => {
     fireEvent.change(el, { target: { value: "Bob" } });
     expect(val("name")).toBe("Bob");
   });
+  it("shows the field's initial value when the store has no entry", () => {
+    const f: FieldDef[] = [{ name: "name", type: "text", value: "Zed", widgets: [{ pageIndex: 0, rect: { x: 0, y: 0, width: 10, height: 10 } }] }];
+    const { container } = render(<FormLayer sourceId="src" sourcePageIndex={0} fields={f} meta={meta} />);
+    expect((container.querySelector("[data-field=name]") as HTMLInputElement).value).toBe("Zed");
+  });
   it("checkbox sets true", () => {
     const { container } = setup();
     fireEvent.click(container.querySelector("[data-field=agree]")!);

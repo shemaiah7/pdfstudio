@@ -63,6 +63,7 @@ export function renderPage(
       canvas,
       canvasContext: ctx,
       viewport,
+      annotationMode: pdfjs.AnnotationMode.ENABLE_FORMS,
       transform: dpr !== 1 ? [dpr, 0, 0, dpr, 0, 0] : undefined,
     });
     try {

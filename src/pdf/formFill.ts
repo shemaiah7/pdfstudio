@@ -3,7 +3,7 @@ import { PDFDocument, PDFPage, PDFName, PDFDict, PDFArray, PDFRef, PDFHexString,
 import type { Box, FormValue } from "./types";
 
 export type FieldType = "text" | "checkbox" | "radio" | "dropdown" | "unsupported";
-export interface FieldDef { name: string; type: FieldType; options?: string[]; multiple?: boolean; onValue?: string; widgets: { pageIndex: number; rect: Box }[] }
+export interface FieldDef { name: string; type: FieldType; options?: string[]; multiple?: boolean; value?: FormValue; onValue?: string; widgets: { pageIndex: number; rect: Box }[] }
 
 export function readFieldsFromDoc(doc: PDFDocument): FieldDef[] {
   const annotPage = new Map<PDFDict, number>();
@@ -26,11 +26,11 @@ export function readFieldsFromDoc(doc: PDFDocument): FieldDef[] {
       return { pageIndex, rect: { x: r.x - (cb?.x ?? 0), y: r.y - (cb?.y ?? 0), width: r.width, height: r.height } };
     });
     const name = field.getName();
-    if (field instanceof PDFTextField) return { name, type: "text", widgets };
-    if (field instanceof PDFCheckBox) return { name, type: "checkbox", widgets };
-    if (field instanceof PDFRadioGroup) return { name, type: "radio", options: field.getOptions(), widgets };
-    if (field instanceof PDFOptionList) return { name, type: "dropdown", options: field.getOptions(), multiple: true, widgets };
-    if (field instanceof PDFDropdown) return { name, type: "dropdown", options: field.getOptions(), widgets };
+    if (field instanceof PDFTextField) return { name, type: "text", value: field.getText() ?? "", widgets };
+    if (field instanceof PDFCheckBox) return { name, type: "checkbox", value: field.isChecked(), widgets };
+    if (field instanceof PDFRadioGroup) return { name, type: "radio", options: field.getOptions(), value: field.getSelected() ?? "", widgets };
+    if (field instanceof PDFOptionList) return { name, type: "dropdown", options: field.getOptions(), multiple: true, value: field.getSelected(), widgets };
+    if (field instanceof PDFDropdown) return { name, type: "dropdown", options: field.getOptions(), value: field.getSelected()[0] ?? "", widgets };
     return { name, type: "unsupported", widgets };
   });
 }
@@ -169,11 +169,12 @@ export function applyFormValues(out: PDFDocument, values: Map<string, FormValue>
       const field = form.getField(translate(def.name));
       const sel = Array.isArray(v) ? v : [String(v)];
       const valid = sel.every((x) => def.options?.includes(x));
+      const empty = Array.isArray(v) ? v.length === 0 : v === "" || v === false;
       if (field instanceof PDFTextField) field.setText(String(v));
       else if (field instanceof PDFCheckBox) { if (v) field.check(); else field.uncheck(); }
-      else if (field instanceof PDFRadioGroup) { if (typeof v === "string" && def.options?.includes(v)) field.select(v); }
-      else if (field instanceof PDFDropdown) { if (valid && sel.length) field.select(sel[0]); }
-      else if (field instanceof PDFOptionList) { if (valid && sel.length) field.select(sel); }
+      else if (field instanceof PDFRadioGroup) { if (empty) field.clear(); else if (typeof v === "string" && def.options?.includes(v)) field.select(v); }
+      else if (field instanceof PDFDropdown) { if (empty) field.clear(); else if (valid && sel.length) field.select(sel[0]); }
+      else if (field instanceof PDFOptionList) { if (empty) field.clear(); else if (valid && sel.length) field.select(sel); }
     } catch { /* missing, unsupported or malformed field: leave untouched */ }
   }
 }

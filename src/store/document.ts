@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { countPages, addRotation } from "../pdf/pageOps";
+import type { FieldDef } from "../pdf/formFill";
 import type { Annotation, AnnotationPatch, Edit, FormValue, FormValues, NewAnnotation, PageEntry, SourceFile, SourceId } from "../pdf/types";
 
 export const SIZE_WARNING_BYTES = 100 * 1024 * 1024;
@@ -38,7 +39,7 @@ export interface DocumentState {
   updateAnnotation(id: string, patch: AnnotationPatch): void;
   removeAnnotation(id: string): void;
   setFormValue(sourceId: SourceId, field: string, value: FormValue): void;
-  clearForm(sourceId: SourceId): void;
+  clearForm(sourceId: SourceId, fields: FieldDef[]): void;
   selectAnnotation(id: string | null): void;
   undo(): void;
   redo(): void;
@@ -224,9 +225,15 @@ export const useDocumentStore = create<DocumentState>((set, get) => {
       commit({ formValues });
     },
 
-    clearForm(sourceId) {
+    clearForm(sourceId, fields) {
       const formValues = new Map([...get().formValues].map(([k, v]) => [k, new Map(v)]));
-      formValues.delete(sourceId);
+      // Explicit empty values (not deletion) so export also clears values already present in the source PDF.
+      const empties = new Map<string, FormValue>();
+      for (const f of fields) {
+        if (f.type === "unsupported") continue;
+        empties.set(f.name, f.type === "checkbox" ? false : f.multiple ? [] : "");
+      }
+      formValues.set(sourceId, empties);
       commit({ formValues });
     },
 

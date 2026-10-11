@@ -25,7 +25,7 @@ export default function FormLayer({ sourceId, sourcePageIndex, fields, meta }: P
           const r = w.rect;
           const style = { left: r.x * scale, top: (heightPt - r.y - r.height) * scale, width: r.width * scale, height: r.height * scale };
           const key = `${f.name}:${i}`;
-          const v = values?.get(f.name);
+          const v = values?.has(f.name) ? values.get(f.name) : f.value;
           switch (f.type) {
             case "text":
               return <input key={key} type="text" data-field={f.name} style={style} value={typeof v === "string" ? v : ""} onChange={(e) => set(f.name, e.target.value)} />;

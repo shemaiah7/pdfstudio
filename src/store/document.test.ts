@@ -1,3 +1,4 @@
+import type { FieldDef } from "../pdf/formFill";
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { useDocumentStore, sourceReleasers } from "./document";
 import { loadFixture } from "../test/loadFixture";
@@ -229,8 +230,12 @@ describe("form values", () => {
     s().undo();
     expect(s().formValues.get(src)?.get("agree")).toBeUndefined();
     s().redo();
-    s().clearForm(src);
-    expect(s().formValues.get(src)?.size ?? 0).toBe(0);
+    const defs: FieldDef[] = [{ name: "name", type: "text", widgets: [] }, { name: "agree", type: "checkbox", widgets: [] }, { name: "pick", type: "dropdown", multiple: true, widgets: [] }];
+    s().clearForm(src, defs);
+    expect(s().formValues.get(src)?.get("name")).toBe("");
+    expect(s().formValues.get(src)?.get("agree")).toBe(false);
+    expect(s().formValues.get(src)?.get("pick")).toEqual([]);
+    expect(s().isDirty()).toBe(true);
     s().undo();
     expect(s().formValues.get(src)?.get("name")).toBe("Alice");
   });

@@ -131,3 +131,32 @@ describe("form export", () => {
     }
   });
 });
+
+describe("initial values and clearing", () => {
+  it("reads initial values from a pre-filled form and empty values clear them on export", async () => {
+    const doc = await PDFDocument.load(src().bytes);
+    const form = doc.getForm();
+    form.getTextField("name").setText("Zed");
+    form.getCheckBox("agree").check();
+    form.getRadioGroup("size").select("L");
+    form.getDropdown("color").select("blue");
+    const bytes = await doc.save();
+    const filled: SourceFile = { id: "g", name: "f.pdf", bytes, pageCount: 2 };
+    const by = Object.fromEntries((await readFields(filled)).map((f) => [f.name, f]));
+    expect(by.name.value).toBe("Zed");
+    expect(by.agree.value).toBe(true);
+    expect(by.size.value).toBe("L");
+    expect(by.color.value).toBe("blue");
+    expect(by.notes.value).toBe("");
+
+    const defs = await readFields(filled);
+    const cleared = new Map([["g", new Map<string, string | boolean | string[]>([["name", ""], ["agree", false], ["size", ""], ["color", ""]])]]);
+    const out = await buildDocument(new Map([["g", filled]]), [{ id: "p0", sourceId: "g", sourcePageIndex: 0, rotation: 0 }], [], [], cleared);
+    const f2 = (await PDFDocument.load(out)).getForm();
+    expect(f2.getTextField("name").getText() ?? "").toBe("");
+    expect(f2.getCheckBox("agree").isChecked()).toBe(false);
+    expect(f2.getRadioGroup("size").getSelected()).toBeUndefined();
+    expect(f2.getDropdown("color").getSelected()).toEqual([]);
+    expect(defs.length).toBeGreaterThan(0);
+  });
+});

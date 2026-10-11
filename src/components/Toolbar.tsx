@@ -53,7 +53,7 @@ export default function Toolbar({ scale, setScale, onFiles }: Props) {
       <button data-testid="extract" disabled={!hasSel || busy}
         onClick={() => exportPages(s.pages.filter((p) => s.selection.has(p.id)), "pages")}>Extract selected</button>
       {firstSource && firstFields && firstFields.length > 0 ? (
-        <button data-testid="clear-form" onClick={() => s.clearForm(firstSource.id)}>Clear form</button>
+        <button data-testid="clear-form" onClick={() => s.clearForm(firstSource.id, firstFields)}>Clear form</button>
       ) : null}
       <span className="sep" />
       <button data-testid="zoom-out" onClick={() => setScale(Math.max(0.4, scale - 0.2))}>−</button>
