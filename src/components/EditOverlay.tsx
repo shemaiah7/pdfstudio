@@ -3,6 +3,7 @@ import type { Edit } from "../pdf/types";
 import { FONT_CSS, normalizeFont } from "../pdf/fonts";
 import { layoutInBoxes } from "../pdf/layout";
 import { usePdfMeasure } from "./usePdfMeasure";
+import EditHandles from "./EditHandles";
 
 let ctx: CanvasRenderingContext2D | null = null;
 export function measureCss(font: Edit["font"]) {
@@ -23,7 +24,7 @@ export function overlayTransform(rotation: number, W: number, H: number): string
   }
 }
 
-export default function EditOverlay({ edits, scale, pageHeightPt, pageWidthPt, rotation }: { edits: Edit[]; scale: number; pageHeightPt: number; pageWidthPt: number; rotation: number }) {
+export default function EditOverlay({ edits, scale, pageHeightPt, pageWidthPt, rotation, selectedEditId, onReopen }: { edits: Edit[]; scale: number; pageHeightPt: number; pageWidthPt: number; rotation: number; selectedEditId?: string | null; onReopen?: (e: Edit) => void }) {
   const W = pageWidthPt * scale, H = pageHeightPt * scale;
   // Canvas measurer until the pdf-lib metrics (shared with export) are ready.
   const pdfMeasure = usePdfMeasure(edits.map((e) => normalizeFont(e.font)));
@@ -43,6 +44,7 @@ export default function EditOverlay({ edits, scale, pageHeightPt, pageWidthPt, r
           ))}
         </div>
       ))}
+      {onReopen ? edits.filter((e) => e.id === selectedEditId).map((e) => <EditHandles key={e.id} edit={e} scale={scale} heightPt={pageHeightPt} onReopen={onReopen} />) : null}
     </div>
   );
 }

@@ -4,7 +4,7 @@ import PageCanvas from "./PageCanvas";
 import TextLayer from "./TextLayer";
 import EditOverlay from "./EditOverlay";
 import { useToolsStore } from "../store/tools";
-import type { Box, PageEntry, SourceFile } from "../pdf/types";
+import type { Box, Edit, PageEntry, SourceFile } from "../pdf/types";
 import BlockEditor from "./BlockEditor";
 import { pageBlocks, blockFromEdit, type OpenBlock } from "../edit/pageBlocks";
 import { blockAt, blockKeyOf } from "../edit/blocks";
@@ -44,6 +44,7 @@ export default function PageView({ scale }: Props) {
   const selectAnnotation = useDocumentStore((s) => s.selectAnnotation);
   const tool = useToolsStore((s) => s.tool);
   const [open, setOpen] = useState<OpenBlock | null>(null);
+  const [selectedEditId, setSelectedEditId] = useState<string | null>(null);
   const [hint, setHint] = useState<{ pageId: string; box: Box } | null>(null);
   const hoverFrame = useRef(0);
   const [heights, setHeights] = useState<Record<string, PageMetaPt>>({});
@@ -54,15 +55,16 @@ export default function PageView({ scale }: Props) {
     });
   }, []);
 
+  const openFromEdit = (entry: PageEntry, source: SourceFile, existing: Edit): OpenBlock =>
+    ({ entry, source, block: blockFromEdit(existing), font: existing.font, colors: { background: existing.background ?? WHITE, text: existing.color }, blockKey: existing.blockKey ?? `edit:${existing.id}`, existing, caretOffset: 0 });
+
   /** Resolves the block (or existing edit) under a pointer position; null when there is nothing editable. */
   const resolveBlock = async (entry: PageEntry, source: SourceFile, pageEl: HTMLElement, clientX: number, clientY: number, sample = false): Promise<OpenBlock | { empty: true } | { narrow: true } | null> => {
     const meta = heights[entry.id];
     if (!meta) return null;
     const pt = pointAt(pageEl, clientX, clientY, scale, meta.heightPt);
     const existing = useDocumentStore.getState().edits.find((e) => e.pageEntryId === entry.id && e.boxes.some((b) => contains(b, pt.x, pt.y)));
-    if (existing) {
-      return { entry, source, block: blockFromEdit(existing), font: existing.font, colors: { background: existing.background ?? WHITE, text: existing.color }, blockKey: existing.blockKey ?? `edit:${existing.id}`, existing, caretOffset: 0 };
-    }
+    if (existing) return openFromEdit(entry, source, existing);
     const { blocks, styles, page } = await pageBlocks(source, entry.sourcePageIndex);
     const block = blockAt(blocks, pt.x, pt.y);
     if (!block) return { empty: true };
@@ -91,6 +93,8 @@ export default function PageView({ scale }: Props) {
     const pageEl = e.currentTarget, cx = e.clientX, cy = e.clientY;
     const r = await resolveBlock(entry, source, pageEl, cx, cy, true);
     if (!r) return;
+    if ("block" in r && r.existing && r.existing.id !== selectedEditId) { setMessage(null); setHint(null); setSelectedEditId(r.existing.id); return; } // first click selects, handles reopen
+    setSelectedEditId(null);
     if ("empty" in r) setMessage("No text here.");
     else if ("narrow" in r) setMessage("Block too narrow to edit.");
     else { setMessage(null); setHint(null); setOpen(r); }
@@ -115,7 +119,7 @@ export default function PageView({ scale }: Props) {
             onMouseMove={tool === "edit" ? (e) => onEditHover(e, entry, source) : undefined}
             onMouseLeave={tool === "edit" ? () => { cancelAnimationFrame(hoverFrame.current); setHint(null); } : undefined}
             onClick={(e) => {
-              if ((e.target as Element).closest(".annotationOverlay, .notePopover, .block-editor-wrap")) return;
+              if ((e.target as Element).closest(".annotationOverlay, .notePopover, .block-editor-wrap, .edit-handles")) return;
               if (useToolsStore.getState().tool === "edit") { void onEditClick(e, entry, source); return; }
               if (useToolsStore.getState().tool !== "select") return;
               selectAnnotation(null);
@@ -123,7 +127,7 @@ export default function PageView({ scale }: Props) {
             }}>
             <PageCanvas source={source} entry={entry} scale={scale} lazy onMeta={(m) => onMeta(entry.id, m)} />
             <TextLayer source={source} entry={entry} scale={scale} />
-            {heights[entry.id] ? <EditOverlay edits={edits.filter((e) => e.pageEntryId === entry.id)} scale={scale} pageHeightPt={heights[entry.id].heightPt} pageWidthPt={heights[entry.id].widthPt} rotation={(heights[entry.id].pageRotate + entry.rotation) % 360} /> : null}
+            {heights[entry.id] ? <EditOverlay edits={edits.filter((e) => e.pageEntryId === entry.id)} scale={scale} pageHeightPt={heights[entry.id].heightPt} pageWidthPt={heights[entry.id].widthPt} rotation={(heights[entry.id].pageRotate + entry.rotation) % 360} selectedEditId={tool === "edit" && !open ? selectedEditId : null} onReopen={(ed) => { setSelectedEditId(null); setHint(null); setOpen(openFromEdit(entry, source, ed)); }} /> : null}
             {heights[entry.id] ? <PageForm sourceId={source.id} source={source} sourcePageIndex={entry.sourcePageIndex} meta={{ widthPt: heights[entry.id].widthPt, heightPt: heights[entry.id].heightPt, scale, rotation: ((heights[entry.id].pageRotate + entry.rotation) % 360) as 0 | 90 | 180 | 270 }} /> : null}
             {heights[entry.id] ? <AnnotationOverlay pageEntryId={entry.id} annotations={annotations.filter((a) => a.pageEntryId === entry.id)} meta={{ widthPt: heights[entry.id].widthPt, heightPt: heights[entry.id].heightPt, scale, rotation: ((heights[entry.id].pageRotate + entry.rotation) % 360) as 0 | 90 | 180 | 270 }} pageEl={() => document.getElementById(`page-${entry.id}`)} /> : null}
             {tool === "edit" && hint && hint.pageId === entry.id && heights[entry.id] ? <div className="block-hint-outline" style={{ left: hint.box.x * scale, top: (heights[entry.id].heightPt - hint.box.y - hint.box.height) * scale, width: hint.box.width * scale, height: hint.box.height * scale }} /> : null}
