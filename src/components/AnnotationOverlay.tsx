@@ -170,7 +170,7 @@ export default function AnnotationOverlay({ pageEntryId, annotations, meta, page
       {
         const sideways = rotation % 180 !== 0, vw = sideways ? a.box.height : a.box.width, vh = sideways ? a.box.width : a.box.height;
         const cx = a.box.x + a.box.width / 2, cy = a.box.y + a.box.height / 2;
-        return <g key={a.id} {...hit(a)}><image href={a.png} x={-vw / 2} y={-vh / 2} width={vw} height={vh} transform={`translate(${cx},${cy}) rotate(${rotation}) scale(1,-1)`} preserveAspectRatio="none" /></g>;
+        return <g key={a.id} {...hit(a)}><image href={a.png} x={-vw / 2} y={-vh / 2} width={vw} height={vh} transform={`translate(${cx},${cy}) rotate(${rotation}) scale(1,-1)`} preserveAspectRatio="xMidYMid meet" /></g>;
       }
       default:
         return null;

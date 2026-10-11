@@ -119,7 +119,10 @@ export async function writeAnnotations(out: PDFDocument, page: PDFPage, annotati
         const bx = a.box.x + ox, by = a.box.y + oy, bw = a.box.width, bh = a.box.height;
         const vw = sideways ? bh : bw, vh = sideways ? bw : bh;
         const origin = rot === 90 ? { x: bx + bw, y: by } : rot === 180 ? { x: bx + bw, y: by + bh } : rot === 270 ? { x: bx, y: by + bh } : { x: bx, y: by };
-        page.drawImage(img, { ...origin, width: vw, height: vh, rotate: degrees(rot) });
+        // Keep the image's own aspect: fit inside the visual box and centre it (the box may have been swapped by a page rotation).
+        const fit = img.scaleToFit(vw, vh), du = (vw - fit.width) / 2, dv = (vh - fit.height) / 2;
+        const off = rot === 90 ? { x: -dv, y: du } : rot === 180 ? { x: -du, y: -dv } : rot === 270 ? { x: dv, y: -du } : { x: du, y: dv };
+        page.drawImage(img, { x: origin.x + off.x, y: origin.y + off.y, width: fit.width, height: fit.height, rotate: degrees(rot) });
         break;
       }
     }

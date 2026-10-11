@@ -38,3 +38,11 @@ describe("AnnotationOverlay drawing tools", () => {
     expect(container.querySelector(".notePopover")).not.toBeNull();
   });
 });
+
+describe("AnnotationOverlay signature", () => {
+  it("fits the image inside its box without distortion", () => {
+    const a: Annotation = { id: "s", kind: "signature", pageEntryId: "p", color: c, box: { x: 0, y: 0, width: 100, height: 100 }, png: "data:image/png;base64,AA==" };
+    const { container } = render(<AnnotationOverlay pageEntryId="p" annotations={[a]} meta={{ widthPt: 200, heightPt: 200, scale: 1, rotation: 90 }} pageEl={() => null} />);
+    expect(container.querySelector('[data-annotation-id="s"] image')!.getAttribute("preserveAspectRatio")).toBe("xMidYMid meet");
+  });
+});

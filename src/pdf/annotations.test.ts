@@ -150,5 +150,23 @@ describe("rotated pages", () => {
     // pdf-lib emits a pure 90deg rotation matrix [0 1 -1 0 0 0]
     expect(cm.some(([a0, b, c, d0]) => Math.abs(a0) < 1e-6 && Math.abs(d0) < 1e-6 && Math.abs(b) > 0.5 && Math.abs(c) > 0.5)).toBe(true);
   });
-});
 
+  it("keeps a signature's aspect ratio when its box does not match (fitted and centred, upright)", async () => {
+    const { deflateSync } = await import("node:zlib");
+    const crcT = Array.from({ length: 256 }, (_, n) => { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; return c >>> 0; });
+    const crc = (b: Buffer) => { let c = 0xffffffff; for (const x of b) c = crcT[(c ^ x) & 255] ^ (c >>> 8); return (c ^ 0xffffffff) >>> 0; };
+    const chunk = (t: string, d: Buffer) => { const l = Buffer.alloc(4); l.writeUInt32BE(d.length); const td = Buffer.concat([Buffer.from(t), d]); const c = Buffer.alloc(4); c.writeUInt32BE(crc(td)); return Buffer.concat([l, td, c]); };
+    const ihdr = Buffer.alloc(13); ihdr.writeUInt32BE(400, 0); ihdr.writeUInt32BE(100, 4); ihdr[8] = 8; ihdr[9] = 6;
+    const raw = Buffer.alloc(100 * (1 + 400 * 4));
+    const wide = "data:image/png;base64," + Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk("IHDR", ihdr), chunk("IDAT", deflateSync(raw)), chunk("IEND", Buffer.alloc(0))]).toString("base64");
+    const a: Annotation = { id: "s", kind: "signature", ...base, box: { x: 20, y: 50, width: 100, height: 100 }, png: wide };
+    const doc = await PDFDocument.load(await buildDocument(sources, [{ ...page, rotation: 90 as const }], [], [a]));
+    const contents = doc.getPage(0).node.Contents();
+    const refs = contents instanceof PDFArray ? contents.asArray() : [doc.getPage(0).node.get(PDFName.of("Contents"))];
+    const text = refs.map((r) => new TextDecoder("latin1").decode(decodePDFRawStream(doc.context.lookup(r) as PDFRawStream).decode())).join("\n");
+    const cm = [...text.matchAll(/([-\d.e]+) ([-\d.e]+) ([-\d.e]+) ([-\d.e]+) ([-\d.e]+) ([-\d.e]+) cm/g)].map((m) => m.slice(1, 7).map(Number));
+    const scale = cm.find(([a0, b, c, d0, e, f0]) => a0 === 100 && d0 === 25 && b === 0 && c === 0 && e === 0 && f0 === 0);
+    expect(scale).toBeDefined(); // fitted 100x25, not 100x100
+    expect(cm.some(([a0, b, c, d0]) => Math.abs(a0) < 1e-6 && Math.abs(d0) < 1e-6 && Math.abs(b - 1) < 1e-6 && Math.abs(c + 1) < 1e-6)).toBe(true);
+  });
+});
