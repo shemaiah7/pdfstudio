@@ -9,7 +9,7 @@ export function rasterScale(meta: PageMetaPt, maxEdge: number): number {
   return Math.min(300 / 72, maxEdge / Math.max(meta.widthPt, meta.heightPt));
 }
 
-/** Renders the unrotated page to a canvas (same frame as pdf.js text content). */
+/** Renders the unrotated page to a canvas (same frame as pdf.js text content). Resulting OCR boxes are relative to the crop-box origin (pdf.js page.view), not absolute user space. */
 export async function rasterizePage(source: SourceFile, pageIndex: number, maxEdge: number): Promise<{ canvas: HTMLCanvasElement; meta: PageMetaPt; scale: number }> {
   const page = await getPage(source, pageIndex);
   const meta = { widthPt: page.view[2] - page.view[0], heightPt: page.view[3] - page.view[1] };

@@ -1,6 +1,7 @@
 // src/ocr/tesseractEngine.test.ts
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createWorker } from "tesseract.js";
 import { rasterScale } from "./raster";
@@ -46,7 +47,7 @@ describe("createTesseractEngine", () => {
 
 describe("real Tesseract on the scan fixture", () => {
   it("reads the printed words", async () => {
-    const worker = await createWorker("eng", 1, { langPath: TESSDATA_URL });
+    const worker = await createWorker("eng", 1, { langPath: TESSDATA_URL, cachePath: tmpdir() });
     const runner: TessRunner = {
       recognize: async (image) => { const r = await worker.recognize(image as Buffer, {}, { blocks: true, text: true }); return { confidence: r.data.confidence, lines: (r.data.blocks ?? []).flatMap((b) => b.paragraphs.flatMap((p) => p.lines)) }; },
       terminate: async () => { await worker.terminate(); },

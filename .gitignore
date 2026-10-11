@@ -28,3 +28,4 @@ worker/node_modules
 worker/.dev.vars
 worker/.wrangler
 .env
+eng.traineddata

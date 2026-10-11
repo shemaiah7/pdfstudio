@@ -1,3 +1,4 @@
+/** PDF points, bottom-left origin, relative to the crop-box origin (pdf.js page.view), not absolute user space. */
 export interface OcrBox { x: number; y: number; width: number; height: number }
 export interface OcrWord { text: string; box: OcrBox; confidence: number }
 export interface OcrLine { text: string; box: OcrBox; words: OcrWord[] }
