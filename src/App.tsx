@@ -4,6 +4,7 @@ import DropZone from "./components/DropZone";
 import ThumbnailSidebar from "./components/ThumbnailSidebar";
 import PageView from "./components/PageView";
 import Toolbar from "./components/Toolbar";
+import ToolPalette from "./components/ToolPalette";
 import ErrorBanner from "./components/ErrorBanner";
 import AiPanel from "./components/ai/AiPanel";
 import { useAiStore } from "./store/ai";
@@ -78,6 +79,7 @@ export default function App() {
       {empty ? <DropZone onFiles={handleFiles} empty /> : (
         <>
         <Toolbar scale={scale} setScale={setScale} onFiles={handleFiles} />
+        <ToolPalette />
         <div className="workspace">
           <ThumbnailSidebar />
           <PageView scale={scale} />
