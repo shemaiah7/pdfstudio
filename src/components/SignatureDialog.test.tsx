@@ -43,4 +43,25 @@ describe("SignatureDialog", () => {
     fireEvent.change(document.querySelector("input[type=file]")!, { target: { files: [file] } });
     expect(await screen.findByTestId("sig-error")).toBeTruthy();
   });
+  it("reports a failed remember but still confirms", async () => {
+    const real = Storage.prototype.setItem;
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(function (this: Storage, k: string, v: string) {
+      if (k === "pdfstudio.signature") throw new Error("quota");
+      return real.call(this, k, v);
+    });
+    const onConfirm = vi.fn();
+    render(<SignatureDialog onConfirm={onConfirm} onClose={() => undefined} />);
+    fireEvent.click(screen.getByTestId("sig-tab-type"));
+    fireEvent.change(screen.getByTestId("sig-name"), { target: { value: "Ada" } });
+    fireEvent.click(screen.getByTestId("sig-remember"));
+    fireEvent.click(screen.getByTestId("sig-confirm"));
+    await waitFor(() => expect(onConfirm).toHaveBeenCalled());
+    expect((await screen.findByTestId("sig-error")).textContent).toContain("storage full");
+  });
+  it("closes on Escape", () => {
+    const onClose = vi.fn();
+    render(<SignatureDialog onConfirm={() => undefined} onClose={onClose} />);
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(onClose).toHaveBeenCalled();
+  });
 });

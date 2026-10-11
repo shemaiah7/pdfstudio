@@ -67,14 +67,15 @@ export default function AnnotationOverlay({ pageEntryId, annotations, meta, page
     if (e.button !== 0 || !el || !png) return;
     e.preventDefault();
     const p = pointerToPdf(e, el, meta);
+    useToolsStore.getState().setPendingSignature(null);
     const img = new Image();
+    img.onerror = () => useToolsStore.getState().setTool("select");
     img.onload = () => {
       const f = fitSignature(img.naturalWidth, img.naturalHeight, widthPt);
-      const box = { x: p.x - f.width / 2, y: p.y - f.height / 2, width: f.width, height: f.height };
+      const box = { x: Math.min(Math.max(0, p.x - f.width / 2), Math.max(0, widthPt - f.width)), y: Math.min(Math.max(0, p.y - f.height / 2), Math.max(0, heightPt - f.height)), width: f.width, height: f.height };
       const { addAnnotation, selectAnnotation } = useDocumentStore.getState();
       const id = addAnnotation({ kind: "signature", pageEntryId, box, png, color: [0, 0, 0] });
       useToolsStore.getState().setTool("select");
-      useToolsStore.getState().setPendingSignature(null);
       selectAnnotation(id);
     };
     img.src = png;

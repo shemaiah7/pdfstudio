@@ -1,6 +1,6 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { canRemember, forgetSignature, loadSignature, saveSignature } from "../signature/storage";
-import { trimToPng, whiteToTransparent } from "../signature/image";
+import { scaledSize, trimToPng, whiteToTransparent } from "../signature/image";
 
 interface Props { onConfirm(png: string): void; onClose(): void }
 type Tab = "draw" | "type" | "upload";
@@ -25,7 +25,15 @@ export default function SignatureDialog({ onConfirm, onClose }: Props) {
   const drawing = useRef(false);
   const rememberable = canRemember();
 
-  const finish = (png: string) => { if (remember && rememberable) saveSignature(png); onConfirm(png); };
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+  const finish = (png: string) => {
+    if (remember && rememberable && !saveSignature(png)) setError("Couldn't remember this signature (storage full)");
+    onConfirm(png);
+  };
   const pos = (e: React.PointerEvent) => {
     const c = canvasRef.current!, r = c.getBoundingClientRect();
     return { x: (e.clientX - r.left) * (c.width / (r.width || c.width)), y: (e.clientY - r.top) * (c.height / (r.height || c.height)) };
@@ -127,9 +135,10 @@ function fromFile(file: File): Promise<string> {
     const url = URL.createObjectURL(file), img = new Image();
     img.onload = () => {
       try {
-        const c = document.createElement("canvas"); c.width = img.naturalWidth; c.height = img.naturalHeight;
+        const { width: w, height: h } = scaledSize(img.naturalWidth, img.naturalHeight);
+        const c = document.createElement("canvas"); c.width = w; c.height = h;
         const ctx = c.getContext("2d"); if (!ctx) throw new Error("no canvas");
-        ctx.drawImage(img, 0, 0);
+        ctx.drawImage(img, 0, 0, w, h);
         ctx.putImageData(whiteToTransparent(ctx.getImageData(0, 0, c.width, c.height)), 0, 0);
         resolve(trimToPng(c));
       } catch (e) { reject(e); } finally { URL.revokeObjectURL(url); }

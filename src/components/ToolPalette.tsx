@@ -33,7 +33,7 @@ export default function ToolPalette() {
       {COLORS.map((c) => <button key={c.name} data-testid={`color-${c.name}`} title={c.name} className={`swatch ${c.rgb.every((v, i) => v === color[i]) ? "active" : ""}`} style={{ background: `rgb(${c.rgb.map((v) => Math.round(v * 255)).join(",")})` }} onClick={() => pickColor(c.rgb)} />)}
       <span className="sep" />
       {WIDTHS.map((w) => <button key={w.name} data-testid={`width-${w.name}`} className={width === w.value ? "active" : ""} onClick={() => pickWidth(w.value)}>{w.name}</button>)}
-      {signing ? <SignatureDialog onConfirm={(png) => { setPendingSignature(png); setSigning(false); }} onClose={() => { setSigning(false); if (!useToolsStore.getState().pendingSignature) setTool("select"); }} /> : null}
+      {signing ? <SignatureDialog onConfirm={(png) => { setTool("sign"); setPendingSignature(png); setSigning(false); }} onClose={() => { setSigning(false); if (!useToolsStore.getState().pendingSignature) setTool("select"); }} /> : null}
       {message ? <span className="toolmessage" data-testid="tool-message" role="status">{message}</span> : null}
     </div>
   );

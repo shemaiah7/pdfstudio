@@ -31,3 +31,8 @@ export function trimToPng(canvas: HTMLCanvasElement): string {
     return out.toDataURL("image/png");
   } catch { return canvas.toDataURL("image/png"); }
 }
+
+export function scaledSize(w: number, h: number, max = 1200): { width: number; height: number } {
+  const s = Math.min(1, max / Math.max(w, h));
+  return { width: Math.max(1, Math.round(w * s)), height: Math.max(1, Math.round(h * s)) };
+}
