@@ -7,6 +7,7 @@ import { overlayTransform } from "./EditOverlay";
 import { boundsOf, moveAnnotation, resizeAnnotation, type Handle } from "./annotationHandles";
 import NotePopover from "./NotePopover";
 import { useDrawingTool, DRAWING_TOOLS } from "./useDrawingTool";
+import { fitSignature } from "../signature/image";
 
 interface Props { pageEntryId: string; annotations: Annotation[]; meta: PageMeta; pageEl: () => HTMLElement | null }
 
@@ -58,7 +59,26 @@ export default function AnnotationOverlay({ pageEntryId, annotations, meta, page
   const [openNote, setOpenNote] = useState<string | null>(null);
   const color = useToolsStore((s) => s.color);
   const toolWidth = useToolsStore((s) => s.width);
+  const pendingSignature = useToolsStore((s) => s.pendingSignature);
   const drawing = DRAWING_TOOLS.includes(tool);
+  const placing = tool === "sign" && !!pendingSignature;
+  const placeSignature = (e: React.PointerEvent) => {
+    const el = pageEl(), png = pendingSignature;
+    if (e.button !== 0 || !el || !png) return;
+    e.preventDefault();
+    const p = pointerToPdf(e, el, meta);
+    const img = new Image();
+    img.onload = () => {
+      const f = fitSignature(img.naturalWidth, img.naturalHeight, widthPt);
+      const box = { x: p.x - f.width / 2, y: p.y - f.height / 2, width: f.width, height: f.height };
+      const { addAnnotation, selectAnnotation } = useDocumentStore.getState();
+      const id = addAnnotation({ kind: "signature", pageEntryId, box, png, color: [0, 0, 0] });
+      useToolsStore.getState().setTool("select");
+      useToolsStore.getState().setPendingSignature(null);
+      selectAnnotation(id);
+    };
+    img.src = png;
+  };
   const { state: ds, handlers: dh } = useDrawingTool(pageEntryId, meta, pageEl, tool, { color, width: toolWidth, fontSize: 12 },
     (id, a) => { if (a.kind === "note") setOpenNote(id); });
 
@@ -164,8 +184,8 @@ export default function AnnotationOverlay({ pageEntryId, annotations, meta, page
 
   return (
     <>
-      <div className="annotationOverlay" {...(drawing ? dh : { onPointerMove: onMove, onPointerUp: end, onPointerCancel: end })}
-        style={{ width: W, height: H, inset: "auto", left: 0, top: 0, transformOrigin: "0 0", transform: overlayTransform(rotation, W, H), pointerEvents: drawing ? "auto" : "none", touchAction: drawing ? "none" : undefined, cursor: drawing ? "crosshair" : undefined }}>
+      <div className="annotationOverlay" {...(placing ? { onPointerDown: placeSignature } : drawing ? dh : { onPointerMove: onMove, onPointerUp: end, onPointerCancel: end })}
+        style={{ width: W, height: H, inset: "auto", left: 0, top: 0, transformOrigin: "0 0", transform: overlayTransform(rotation, W, H), pointerEvents: drawing || placing ? "auto" : "none", touchAction: drawing ? "none" : undefined, cursor: drawing || placing ? "crosshair" : undefined }}>
         {shown.map((a) => a.kind === "freetext" ? (
           <FreeTextBox key={a.id} a={a} scale={scale} heightPt={heightPt} interactive={interactive} selected={a.id === selectedId}
             onPointerDown={(e) => begin(e, a, "move")} onPointerUp={() => undefined} />

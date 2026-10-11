@@ -105,3 +105,20 @@ body { background: var(--bg); color: var(--text); font-family: system-ui, sans-s
 .notePopover textarea { width: 100%; box-sizing: border-box; font: inherit; min-height: 70px; }
 .notePopoverActions { display: flex; gap: 6px; justify-content: flex-end; margin-top: 6px; }
 .palette .toolmessage { font-size: 12px; color: var(--muted, #666); margin-left: 8px; }
+
+/* Signature dialog. Script fonts use system cursive families (no vendored webfonts). */
+.sigBackdrop { position: fixed; inset: 0; background: rgba(0,0,0,.4); display: flex; align-items: center; justify-content: center; z-index: 20; }
+.sigDialog { background: var(--panel); color: var(--text); border: 1px solid var(--border); border-radius: 10px; padding: 14px; width: 440px; max-width: 95vw; box-shadow: 0 8px 32px rgba(0,0,0,.4); display: flex; flex-direction: column; gap: 10px; }
+.sigTabs { display: flex; gap: 6px; }
+.sigDialog button { padding: 4px 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--text); cursor: pointer; font-size: 13px; }
+.sigDialog button.active, .sigDialog button.primary { background: var(--accent); color: white; border-color: transparent; }
+.sigCanvas { border: 1px solid var(--border); background: #fff; width: 400px; max-width: 100%; touch-action: none; cursor: crosshair; display: block; margin-bottom: 6px; }
+.sigDialog input[data-testid="sig-name"] { width: 100%; box-sizing: border-box; padding: 6px; font: inherit; }
+.sigFonts { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+.sigFonts button { font-size: 24px; text-align: left; background: #fff; color: #000; }
+.sigFont0 { font-family: "Brush Script MT", "Snell Roundhand", cursive; }
+.sigFont1 { font-family: "Apple Chancery", "URW Chancery L", cursive; }
+.sigFont2 { font-family: "Savoye LET", "Lucida Handwriting", cursive; }
+.sigFonts button.active { outline: 2px solid var(--accent); }
+.sigError { color: #c0392b; font-size: 13px; }
+.sigActions { display: flex; gap: 6px; align-items: center; }
