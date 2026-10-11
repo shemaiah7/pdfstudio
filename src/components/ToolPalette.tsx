@@ -8,7 +8,7 @@ const TOOLS: { id: Tool; label: string }[] = [
 ];
 
 export default function ToolPalette() {
-  const { tool, color, width, setTool, setColor, setWidth } = useToolsStore();
+  const { tool, color, width, message, setTool, setColor, setWidth } = useToolsStore();
   const selectedAnnotationId = useDocumentStore((s) => s.selectedAnnotationId);
   const updateAnnotation = useDocumentStore((s) => s.updateAnnotation);
   useEffect(() => {
@@ -30,6 +30,7 @@ export default function ToolPalette() {
       {COLORS.map((c) => <button key={c.name} data-testid={`color-${c.name}`} title={c.name} className={`swatch ${c.rgb.every((v, i) => v === color[i]) ? "active" : ""}`} style={{ background: `rgb(${c.rgb.map((v) => Math.round(v * 255)).join(",")})` }} onClick={() => pickColor(c.rgb)} />)}
       <span className="sep" />
       {WIDTHS.map((w) => <button key={w.name} data-testid={`width-${w.name}`} className={width === w.value ? "active" : ""} onClick={() => pickWidth(w.value)}>{w.name}</button>)}
+      {message ? <span className="toolmessage" data-testid="tool-message" role="status">{message}</span> : null}
     </div>
   );
 }

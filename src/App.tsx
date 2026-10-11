@@ -7,6 +7,7 @@ import Toolbar from "./components/Toolbar";
 import ToolPalette from "./components/ToolPalette";
 import ErrorBanner from "./components/ErrorBanner";
 import AiPanel from "./components/ai/AiPanel";
+import { useToolsStore } from "./store/tools";
 import { useAiStore } from "./store/ai";
 import { captureSelection } from "./pdf/selection";
 
@@ -46,7 +47,20 @@ export default function App() {
   useEffect(() => {
     const onSel = () => { const sel = captureSelection(); if (sel) useAiStore.getState().setSelection(sel); };
     document.addEventListener("selectionchange", onSel);
-    return () => document.removeEventListener("selectionchange", onSel);
+    const onMouseUp = (e: MouseEvent) => {
+      const tools = useToolsStore.getState();
+      if (tools.tool !== "highlight") return;
+      const sel = captureSelection();
+      if (sel && sel.boxes.length) {
+        useDocumentStore.getState().addAnnotation({ kind: "highlight", pageEntryId: sel.pageEntryId, boxes: sel.boxes, color: tools.color });
+        window.getSelection()?.removeAllRanges();
+        return;
+      }
+      const page = e.target instanceof Element ? e.target.closest(".page") : null;
+      if (page && !page.querySelector(".textLayer span")) tools.setMessage("No selectable text on this page");
+    };
+    document.addEventListener("mouseup", onMouseUp);
+    return () => { document.removeEventListener("selectionchange", onSel); document.removeEventListener("mouseup", onMouseUp); };
   }, []);
 
   const handleFiles = useCallback(async (files: File[], mode: "open" | "add" | "auto" = "auto") => {

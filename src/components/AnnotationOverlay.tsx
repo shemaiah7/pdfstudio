@@ -1,11 +1,12 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { Annotation, AnnotationPatch, RGB } from "../pdf/types";
-import { pdfToLocal, pointerToPdf, type PageMeta } from "../pdf/geometry";
+import { normalizeBox, pdfToLocal, pointerToPdf, type PageMeta } from "../pdf/geometry";
 import { useDocumentStore } from "../store/document";
 import { useToolsStore } from "../store/tools";
 import { overlayTransform } from "./EditOverlay";
 import { boundsOf, moveAnnotation, resizeAnnotation, type Handle } from "./annotationHandles";
 import NotePopover from "./NotePopover";
+import { useDrawingTool, DRAWING_TOOLS } from "./useDrawingTool";
 
 interface Props { pageEntryId: string; annotations: Annotation[]; meta: PageMeta; pageEl: () => HTMLElement | null }
 
@@ -46,7 +47,7 @@ function FreeTextBox({ a, scale, heightPt, interactive, selected, onPointerDown,
   );
 }
 
-export default function AnnotationOverlay({ annotations, meta, pageEl }: Props) {
+export default function AnnotationOverlay({ pageEntryId, annotations, meta, pageEl }: Props) {
   const { widthPt, heightPt, scale, rotation } = meta;
   const W = widthPt * scale, H = heightPt * scale;
   const selectedId = useDocumentStore((s) => s.selectedAnnotationId);
@@ -55,6 +56,11 @@ export default function AnnotationOverlay({ annotations, meta, pageEl }: Props) 
   const [drag, setDrag] = useState<Drag | null>(null);
   const dragRef = useRef<Drag | null>(null);
   const [openNote, setOpenNote] = useState<string | null>(null);
+  const color = useToolsStore((s) => s.color);
+  const toolWidth = useToolsStore((s) => s.width);
+  const drawing = DRAWING_TOOLS.includes(tool);
+  const { state: ds, handlers: dh } = useDrawingTool(pageEntryId, meta, pageEl, tool, { color, width: toolWidth, fontSize: 12 },
+    (id, a) => { if (a.kind === "note") setOpenNote(id); });
 
   const setD = (d: Drag | null) => { dragRef.current = d; setDrag(d); };
   const apply = (a: Annotation): Annotation => {
@@ -140,6 +146,15 @@ export default function AnnotationOverlay({ annotations, meta, pageEl }: Props) 
     }
   };
 
+  const renderPreview = () => {
+    const st = ds.start!, cur = ds.current!, col = css(color);
+    if (tool === "ink") return <path d={ds.points.map((p, i) => `${i ? "L" : "M"} ${p.x} ${p.y}`).join(" ")} fill="none" stroke={col} strokeWidth={toolWidth} strokeLinecap="round" strokeLinejoin="round" pointerEvents="none" />;
+    if (tool === "rect") { const b = normalizeBox(st.x, st.y, cur.x, cur.y); return <rect x={b.x} y={b.y} width={b.width} height={b.height} fill="none" stroke={col} strokeWidth={toolWidth} pointerEvents="none" />; }
+    if (tool === "arrow") return <line x1={st.x} y1={st.y} x2={cur.x} y2={cur.y} stroke={col} strokeWidth={toolWidth} strokeLinecap="round" pointerEvents="none" />;
+    if (tool === "freetext") { const b = normalizeBox(st.x, st.y, cur.x, cur.y); return <rect x={b.x} y={b.y} width={b.width} height={b.height} fill="none" stroke="var(--accent)" strokeWidth={1 / scale} strokeDasharray={`${4 / scale} ${3 / scale}`} pointerEvents="none" />; }
+    return null;
+  };
+
   const sel = shown.find((a) => a.id === selectedId);
   const hs = 8 / scale;
   const note = openNote ? shown.find((a) => a.id === openNote && a.kind === "note") : undefined;
@@ -147,8 +162,8 @@ export default function AnnotationOverlay({ annotations, meta, pageEl }: Props) 
 
   return (
     <>
-      <div className="annotationOverlay" onPointerMove={onMove} onPointerUp={end} onPointerCancel={end}
-        style={{ width: W, height: H, inset: "auto", left: 0, top: 0, transformOrigin: "0 0", transform: overlayTransform(rotation, W, H), pointerEvents: "none" }}>
+      <div className="annotationOverlay" {...(drawing ? dh : { onPointerMove: onMove, onPointerUp: end, onPointerCancel: end })}
+        style={{ width: W, height: H, inset: "auto", left: 0, top: 0, transformOrigin: "0 0", transform: overlayTransform(rotation, W, H), pointerEvents: drawing ? "auto" : "none", touchAction: drawing ? "none" : undefined, cursor: drawing ? "crosshair" : undefined }}>
         {shown.map((a) => a.kind === "freetext" ? (
           <FreeTextBox key={a.id} a={a} scale={scale} heightPt={heightPt} interactive={interactive} selected={a.id === selectedId}
             onPointerDown={(e) => begin(e, a, "move")} onPointerUp={() => undefined} />
@@ -156,6 +171,7 @@ export default function AnnotationOverlay({ annotations, meta, pageEl }: Props) 
         <svg width={W} height={H}>
           <g transform={`scale(${scale}) translate(0, ${heightPt}) scale(1,-1)`}>
             {shown.map(renderSvg)}
+            {ds.active && ds.start && ds.current ? renderPreview() : null}
             {sel && interactive ? (() => {
               const b = boundsOf(sel);
               return <g>

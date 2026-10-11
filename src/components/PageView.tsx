@@ -3,6 +3,7 @@ import { useDocumentStore } from "../store/document";
 import PageCanvas from "./PageCanvas";
 import TextLayer from "./TextLayer";
 import EditOverlay from "./EditOverlay";
+import { useToolsStore } from "../store/tools";
 import AnnotationOverlay from "./AnnotationOverlay";
 
 interface Props { scale: number }
@@ -33,6 +34,7 @@ export default function PageView({ scale }: Props) {
             data-page-entry={entry.id} data-scale={scale} data-rotation={entry.rotation}
             onClick={(e) => {
               if ((e.target as Element).closest(".annotationOverlay, .notePopover")) return;
+              if (useToolsStore.getState().tool !== "select") return;
               selectAnnotation(null);
               if (window.getSelection()?.isCollapsed) select([entry.id], e.metaKey || e.ctrlKey ? "toggle" : "replace");
             }}>
