@@ -19,6 +19,7 @@ export default function EditHandles({ edit, scale, heightPt, onReopen }: { edit:
   const region = regionOf(edit.boxes);
 
   const start = (mode: Mode) => (e: React.PointerEvent<HTMLElement>) => {
+    if (e.button !== 0) return;
     e.stopPropagation();
     e.currentTarget.setPointerCapture?.(e.pointerId);
     gesture.current = { mode, startX: e.clientX, startY: e.clientY };
@@ -28,7 +29,20 @@ export default function EditHandles({ edit, scale, heightPt, onReopen }: { edit:
   const delta = (e: React.PointerEvent<HTMLElement>, g: Gesture) => ({ dx: (e.clientX - g.startX) / scale, dy: -(e.clientY - g.startY) / scale });
   const move = (e: React.PointerEvent<HTMLElement>) => {
     const g = gesture.current;
-    if (g) setPreview(delta(e, g));
+    if (g && e.buttons !== 0) setPreview(delta(e, g));
+  };
+  const cancel = () => {
+    gesture.current = null;
+    setActive(null);
+    setPreview({ dx: 0, dy: 0 });
+  };
+  const changeFont = async (font: EditFont) => {
+    const cur = useDocumentStore.getState().edits.find((x) => x.id === edit.id);
+    if (!cur) return;
+    const region = cur.region ?? regionOf(cur.boxes);
+    const m = await measureFor(font);
+    const lay = layoutBlock(cur.text, region, cur.fontSize, cur.lineHeight ?? cur.fontSize * 1.2, m);
+    useDocumentStore.getState().updateEdit(cur.id, { font, boxes: coverBoxes(lay, region), region });
   };
   const end = async (e: React.PointerEvent<HTMLElement>) => {
     const g = gesture.current;
@@ -69,8 +83,8 @@ export default function EditHandles({ edit, scale, heightPt, onReopen }: { edit:
     <div className="edit-handles" style={style} data-edit-handles={edit.id}>
       <div className="edit-body" data-testid="edit-body" style={{ inset: 0 }} onClick={(e) => { e.stopPropagation(); onReopen(edit); }} />
       <div className="edit-handles-bar" onClick={(e) => e.stopPropagation()}>
-        <span className="edit-drag" data-testid="edit-drag" title="Drag to move" onPointerDown={start("drag")} onPointerMove={move} onPointerUp={end}>⠿</span>
-        <select data-testid="edit-font" value={font} onChange={(e) => useDocumentStore.getState().updateEdit(edit.id, { font: e.target.value as EditFont })}>
+        <span className="edit-drag" data-testid="edit-drag" title="Drag to move" onPointerDown={start("drag")} onPointerMove={move} onPointerUp={end} onPointerCancel={cancel} onLostPointerCapture={cancel}>⠿</span>
+        <select data-testid="edit-font" value={font} onChange={(e) => void changeFont(e.target.value as EditFont)}>
           {FAMILIES.map((f) => (
             <optgroup key={f.key} label={f.label}>
               {EDIT_FONTS.filter((n) => fontFamily(n) === f.key).map((n) => <option key={n} value={n}>{n.includes("-") ? n.split("-")[1] : "regular"}</option>)}
@@ -79,7 +93,7 @@ export default function EditHandles({ edit, scale, heightPt, onReopen }: { edit:
         </select>
         <button type="button" data-testid="edit-delete" onClick={() => useDocumentStore.getState().removeEdit(edit.id)}>Delete</button>
       </div>
-      <div className="edit-width" data-testid="edit-width" title="Drag to change width" onPointerDown={start("width")} onPointerMove={move} onPointerUp={end} />
+      <div className="edit-width" data-testid="edit-width" title="Drag to change width" onPointerDown={start("width")} onPointerMove={move} onPointerUp={end} onPointerCancel={cancel} onLostPointerCapture={cancel} />
     </div>
   );
 }

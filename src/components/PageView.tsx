@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useDocumentStore } from "../store/document";
 import PageCanvas from "./PageCanvas";
 import TextLayer from "./TextLayer";
@@ -45,6 +45,9 @@ export default function PageView({ scale }: Props) {
   const tool = useToolsStore((s) => s.tool);
   const [open, setOpen] = useState<OpenBlock | null>(null);
   const [selectedEditId, setSelectedEditId] = useState<string | null>(null);
+  useEffect(() => {
+    if (selectedEditId && (tool !== "edit" || !edits.some((e) => e.id === selectedEditId))) setSelectedEditId(null);
+  }, [tool, edits, selectedEditId]);
   const [hint, setHint] = useState<{ pageId: string; box: Box } | null>(null);
   const hoverFrame = useRef(0);
   const [heights, setHeights] = useState<Record<string, PageMetaPt>>({});
