@@ -4,10 +4,10 @@ import { ocrStore } from "../ocr/store";
 import { ocrPageToItems, ocrPageText } from "../ocr/layout";
 import { useDocumentStore, sourceReleasers } from "../store/document";
 
-export interface TextItemBox { str: string; x: number; y: number; width: number; height: number; fontSize: number }
+export interface TextItemBox { str: string; x: number; y: number; width: number; height: number; fontSize: number; fontName: string }
 export interface PageText { text: string; items: TextItemBox[]; ocr?: boolean }
 
-interface RawItem { str: string; transform: number[]; width: number; height: number; hasEOL?: boolean }
+interface RawItem { str: string; transform: number[]; width: number; height: number; hasEOL?: boolean; fontName?: string }
 
 export function linesFromItems(items: RawItem[]): string {
   const placed = items
@@ -66,6 +66,7 @@ export async function extractPageText(source: SourceFile, pageIndex: number): Pr
       const items: TextItemBox[] = raw.filter((i) => i.str.length > 0).map((i) => ({
         str: i.str, x: i.transform[4], y: i.transform[5], width: i.width, height: i.height,
         fontSize: Math.hypot(i.transform[2], i.transform[3]) || i.height,
+        fontName: (i as { fontName?: string }).fontName ?? "",
       }));
       const text = linesFromItems(raw);
       if (text.trim().length > 0 || !source.hash) return { text, items };

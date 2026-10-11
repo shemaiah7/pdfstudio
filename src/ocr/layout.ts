@@ -45,7 +45,7 @@ export function linesToOcrPage(rawLines: string[], meta: PageMetaPt, at = Date.n
 }
 
 export function ocrPageToItems(page: OcrPage): TextItemBox[] {
-  return page.lines.flatMap((l) => l.words.map((w) => ({ str: w.text, x: w.box.x, y: w.box.y, width: w.box.width, height: w.box.height, fontSize: l.box.height })));
+  return page.lines.flatMap((l) => l.words.map((w) => ({ str: w.text, x: w.box.x, y: w.box.y, width: w.box.width, height: w.box.height, fontSize: l.box.height, fontName: "ocr" })));
 }
 
 export function ocrPageText(page: OcrPage): string {
