@@ -14,3 +14,6 @@ export const ASK_PASSAGES = 12;
 export const EMBED_BATCH = 16;
 export const QUERY_PREFIX = "task: search result | query: ";
 export const DOC_PREFIX = "title: none | text: ";
+// Must match the installed onnxruntime-web version in package-lock.json (production loads its runtime from the CDN).
+export const ORT_VERSION = "1.31.0-dev.20260914-8d85527a0";
+export const cdnWasmPaths = (version: string) => `https://cdn.jsdelivr.net/npm/onnxruntime-web@${version}/dist/`;

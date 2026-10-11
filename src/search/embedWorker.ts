@@ -1,6 +1,11 @@
 /// <reference lib="webworker" />
 import { disposeEmbedModel, embedTexts, loadEmbedModel, type EmbedModel, type ProgressInfo } from "./embedModel";
+import { env } from "@huggingface/transformers";
+import { cdnWasmPaths, ORT_VERSION } from "./constants";
 import type { WorkerIn, WorkerOut } from "./embedClient";
+
+// Production builds drop the ONNX runtime binaries (over the 25 MiB asset cap); fetch them from the CDN. Dev uses local files.
+if (import.meta.env.PROD) env.backends.onnx.wasm!.wasmPaths = cdnWasmPaths(ORT_VERSION);
 
 let model: EmbedModel | null = null;
 let device: "webgpu" | "wasm" | null = null;
