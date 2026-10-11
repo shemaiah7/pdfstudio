@@ -7,7 +7,7 @@ import { overlayTransform } from "./EditOverlay";
 import { boundsOf, moveAnnotation, resizeAnnotation, type Handle } from "./annotationHandles";
 import NotePopover from "./NotePopover";
 import { useDrawingTool, DRAWING_TOOLS } from "./useDrawingTool";
-import { fitSignature } from "../signature/image";
+import { fitSignatureOnPage } from "../signature/image";
 
 interface Props { pageEntryId: string; annotations: Annotation[]; meta: PageMeta; pageEl: () => HTMLElement | null }
 
@@ -22,8 +22,8 @@ const patchFrom = (a: Annotation): AnnotationPatch => {
 const HANDLES: Handle[] = ["nw", "ne", "sw", "se"];
 const RESIZABLE = new Set(["freetext", "signature", "shape"]);
 
-function FreeTextBox({ a, scale, heightPt, interactive, selected, onPointerDown, onPointerUp }: {
-  a: Extract<Annotation, { kind: "freetext" }>; scale: number; heightPt: number; interactive: boolean; selected: boolean;
+function FreeTextBox({ a, scale, heightPt, rotation, interactive, selected, onPointerDown, onPointerUp }: {
+  a: Extract<Annotation, { kind: "freetext" }>; scale: number; heightPt: number; rotation: number; interactive: boolean; selected: boolean;
   onPointerDown(e: React.PointerEvent): void; onPointerUp(e: React.PointerEvent): void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -34,10 +34,14 @@ function FreeTextBox({ a, scale, heightPt, interactive, selected, onPointerDown,
   }, [a.text]);
   useEffect(() => { if (a.text === "") ref.current?.focus(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const b = a.box;
+  // The box is in unrotated page space; the text is laid out upright in the viewer's frame and counter-rotated about the box centre.
+  const sideways = rotation % 180 !== 0;
+  const vw = (sideways ? b.height : b.width) * scale, vh = (sideways ? b.width : b.height) * scale;
+  const cx = (b.x + b.width / 2) * scale, cy = (heightPt - b.y - b.height / 2) * scale;
   return (
     <div ref={ref} className={`freetext hit${selected ? " selected" : ""}`} data-annotation-id={a.id}
       contentEditable="plaintext-only" suppressContentEditableWarning spellCheck={false}
-      style={{ left: b.x * scale, top: (heightPt - b.y - b.height) * scale, width: b.width * scale, minHeight: b.height * scale, fontSize: a.fontSize * scale, color: css(a.color), pointerEvents: interactive ? "auto" : "none" }}
+      style={{ left: cx - vw / 2, top: cy - vh / 2, width: vw, minHeight: vh, transform: rotation ? `rotate(${-rotation}deg)` : undefined, fontSize: a.fontSize * scale, color: css(a.color), pointerEvents: interactive ? "auto" : "none" }}
       onPointerDown={(e) => { if (document.activeElement !== e.currentTarget) onPointerDown(e); }}
       onPointerUp={onPointerUp}
       onBlur={(e) => {
@@ -71,7 +75,7 @@ export default function AnnotationOverlay({ pageEntryId, annotations, meta, page
     const img = new Image();
     img.onerror = () => useToolsStore.getState().setTool("select");
     img.onload = () => {
-      const f = fitSignature(img.naturalWidth, img.naturalHeight, widthPt);
+      const f = fitSignatureOnPage(img.naturalWidth, img.naturalHeight, widthPt, heightPt, rotation);
       const box = { x: Math.min(Math.max(0, p.x - f.width / 2), Math.max(0, widthPt - f.width)), y: Math.min(Math.max(0, p.y - f.height / 2), Math.max(0, heightPt - f.height)), width: f.width, height: f.height };
       const { addAnnotation, selectAnnotation } = useDocumentStore.getState();
       const id = addAnnotation({ kind: "signature", pageEntryId, box, png, color: [0, 0, 0] });
@@ -163,7 +167,11 @@ export default function AnnotationOverlay({ pageEntryId, annotations, meta, page
           <rect x={4} y={11} width={9} height={2} fill="white" />
         </g>;
       case "signature":
-        return <g key={a.id} {...hit(a)}><image href={a.png} x={a.box.x} y={-(a.box.y + a.box.height)} width={a.box.width} height={a.box.height} transform="scale(1,-1)" preserveAspectRatio="none" /></g>;
+      {
+        const sideways = rotation % 180 !== 0, vw = sideways ? a.box.height : a.box.width, vh = sideways ? a.box.width : a.box.height;
+        const cx = a.box.x + a.box.width / 2, cy = a.box.y + a.box.height / 2;
+        return <g key={a.id} {...hit(a)}><image href={a.png} x={-vw / 2} y={-vh / 2} width={vw} height={vh} transform={`translate(${cx},${cy}) rotate(${rotation}) scale(1,-1)`} preserveAspectRatio="none" /></g>;
+      }
       default:
         return null;
     }
@@ -188,7 +196,7 @@ export default function AnnotationOverlay({ pageEntryId, annotations, meta, page
       <div className="annotationOverlay" {...(placing ? { onPointerDown: placeSignature } : drawing ? dh : { onPointerMove: onMove, onPointerUp: end, onPointerCancel: end })}
         style={{ width: W, height: H, inset: "auto", left: 0, top: 0, transformOrigin: "0 0", transform: overlayTransform(rotation, W, H), pointerEvents: drawing || placing ? "auto" : "none", touchAction: drawing ? "none" : undefined, cursor: drawing || placing ? "crosshair" : undefined }}>
         {shown.map((a) => a.kind === "freetext" ? (
-          <FreeTextBox key={a.id} a={a} scale={scale} heightPt={heightPt} interactive={interactive} selected={a.id === selectedId}
+          <FreeTextBox key={a.id} a={a} scale={scale} heightPt={heightPt} rotation={rotation} interactive={interactive} selected={a.id === selectedId}
             onPointerDown={(e) => begin(e, a, "move")} onPointerUp={() => undefined} />
         ) : null)}
         <svg width={W} height={H}>

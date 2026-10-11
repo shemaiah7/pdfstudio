@@ -122,3 +122,33 @@ describe("writeAnnotations", () => {
     expect((d.get(PDFName.of("C")) as PDFArray).asArray().map(Number)).toEqual([1, 0, 0]);
   });
 });
+
+describe("rotated pages", () => {
+  const rot = { ...page, rotation: 90 as const };
+  const png = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
+  const stream = (doc: PDFDocument, ref: any) => new TextDecoder("latin1").decode(decodePDFRawStream(doc.context.lookup(ref) as PDFRawStream).decode());
+
+  it("free text gets a non-identity /Matrix on a rotated page and none when unrotated", async () => {
+    const a: Annotation = { id: "f", kind: "freetext", ...base, box: { x: 20, y: 200, width: 40, height: 150 }, text: "Hello", fontSize: 12 };
+    const [{ d, doc }] = await annotsOf(await buildDocument(sources, [rot], [], [a]));
+    const ap = doc.context.lookup((d.get(PDFName.of("AP")) as PDFDict).get(PDFName.of("N"))) as PDFRawStream;
+    const m = (ap.dict.get(PDFName.of("Matrix")) as PDFArray).asArray().map((n) => Math.round(Number(n)));
+    expect(m).toEqual([0, 1, -1, 0, 0, 0]);
+    expect((d.get(PDFName.of("Rect")) as PDFArray).asArray().map(Number)).toEqual([20, 200, 60, 350]);
+    const [{ d: d0 }] = await annotsOf(await buildDocument(sources, [page], [], [{ ...a, box: { x: 20, y: 200, width: 150, height: 40 } }]));
+    const ap0 = d0.context.lookup((d0.get(PDFName.of("AP")) as PDFDict).get(PDFName.of("N"))) as PDFRawStream;
+    expect(ap0.dict.has(PDFName.of("Matrix"))).toBe(false);
+  });
+
+  it("signature is drawn with a rotation matrix on a rotated page", async () => {
+    const a: Annotation = { id: "s", kind: "signature", ...base, box: { x: 20, y: 50, width: 30, height: 90 }, png };
+    const doc = await PDFDocument.load(await buildDocument(sources, [rot], [], [a]));
+    const contents = doc.getPage(0).node.Contents();
+    const refs = contents instanceof PDFArray ? contents.asArray() : [doc.getPage(0).node.get(PDFName.of("Contents"))];
+    const text = refs.map((r) => stream(doc, r)).join("\n");
+    const cm = [...text.matchAll(/([-\d.e]+) ([-\d.e]+) ([-\d.e]+) ([-\d.e]+) ([-\d.e]+) ([-\d.e]+) cm/g)].map((m) => m.slice(1, 7).map(Number));
+    // pdf-lib emits a pure 90deg rotation matrix [0 1 -1 0 0 0]
+    expect(cm.some(([a0, b, c, d0]) => Math.abs(a0) < 1e-6 && Math.abs(d0) < 1e-6 && Math.abs(b) > 0.5 && Math.abs(c) > 0.5)).toBe(true);
+  });
+});
+

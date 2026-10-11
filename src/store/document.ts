@@ -230,7 +230,7 @@ export const useDocumentStore = create<DocumentState>((set, get) => {
       // Explicit empty values (not deletion) so export also clears values already present in the source PDF.
       const empties = new Map<string, FormValue>();
       for (const f of fields) {
-        if (f.type === "unsupported") continue;
+        if (f.type === "unsupported" || f.readOnly) continue;
         empties.set(f.name, f.type === "checkbox" ? false : f.multiple ? [] : "");
       }
       formValues.set(sourceId, empties);

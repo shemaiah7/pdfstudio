@@ -241,6 +241,19 @@ describe("form values", () => {
   });
 });
 
+describe("clearForm read-only", () => {
+  it("skips read-only fields", async () => {
+    await s().openFiles([three()]);
+    const src = s().pages[0].sourceId;
+    s().setFormValue(src, "mrn", "123");
+    s().setFormValue(src, "name", "A");
+    const defs: FieldDef[] = [{ name: "mrn", type: "text", readOnly: true, widgets: [] }, { name: "name", type: "text", widgets: [] }];
+    s().clearForm(src, defs);
+    expect(s().formValues.get(src)?.has("mrn")).toBe(false);
+    expect(s().formValues.get(src)?.get("name")).toBe("");
+  });
+});
+
 describe("annotation store hardening", () => {
   beforeEach(async () => { await s().openFiles([three()]); });
   const mk = () => ({ kind: "note" as const, pageEntryId: s().pages[0].id, color: [0, 0, 0] as [number, number, number], x: 1, y: 2, text: "t" });

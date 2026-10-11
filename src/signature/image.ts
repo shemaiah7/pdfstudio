@@ -13,6 +13,16 @@ export function fitSignature(pngWidth: number, pngHeight: number, pageWidthPt: n
   return { x: 0, y: 0, width, height: pngWidth > 0 ? (width * pngHeight) / pngWidth : 0 };
 }
 
+/**
+ * Page-space box size for a signature placed at 30% of the *visual* width. The box lives in unrotated page space,
+ * so on 90/270 pages its width and height are swapped relative to what the user sees.
+ */
+export function fitSignatureOnPage(pngWidth: number, pngHeight: number, widthPt: number, heightPt: number, rotation: number): Box {
+  const sideways = rotation % 180 !== 0;
+  const f = fitSignature(pngWidth, pngHeight, sideways ? heightPt : widthPt);
+  return sideways ? { x: 0, y: 0, width: f.height, height: f.width } : f;
+}
+
 /** Crop transparent margins; falls back to the source canvas if pixels are unreadable or empty. */
 export function trimToPng(canvas: HTMLCanvasElement): string {
   try {

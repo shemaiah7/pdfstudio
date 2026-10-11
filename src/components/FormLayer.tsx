@@ -25,27 +25,31 @@ export default function FormLayer({ sourceId, sourcePageIndex, fields, meta }: P
           const r = w.rect;
           const style = { left: r.x * scale, top: (heightPt - r.y - r.height) * scale, width: r.width * scale, height: r.height * scale };
           const key = `${f.name}:${i}`;
+          const ro = f.readOnly ? { title: "This field is read-only" } : {};
           const v = values?.has(f.name) ? values.get(f.name) : f.value;
           switch (f.type) {
             case "text":
-              return <input key={key} type="text" data-field={f.name} style={style} value={typeof v === "string" ? v : ""} onChange={(e) => set(f.name, e.target.value)} />;
+              if (f.multiline) {
+                return <textarea key={key} data-field={f.name} style={style} maxLength={f.maxLength} readOnly={f.readOnly} {...ro} value={typeof v === "string" ? v : ""} onChange={(e) => set(f.name, e.target.value)} />;
+              }
+              return <input key={key} type="text" data-field={f.name} style={style} maxLength={f.maxLength} readOnly={f.readOnly} {...ro} value={typeof v === "string" ? v : ""} onChange={(e) => set(f.name, e.target.value)} />;
             case "checkbox":
-              return <input key={key} type="checkbox" data-field={f.name} style={style} checked={v === true} onChange={(e) => set(f.name, e.target.checked)} />;
+              return <input key={key} type="checkbox" data-field={f.name} style={style} checked={v === true} disabled={f.readOnly} {...ro} onChange={(e) => set(f.name, e.target.checked)} />;
             case "radio": {
               const opt = f.options?.[i] ?? "";
-              return <input key={key} type="radio" name={f.name} value={opt} data-field={f.name} style={style} checked={v === opt} onChange={() => set(f.name, opt)} />;
+              return <input key={key} type="radio" name={f.name} value={opt} data-field={f.name} style={style} checked={v === opt} disabled={f.readOnly} {...ro} onChange={() => set(f.name, opt)} />;
             }
             case "dropdown":
               if (f.multiple) {
                 return (
-                  <select key={key} multiple data-field={f.name} style={style} value={Array.isArray(v) ? v : []}
+                  <select key={key} multiple data-field={f.name} style={style} disabled={f.readOnly} {...ro} value={Array.isArray(v) ? v : []}
                     onChange={(e) => set(f.name, Array.from(e.target.selectedOptions, (o) => o.value))}>
                     {f.options?.map((o) => <option key={o} value={o}>{o}</option>)}
                   </select>
                 );
               }
               return (
-                <select key={key} data-field={f.name} style={style} value={typeof v === "string" ? v : ""} onChange={(e) => set(f.name, e.target.value)}>
+                <select key={key} data-field={f.name} style={style} disabled={f.readOnly} {...ro} value={typeof v === "string" ? v : ""} onChange={(e) => set(f.name, e.target.value)}>
                   <option value="" />
                   {f.options?.map((o) => <option key={o} value={o}>{o}</option>)}
                 </select>

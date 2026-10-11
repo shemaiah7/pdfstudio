@@ -125,6 +125,8 @@ body { background: var(--bg); color: var(--text); font-family: system-ui, sans-s
 
 /* Form filling layer */
 .formLayer { position: absolute; left: 0; top: 0; transform-origin: 0 0; pointer-events: none; }
-.formLayer input, .formLayer select { position: absolute; box-sizing: border-box; font: 12px Helvetica, Arial, sans-serif; background: rgba(173, 216, 230, 0.35); border: 1px solid rgba(0,0,0,0.25); color: #111; color-scheme: light; pointer-events: auto; }
+.formLayer input, .formLayer select, .formLayer textarea { position: absolute; box-sizing: border-box; font: 12px Helvetica, Arial, sans-serif; background: rgba(173, 216, 230, 0.35); border: 1px solid rgba(0,0,0,0.25); color: #111; color-scheme: light; pointer-events: auto; }
+.formLayer textarea { resize: none; }
+.formLayer input[readonly], .formLayer textarea[readonly], .formLayer :disabled { background: rgba(128, 128, 128, 0.25); }
 .formLayer input[type=checkbox], .formLayer input[type=radio] { margin: 0; accent-color: var(--accent); }
 .formLayer .unsupportedField { position: absolute; box-sizing: border-box; border: 1px dashed rgba(0,0,0,0.3); background: rgba(128,128,128,0.15); pointer-events: auto; }

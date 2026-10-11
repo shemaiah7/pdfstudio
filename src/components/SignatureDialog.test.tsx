@@ -2,10 +2,12 @@
 import { describe, it, expect, afterEach, beforeEach, vi } from "vitest";
 import { render, screen, fireEvent, cleanup, waitFor } from "@testing-library/react";
 import SignatureDialog from "./SignatureDialog";
+import { useToolsStore } from "../store/tools";
 
 const PNG = "data:image/png;base64,AA==";
 beforeEach(() => {
   localStorage.clear();
+  useToolsStore.getState().setMessage(null);
   const ctx = { fillText: vi.fn(), measureText: () => ({ width: 40 }), clearRect: vi.fn(), fillRect: vi.fn(), font: "", fillStyle: "", textBaseline: "" };
   vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(ctx as unknown as CanvasRenderingContext2D);
   vi.spyOn(HTMLCanvasElement.prototype, "toDataURL").mockReturnValue(PNG);
@@ -56,7 +58,7 @@ describe("SignatureDialog", () => {
     fireEvent.click(screen.getByTestId("sig-remember"));
     fireEvent.click(screen.getByTestId("sig-confirm"));
     await waitFor(() => expect(onConfirm).toHaveBeenCalled());
-    expect((await screen.findByTestId("sig-error")).textContent).toContain("storage full");
+    expect(useToolsStore.getState().message).toBe("Couldn't remember the signature in this browser");
   });
   it("closes on Escape", () => {
     const onClose = vi.fn();

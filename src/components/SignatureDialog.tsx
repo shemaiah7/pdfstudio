@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useToolsStore } from "../store/tools";
 import { canRemember, forgetSignature, loadSignature, saveSignature } from "../signature/storage";
 import { scaledSize, trimToPng, whiteToTransparent } from "../signature/image";
 
@@ -31,7 +32,7 @@ export default function SignatureDialog({ onConfirm, onClose }: Props) {
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
   const finish = (png: string) => {
-    if (remember && rememberable && !saveSignature(png)) setError("Couldn't remember this signature (storage full)");
+    if (remember && rememberable && !saveSignature(png)) useToolsStore.getState().setMessage("Couldn't remember the signature in this browser");
     onConfirm(png);
   };
   const pos = (e: React.PointerEvent) => {

@@ -1,4 +1,4 @@
-import { PDFDocument, PDFFont, PDFPage, StandardFonts, degrees, rgb } from "pdf-lib";
+import { PDFBool, PDFDocument, PDFFont, PDFName, PDFPage, StandardFonts, degrees, rgb } from "pdf-lib";
 import { layoutInBoxes } from "./layout";
 import { toWinAnsi } from "./winansi";
 import { ensureAcroFormDR, isDegenerate, writeAnnotations } from "./annotations";
@@ -78,7 +78,7 @@ export async function buildDocument(
     const pageAnns = annotations.filter((a) => a.pageEntryId === entry.id);
     if (pageAnns.length) {
       helv ??= await out.embedFont(StandardFonts.Helvetica);
-      await writeAnnotations(out, copied, pageAnns, { x: ox, y: oy }, { helv });
+      await writeAnnotations(out, copied, pageAnns, { x: ox, y: oy }, { helv }, (((base + entry.rotation) % 360) + 360) % 360);
       if (pageAnns.some((a) => a.kind === "freetext" && !isDegenerate(a))) wroteFreeText = true;
     }
   }
@@ -90,7 +90,8 @@ export async function buildDocument(
       const defs = readFieldsFromDoc(srcDoc);
       if (!defs.length) continue;
       const { renames } = rebuildAcroForm(out, srcDoc, copiedPages);
-      applyFormValues(out, formValues.get(id) ?? new Map(), defs, renames);
+      const failed = applyFormValues(out, formValues.get(id) ?? new Map(), defs, renames);
+      if (failed.length) onWarning?.(`Could not save fields: ${failed.join(", ")}`);
       if (renames.size) onWarning?.(`Duplicate form field names in ${sources.get(id)!.name} were renamed`);
       anyFields = true;
     } catch {
@@ -99,5 +100,13 @@ export async function buildDocument(
   }
 
   if (wroteFreeText && helv) ensureAcroFormDR(out, helv);
-  return out.save({ updateFieldAppearances: anyFields });
+  if (!anyFields) return out.save({ updateFieldAppearances: false });
+  try {
+    return await out.save({ updateFieldAppearances: true });
+  } catch {
+    // Text outside WinAnsi can't be drawn into a field appearance; let the viewer redraw it instead.
+    out.getForm().acroForm.dict.set(PDFName.of("NeedAppearances"), PDFBool.True);
+    onWarning?.("Some form text will be redrawn by the PDF viewer");
+    return out.save({ updateFieldAppearances: false });
+  }
 }

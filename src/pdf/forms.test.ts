@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { PDFDocument, PDFName, PDFDict } from "pdf-lib";
 import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
 import { readFields, fieldsOnPage } from "./forms";
+import { readFieldsFromDoc, applyFormValues } from "./formFill";
 import { buildDocument } from "./pageOps";
 import type { SourceFile } from "./types";
 import { loadFixture } from "../test/loadFixture";
@@ -158,5 +159,51 @@ describe("initial values and clearing", () => {
     expect(f2.getRadioGroup("size").getSelected()).toBeUndefined();
     expect(f2.getDropdown("color").getSelected()).toEqual([]);
     expect(defs.length).toBeGreaterThan(0);
+  });
+});
+
+const modified = async (fn: (form: ReturnType<PDFDocument["getForm"]>) => void, id = "m"): Promise<SourceFile> => {
+  const doc = await PDFDocument.load(src().bytes);
+  fn(doc.getForm());
+  return { id, name: "m.pdf", bytes: await doc.save(), pageCount: 2 };
+};
+
+describe("final fixes: export robustness", () => {
+  it("non-WinAnsi form text does not block export; warns and sets NeedAppearances", async () => {
+    const warnings: string[] = [];
+    const text = "\u2265 140 Nguy\u1EC5n";
+    const out = await buildDocument(new Map([["f", src()]]), pages, [], [], values({ name: text }), (m) => warnings.push(m));
+    expect(warnings).toContain("Some form text will be redrawn by the PDF viewer");
+    const doc = await PDFDocument.load(out);
+    expect(doc.getForm().getTextField("name").getText()).toBe(text);
+    const acro = doc.context.lookup(doc.catalog.get(PDFName.of("AcroForm"))!) as PDFDict;
+    expect(String(acro.get(PDFName.of("NeedAppearances")))).toBe("true");
+  });
+
+  it("reads maxLength, readOnly and multiline from fields", async () => {
+    const s = await modified((f) => { f.getTextField("name").setMaxLength(8); f.getTextField("name").enableReadOnly(); f.getTextField("notes").enableMultiline(); }, "m1");
+    const by = Object.fromEntries((await readFields(s)).map((f) => [f.name, f]));
+    expect(by.name).toMatchObject({ maxLength: 8, readOnly: true, multiline: false });
+    expect(by.notes).toMatchObject({ multiline: true, readOnly: false });
+    expect(by.notes.maxLength).toBeUndefined();
+    expect(by.agree.readOnly).toBe(false);
+  });
+
+  it("applyFormValues returns failing names, keeps going, and skips read-only fields", async () => {
+    const s = await modified((f) => { f.getTextField("name").setMaxLength(8); f.getTextField("addr.street").enableReadOnly(); }, "m2");
+    const doc = await PDFDocument.load(s.bytes);
+    const defs = readFieldsFromDoc(doc);
+    const failed = applyFormValues(doc, new Map<string, string | boolean | string[]>([["name", "0123456789"], ["notes", "ok"], ["addr.street", "X"]]), defs);
+    expect(failed).toEqual(["name"]);
+    expect(doc.getForm().getTextField("notes").getText()).toBe("ok");
+    expect(doc.getForm().getTextField("addr.street").getText() ?? "").toBe("");
+  });
+
+  it("buildDocument warns with the names of fields that could not be saved", async () => {
+    const s = await modified((f) => f.getTextField("name").setMaxLength(8), "m3");
+    const warnings: string[] = [];
+    const out = await buildDocument(new Map([["m3", s]]), [{ id: "p0", sourceId: "m3", sourcePageIndex: 0, rotation: 0 }], [], [], new Map([["m3", new Map([["name", "0123456789"], ["agree", true]])]]), (m) => warnings.push(m));
+    expect(warnings).toEqual(["Could not save fields: name"]);
+    expect((await PDFDocument.load(out)).getForm().getCheckBox("agree").isChecked()).toBe(true);
   });
 });

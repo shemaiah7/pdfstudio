@@ -1,4 +1,4 @@
-import { PDFDocument, PDFPage, PDFName, PDFDict, PDFHexString, PDFFont, PDFRef } from "pdf-lib";
+import { degrees, PDFDocument, PDFPage, PDFName, PDFDict, PDFHexString, PDFFont, PDFRef } from "pdf-lib";
 import type { Annotation, RGB } from "./types";
 import { layoutInBoxes } from "./layout";
 import { toWinAnsi } from "./winansi";
@@ -32,7 +32,8 @@ function addAnnot(out: PDFDocument, page: PDFPage, dict: Record<string, unknown>
   return ref;
 }
 
-export async function writeAnnotations(out: PDFDocument, page: PDFPage, annotations: Annotation[], offset: { x: number; y: number }, fonts: { helv: PDFFont }): Promise<void> {
+export async function writeAnnotations(out: PDFDocument, page: PDFPage, annotations: Annotation[], offset: { x: number; y: number }, fonts: { helv: PDFFont }, rotation = 0): Promise<void> {
+  const rot = ((rotation % 360) + 360) % 360, sideways = rot % 180 !== 0;
   const ox = offset.x, oy = offset.y;
   for (const a of annotations) {
     if (isDegenerate(a)) continue;
@@ -95,19 +96,30 @@ export async function writeAnnotations(out: PDFDocument, page: PDFPage, annotati
       }
       case "freetext": {
         const b = a.box, x = b.x + ox, y = b.y + oy;
+        // Text is laid out upright in the viewer's frame (vw x vh); on a rotated page the AP /Matrix turns it back into /Rect.
+        const vw = sideways ? b.height : b.width, vh = sideways ? b.width : b.height;
+        const lx = rot ? 0 : x, ly = rot ? 0 : y;
         const measure = (t: string, s: number) => fonts.helv.widthOfTextAtSize(toWinAnsi(t), s);
-        const { lines, fontSize } = layoutInBoxes(a.text, [{ x: x + 2, y, width: b.width - 4, height: b.height }], a.fontSize, measure, { keepOverflow: true });
-        let content = `/Tx BMC q ${f(x)} ${f(y)} ${f(b.width)} ${f(b.height)} re W n BT /Helv ${f(fontSize)} Tf ${rgbOps(a.color, "rg")} `;
+        const { lines, fontSize } = layoutInBoxes(a.text, [{ x: lx + 2, y: ly, width: vw - 4, height: vh }], a.fontSize, measure, { keepOverflow: true });
+        let content = `/Tx BMC q ${f(lx)} ${f(ly)} ${f(vw)} ${f(vh)} re W n BT /Helv ${f(fontSize)} Tf ${rgbOps(a.color, "rg")} `;
         for (const l of lines) content += `1 0 0 1 ${f(l.x)} ${f(l.baseline)} Tm ${fonts.helv.encodeText(toWinAnsi(l.text)).toString()} Tj `;
         content += "ET Q EMC";
-        const ap = appearance(out, [x, y, x + b.width, y + b.height], content, { Font: { Helv: fonts.helv.ref } });
+        const ap = appearance(out, [lx, ly, lx + vw, ly + vh], content, { Font: { Helv: fonts.helv.ref } });
+        if (rot) {
+          const rad = (rot * Math.PI) / 180, c = Math.round(Math.cos(rad)), sn = Math.round(Math.sin(rad));
+          (out.context.lookup(ap) as any).dict.set(PDFName.of("Matrix"), out.context.obj([c, sn, -sn, c, 0, 0]));
+        }
         addAnnot(out, page, { Subtype: "FreeText", Rect: [x, y, x + b.width, y + b.height], Contents: pdfString(a.text), DA: `/Helv ${f(a.fontSize)} Tf ${rgbOps(a.color, "rg")}`, C: [1, 1, 1], AP: { N: ap } });
         break;
       }
       case "signature": {
         const bytes = Uint8Array.from(atob(a.png.split(",")[1]), (c) => c.charCodeAt(0));
         const img = a.png.startsWith("data:image/jpeg") || a.png.startsWith("data:image/jpg") ? await out.embedJpg(bytes) : await out.embedPng(bytes);
-        page.drawImage(img, { x: a.box.x + ox, y: a.box.y + oy, width: a.box.width, height: a.box.height });
+        // The image is drawn upright in the viewer's frame (vw x vh), rotated about its bottom-left corner so it fills the box.
+        const bx = a.box.x + ox, by = a.box.y + oy, bw = a.box.width, bh = a.box.height;
+        const vw = sideways ? bh : bw, vh = sideways ? bw : bh;
+        const origin = rot === 90 ? { x: bx + bw, y: by } : rot === 180 ? { x: bx + bw, y: by + bh } : rot === 270 ? { x: bx, y: by + bh } : { x: bx, y: by };
+        page.drawImage(img, { ...origin, width: vw, height: vh, rotate: degrees(rot) });
         break;
       }
     }

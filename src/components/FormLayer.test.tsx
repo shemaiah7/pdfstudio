@@ -73,3 +73,27 @@ describe("FormLayer", () => {
     expect(seen).toBe(false);
   });
 });
+
+describe("FormLayer field flags", () => {
+  const r = { pageIndex: 0, rect: { x: 0, y: 0, width: 50, height: 20 } };
+  const flagged: FieldDef[] = [
+    { name: "a", type: "text", maxLength: 8, widgets: [r] },
+    { name: "ro", type: "text", readOnly: true, widgets: [r] },
+    { name: "roc", type: "checkbox", readOnly: true, widgets: [r] },
+    { name: "ros", type: "dropdown", options: ["x"], readOnly: true, widgets: [r] },
+    { name: "ml", type: "text", multiline: true, widgets: [{ pageIndex: 0, rect: { x: 0, y: 0, width: 50, height: 60 } }] },
+  ];
+  const q = (c: HTMLElement, n: string) => c.querySelector(`[data-field=${n}]`) as HTMLInputElement;
+  it("sets maxLength, readOnly/disabled with title, and renders a textarea for multiline", () => {
+    const { container } = render(<FormLayer sourceId="src" sourcePageIndex={0} fields={flagged} meta={meta} />);
+    expect(q(container, "a").maxLength).toBe(8);
+    expect(q(container, "ro").readOnly).toBe(true);
+    expect(q(container, "ro").title).toBe("This field is read-only");
+    expect(q(container, "roc").disabled).toBe(true);
+    expect(q(container, "ros").disabled).toBe(true);
+    const ml = q(container, "ml");
+    expect(ml.tagName).toBe("TEXTAREA");
+    fireEvent.change(ml, { target: { value: "l1\nl2" } });
+    expect(val("ml")).toBe("l1\nl2");
+  });
+});
