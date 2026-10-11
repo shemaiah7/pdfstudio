@@ -58,10 +58,16 @@ async function start() {
   if (getState().model.status === "ready") { await getState().refreshIndex(); await getState().indexOpen(); }
 }
 
-function reveal(sourceId: SourceId, hit: Hit) {
+function reveal(sourceId: SourceId, hit: Hit, waited = 0) {
   const entry = useDocumentStore.getState().pages.find((p) => p.sourceId === sourceId && p.sourcePageIndex === hit.page);
-  if (!entry) return;
-  if (typeof document !== "undefined") document.getElementById(`page-${entry.id}`)?.scrollIntoView({ block: "start", behavior: "smooth" });
+  if (!entry || typeof document === "undefined") return;
+  const el = document.getElementById(`page-${entry.id}`);
+  if (!el) {
+    // A document just opened from the library may not have rendered yet: retry for up to 3 s.
+    if (waited < 3000) setTimeout(() => reveal(sourceId, hit, waited + 100), 100);
+    return;
+  }
+  el.scrollIntoView({ block: "start", behavior: "smooth" });
   const chunk = index.find((d) => d.hash === hit.hash)?.chunks[hit.chunkIndex];
   if (chunk) flashChunk(entry.id, chunk.text);
 }

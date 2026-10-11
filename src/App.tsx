@@ -6,7 +6,7 @@ import PageView from "./components/PageView";
 import Toolbar from "./components/Toolbar";
 import ToolPalette from "./components/ToolPalette";
 import ErrorBanner from "./components/ErrorBanner";
-import AiPanel from "./components/ai/AiPanel";
+import RightPanel from "./components/search/RightPanel";
 import { useToolsStore } from "./store/tools";
 import { useAiStore } from "./store/ai";
 import { captureSelection } from "./pdf/selection";
@@ -104,7 +104,7 @@ export default function App() {
         <div className="workspace">
           <ThumbnailSidebar />
           <PageView scale={scale} />
-          <aside className="rightpanel"><AiPanel /></aside>
+          <aside className="rightpanel"><RightPanel /></aside>
           <DropZone onFiles={handleFiles} empty={false} forceOver={dragging} />
         </div>
         </>
