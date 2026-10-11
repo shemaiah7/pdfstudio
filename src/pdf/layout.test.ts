@@ -72,3 +72,14 @@ describe("layoutInBoxes", () => {
     expect(r.lines.length).toBeGreaterThan(3);
   });
 });
+
+describe("layoutInBoxes width tolerance", () => {
+  const boxes = [{ x: 0, y: 100, width: 100, height: 14 }, { x: 0, y: 80, width: 100, height: 14 }];
+  const text = (pct: number) => ["aaaa", "b".repeat(Math.round((100 * (1 + pct)) / 5) - 5)].join(" "); // 5pt per char at 10pt
+  it("keeps text 3 % over the box width on one line but wraps at 10 %", () => {
+    const small = layoutInBoxes(text(0.03), boxes, 10, measure);
+    expect(measure(small.lines[0].text, 10)).toBeGreaterThan(100);
+    expect(small.lines).toHaveLength(1);
+    expect(layoutInBoxes(text(0.1), boxes, 10, measure).lines).toHaveLength(2);
+  });
+});

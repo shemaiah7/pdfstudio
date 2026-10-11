@@ -60,7 +60,8 @@ export interface PlacedLine { text: string; x: number; baseline: number; width: 
 /** Wrap sequentially: line k is limited to widths[k] (extra lines reuse the last width). */
 function wrapSequential(text: string, widths: number[], size: number, measure: Measure): string[] {
   const lines: string[] = [];
-  const widthFor = () => widths[Math.min(lines.length, widths.length - 1)];
+  // Tolerate a 5 % overhang so text that merely rounds past the original width does not wrap.
+  const widthFor = () => widths[Math.min(lines.length, widths.length - 1)] * 1.05 + 1;
   for (const para of text.split("\n")) {
     let line = "";
     for (const word of para.split(/\s+/).filter(Boolean)) {

@@ -26,11 +26,11 @@ test("edit a typed line in place and download", async ({ page }) => {
   const editor = page.getByTestId("block-editor");
   await expect(editor).toHaveText("three:0");
   await selectAll(editor);
-  await editor.type("thre:9");
+  await editor.type("three:9");
   await editor.press("Enter");
-  await expect(page.locator(".edit-line").first()).toHaveText("thre:9");
+  await expect(page.locator(".edit-line").first()).toHaveText("three:9");
   const text = await savedText(page);
-  expect(text).toContain("thre:9");
+  expect(text).toContain("three:9");
   // Edited native pages are flattened on export, so the covered original is gone.
   expect(text).not.toContain("three:0");
 });

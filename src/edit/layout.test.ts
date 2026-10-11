@@ -9,8 +9,8 @@ describe("layoutBlock", () => {
     expect(l.lines.map((x) => x.text)).toEqual(["aaaa bbbb cccc dddd"]);
     const l2 = layoutBlock("aaaaaaaaaaaa bbbbbbbbbbbb cccccccccccc", box, 10, 12, measure);
     expect(l2.lines.map((x) => x.text)).toEqual(["aaaaaaaaaaaa", "bbbbbbbbbbbb", "cccccccccccc"]);
-    expect(l2.lines[0].baseline).toBeCloseTo(136 - 8);
-    expect(l2.lines[1].baseline).toBeCloseTo(136 - 8 - 12);
+    expect(l2.lines[0].baseline).toBeCloseTo(136 - 10);
+    expect(l2.lines[1].baseline).toBeCloseTo(136 - 10 - 12);
     expect(l2.boxes[0]).toMatchObject({ x: 10, width: 100, height: 12 });
     expect(l2.boxes[2].height).toBeCloseTo(10.5);
     expect(l2.overflowLines).toBe(0);
@@ -23,6 +23,12 @@ describe("layoutBlock", () => {
     expect(small.lines).toHaveLength(1);
     expect(small.lines[0].width).toBe(100);
     expect(layoutBlock(over(0.1), b, 10, 12, measure).lines.length).toBeGreaterThan(1);
+  });
+  it("yields exactly one cover box for a single-line replacement of a single-line block", () => {
+    const region = { x: 10, y: 100, width: 100, height: 12 }; // fontSize 10: baseline 102, top = baseline + fontSize
+    const lay = layoutBlock("three:9", region, 10, 12, measure);
+    expect(lay.lines[0].baseline).toBeCloseTo(102);
+    expect(coverBoxes(lay, region)).toHaveLength(1);
   });
   it("breaks on newlines and reports overflow", () => {
     const l = layoutBlock("a\nb\nc\nd", box, 10, 12, measure);

@@ -22,6 +22,7 @@ True content-stream editing remains out of scope: no JavaScript library can rewr
 | Font change | Changing the font re-lays out the edit. |
 | Library cache | Library records carry `editsStamp`; they are used as a cache only when it equals the session stamp, so edited text never survives a reload in the index. |
 | Selecting edits | The first click on an existing edit selects it (handles); clicking its body reopens it. |
+| Export of edited typed pages | Flattened: the original page is rasterized at 200 DPI (capped at 20 MP), edits are drawn on top, and an invisible text layer carries the remaining text, so covered text cannot be extracted. Scanned pages keep their OCR text layer. If flattening fails the page is saved unflattened with a warning. |
 | Rejected | Re-embedding original fonts (subsets lack glyphs; CFF/Type1 cannot be re-embedded). Painting the block as an image (unsearchable). |
 
 ## Data model

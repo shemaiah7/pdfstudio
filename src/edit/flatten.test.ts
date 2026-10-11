@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { PDFDict, PDFDocument, PDFName, StandardFonts } from "pdf-lib";
 import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
-import { flattenPage, itemsToOcrPage } from "./flatten";
+import { cappedScale, flattenPage, itemsToOcrPage, MAX_RASTER_PIXELS } from "./flatten";
 import type { TextItemBox } from "../pdf/text";
 
 import { PNG_1X1 } from "../test/png";
@@ -43,5 +43,14 @@ describe("flattenPage", () => {
     expect(words).not.toContain("original");
     const xobjs = (await PDFDocument.load(bytes)).getPages()[0].node.Resources()!.lookup(PDFName.of("XObject"), PDFDict);
     expect(xobjs.keys()).toHaveLength(1);
+  });
+});
+
+describe("cappedScale", () => {
+  it("keeps the requested DPI for normal pages", () => { expect(cappedScale(612, 792, 200)).toBeCloseTo(200 / 72); });
+  it("reduces the DPI so a 36x48 in page stays within 20 MP", () => {
+    const w = 36 * 72, h = 48 * 72, s = cappedScale(w, h, 200);
+    expect(s).toBeLessThan(200 / 72);
+    expect(Math.ceil(w * s) * Math.ceil(h * s)).toBeLessThanOrEqual(MAX_RASTER_PIXELS);
   });
 });

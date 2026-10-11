@@ -42,6 +42,7 @@ export async function buildDocument(
   let helv: PDFFont | undefined;
   let wroteFreeText = false;
   let ocrWarned = false;
+  let flattenWarned = false;
   let deepOmitWarned = false;
   const copiedBySource = new Map<SourceId, PDFPage[]>();
 
@@ -92,11 +93,16 @@ export async function buildDocument(
     };
     // Edited native pages (not OCR scans, whose text is already a separate layer) are flattened when a rasterizer is supplied.
     if (pageEdits.length && opts.rasterize && opts.editedText && !ocrPages?.get(entry.id) && !pageEdits.some((e) => e.source === "ocr")) {
-      const items = (await opts.editedText(source, entry.sourcePageIndex)).filter((i) => i.str.trim() && !(EDIT_FONTS as readonly string[]).includes(i.fontName));
-      const raster = await opts.rasterize(source, entry.sourcePageIndex, FLATTEN_DPI);
-      helv ??= await out.embedFont(StandardFonts.Helvetica);
-      await flattenPage(out, copied, { ...raster, items, cropOrigin: { x: ox, y: oy } }, helv, drawEdits);
-      flattened = true;
+      try {
+        const items = (await opts.editedText(source, entry.sourcePageIndex)).filter((i) => i.str.trim() && !(EDIT_FONTS as readonly string[]).includes(i.fontName));
+        const raster = await opts.rasterize(source, entry.sourcePageIndex, FLATTEN_DPI);
+        helv ??= await out.embedFont(StandardFonts.Helvetica);
+        await flattenPage(out, copied, { ...raster, items, cropOrigin: { x: ox, y: oy } }, helv, drawEdits);
+        flattened = true;
+      } catch {
+        if (!flattenWarned) onWarning?.("Saved without flattening; covered text may remain in the file.");
+        flattenWarned = true;
+      }
     }
     if (pageEdits.length && !flattened) await drawEdits();
 

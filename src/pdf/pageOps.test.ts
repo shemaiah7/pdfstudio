@@ -217,4 +217,14 @@ describe("flatten edited native pages", () => {
   it("keeps the original text under the cover without a rasterizer", async () => {
     expect(await texts(await buildDocument(s(), [entry("a", 0)], [edit]))).toContain("three:0");
   });
+  it("falls back to the unflattened page and warns once when rasterizing fails", async () => {
+    const warnings: string[] = [];
+    const two = [{ ...edit }, { ...edit, id: "e2", pageEntryId: "a-1" }];
+    const out = await buildDocument(s(), [entry("a", 0), entry("a", 1)], two, [], new Map(), (m) => warnings.push(m), undefined, {
+      rasterize: async () => { throw new Error("boom"); },
+      editedText: async () => items,
+    });
+    expect(warnings).toEqual(["Saved without flattening; covered text may remain in the file."]);
+    expect(await texts(out)).toContain("three:0");
+  });
 });

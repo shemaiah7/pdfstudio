@@ -27,19 +27,28 @@ export function itemsToOcrPage(items: TextItemBox[]): OcrPage {
  * then an invisible text layer, so text hidden under an edit cannot be extracted from the output.
  */
 export async function flattenPage(doc: PDFDocument, page: PDFPage, input: FlattenInput, font: PDFFont, drawEdits?: () => Promise<void> | void): Promise<void> {
+  const image = await doc.embedPng(input.png); // before clearing, so a bad raster leaves the page intact for the caller's fallback
   page.node.set(PDFName.of("Contents"), doc.context.register(doc.context.flateStream("")));
-  const image = await doc.embedPng(input.png);
   const crop = page.getCropBox();
   page.drawImage(image, { x: crop.x, y: crop.y, width: crop.width, height: crop.height });
   await drawEdits?.();
   addInvisibleText(page, font, itemsToOcrPage(input.items), input.cropOrigin);
 }
 
+export const MAX_RASTER_PIXELS = 20_000_000;
+/** Scale (px per pt) for the requested DPI, reduced so widthPx * heightPx stays within MAX_RASTER_PIXELS. */
+export function cappedScale(widthPt: number, heightPt: number, dpi: number): number {
+  const scale = dpi / 72;
+  const px = widthPt * scale * (heightPt * scale);
+  return px > MAX_RASTER_PIXELS ? scale * Math.sqrt(MAX_RASTER_PIXELS / px) * 0.999 : scale;
+}
+
 /** Browser only: renders the original page unrotated at the given DPI. */
 export async function rasterizeWithPdfJs(source: SourceFile, pageIndex: number, dpi: number): Promise<{ png: Uint8Array; widthPt: number; heightPt: number }> {
   const { getPage } = await import("../pdf/render");
   const page = await getPage(source, pageIndex);
-  const scale = dpi / 72;
+  const pt = page.getViewport({ scale: 1, rotation: 0 });
+  const scale = cappedScale(pt.width, pt.height, dpi);
   const viewport = page.getViewport({ scale, rotation: 0 });
   const canvas = document.createElement("canvas");
   canvas.width = Math.ceil(viewport.width); canvas.height = Math.ceil(viewport.height);
