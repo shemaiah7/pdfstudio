@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { PDFDocument, PDFName, PDFDict, PDFArray, PDFStream } from "pdf-lib";
+import { PDFDocument, PDFName, PDFDict, PDFArray, PDFStream, PDFRawStream, decodePDFRawStream } from "pdf-lib";
 import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
 import { buildDocument } from "./pageOps";
 import { isDegenerate } from "./annotations";
@@ -97,5 +97,28 @@ describe("writeAnnotations", () => {
     const out = await buildDocument(off, [{ id: "p", sourceId: "o", sourcePageIndex: 0, rotation: 0 }], [], [a]);
     const [{ d }] = await annotsOf(out);
     expect((d.get(PDFName.of("Rect")) as PDFArray).asArray().map(Number)).toEqual([60, 110, 110, 140]);
+  });
+
+  it("free text appearance encodes WinAnsi characters above U+00FF", async () => {
+    const a: Annotation = { id: "f", kind: "freetext", ...base, box: { x: 20, y: 200, width: 150, height: 40 }, text: "It\u2019s \u2014 \u20AC5", fontSize: 12 };
+    const out = await buildDocument(sources, [page], [], [a]);
+    const [{ d, doc }] = await annotsOf(out);
+    const ap = doc.context.lookup((d.get(PDFName.of("AP")) as PDFDict).get(PDFName.of("N"))) as PDFRawStream;
+    const text = new TextDecoder("latin1").decode(decodePDFRawStream(ap).decode());
+    expect(text).toContain("<497492732097208035> Tj");
+  });
+
+  it("highlight drops empty boxes", async () => {
+    const a: Annotation = { id: "h", kind: "highlight", ...base, boxes: [{ x: 20, y: 350, width: 100, height: 24 }, { x: 20, y: 300, width: 100, height: 0 }] };
+    const out = await buildDocument(sources, [page], [], [a]);
+    const [{ d }] = await annotsOf(out);
+    expect((d.get(PDFName.of("QuadPoints")) as PDFArray).asArray().length).toBe(8);
+  });
+
+  it("clamps colour components", async () => {
+    const a: Annotation = { id: "r", kind: "shape", ...base, color: [2, NaN, -1], shape: "rect", x1: 10, y1: 10, x2: 110, y2: 60, width: 1 };
+    const out = await buildDocument(sources, [page], [], [a]);
+    const [{ d }] = await annotsOf(out);
+    expect((d.get(PDFName.of("C")) as PDFArray).asArray().map(Number)).toEqual([1, 0, 0]);
   });
 });

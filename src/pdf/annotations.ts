@@ -17,7 +17,9 @@ export function isDegenerate(a: Annotation): boolean {
 }
 
 const f = (n: number) => Number(n.toFixed(3));
-const rgbOps = (c: RGB, op: "RG" | "rg") => `${f(c[0])} ${f(c[1])} ${f(c[2])} ${op}`;
+const clamp01 = (n: number) => (Number.isNaN(n) ? 0 : Math.min(1, Math.max(0, n)));
+const clampRGB = (c: RGB): RGB => [clamp01(c[0]), clamp01(c[1]), clamp01(c[2])];
+const rgbOps = (c: RGB, op: "RG" | "rg") => { const k = clampRGB(c); return `${f(k[0])} ${f(k[1])} ${f(k[2])} ${op}`; };
 
 function appearance(out: PDFDocument, bbox: [number, number, number, number], content: string, resources: Record<string, unknown> = {}): PDFRef {
   const stream = out.context.stream(content, { Type: "XObject", Subtype: "Form", FormType: 1, BBox: bbox, Resources: resources } as any);
@@ -36,10 +38,12 @@ export async function writeAnnotations(out: PDFDocument, page: PDFPage, annotati
     if (isDegenerate(a)) continue;
     switch (a.kind) {
       case "highlight": {
+        const boxes = a.boxes.filter((b) => b.width > 0 && b.height > 0);
+        if (!boxes.length) break;
         const quads: number[] = [];
         let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
         let content = "/GS gs " + rgbOps(a.color, "rg") + " ";
-        for (const b of a.boxes) {
+        for (const b of boxes) {
           const x1 = b.x + ox, y1 = b.y + oy, x2 = x1 + b.width, y2 = y1 + b.height;
           quads.push(x1, y2, x2, y2, x1, y1, x2, y1);
           minX = Math.min(minX, x1); minY = Math.min(minY, y1); maxX = Math.max(maxX, x2); maxY = Math.max(maxY, y2);
@@ -47,7 +51,7 @@ export async function writeAnnotations(out: PDFDocument, page: PDFPage, annotati
         }
         const gs = out.context.register(out.context.obj({ Type: "ExtGState", BM: "Multiply", CA: 1, ca: 1 }));
         const ap = appearance(out, [minX, minY, maxX, maxY], content, { ExtGState: { GS: gs } });
-        addAnnot(out, page, { Subtype: "Highlight", Rect: [minX, minY, maxX, maxY], QuadPoints: quads, C: a.color, CA: 1, AP: { N: ap } });
+        addAnnot(out, page, { Subtype: "Highlight", Rect: [minX, minY, maxX, maxY], QuadPoints: quads, C: clampRGB(a.color), CA: 1, AP: { N: ap } });
         break;
       }
       case "note": {
@@ -56,7 +60,7 @@ export async function writeAnnotations(out: PDFDocument, page: PDFPage, annotati
         const ap = appearance(out, [x, y, x + s, y + s], content);
         const textRef = out.context.nextRef();
         const popupRef = out.context.register(out.context.obj({ Type: "Annot", Subtype: "Popup", Rect: [x + s, y - 60, x + s + 180, y + s], Parent: textRef, Open: false }));
-        out.context.assign(textRef, out.context.obj({ Type: "Annot", Subtype: "Text", F: 4, Rect: [x, y, x + s, y + s], Name: "Comment", Contents: pdfString(a.text), C: a.color, Popup: popupRef, AP: { N: ap } }));
+        out.context.assign(textRef, out.context.obj({ Type: "Annot", Subtype: "Text", F: 4, Rect: [x, y, x + s, y + s], Name: "Comment", Contents: pdfString(a.text), C: clampRGB(a.color), Popup: popupRef, AP: { N: ap } }));
         page.node.addAnnot(textRef);
         page.node.addAnnot(popupRef);
         break;
@@ -69,7 +73,7 @@ export async function writeAnnotations(out: PDFDocument, page: PDFPage, annotati
         let content = `${rgbOps(a.color, "RG")} ${f(a.width)} w 1 J 1 j `;
         for (const l of inkList) { content += `${l[0]} ${l[1]} m `; for (let i = 2; i < l.length; i += 2) content += `${l[i]} ${l[i + 1]} l `; content += "S "; }
         const ap = appearance(out, rect, content);
-        addAnnot(out, page, { Subtype: "Ink", Rect: rect, InkList: inkList, C: a.color, BS: { W: a.width }, AP: { N: ap } });
+        addAnnot(out, page, { Subtype: "Ink", Rect: rect, InkList: inkList, C: clampRGB(a.color), BS: { W: a.width }, AP: { N: ap } });
         break;
       }
       case "shape": {
@@ -79,13 +83,13 @@ export async function writeAnnotations(out: PDFDocument, page: PDFPage, annotati
           // Square annotations: Rect is the shape's own bounds; the border is drawn inset so it stays inside the BBox.
           const sq: [number, number, number, number] = [Math.min(x1, x2), Math.min(y1, y2), Math.max(x1, x2), Math.max(y1, y2)];
           const content = `${rgbOps(a.color, "RG")} ${f(w)} w ${f(sq[0] + w / 2)} ${f(sq[1] + w / 2)} ${f(sq[2] - sq[0] - w)} ${f(sq[3] - sq[1] - w)} re S`;
-          addAnnot(out, page, { Subtype: "Square", Rect: sq, C: a.color, BS: { W: w }, AP: { N: appearance(out, sq, content) } });
+          addAnnot(out, page, { Subtype: "Square", Rect: sq, C: clampRGB(a.color), BS: { W: w }, AP: { N: appearance(out, sq, content) } });
         } else {
           const ang = Math.atan2(y2 - y1, x2 - x1), hl = 6 + w * 2;
           const hx1 = x2 - hl * Math.cos(ang - Math.PI / 6), hy1 = y2 - hl * Math.sin(ang - Math.PI / 6);
           const hx2 = x2 - hl * Math.cos(ang + Math.PI / 6), hy2 = y2 - hl * Math.sin(ang + Math.PI / 6);
           const content = `${rgbOps(a.color, "RG")} ${f(w)} w 1 J 1 j ${f(x1)} ${f(y1)} m ${f(x2)} ${f(y2)} l S ${f(hx1)} ${f(hy1)} m ${f(x2)} ${f(y2)} l ${f(hx2)} ${f(hy2)} l S`;
-          addAnnot(out, page, { Subtype: "Line", Rect: rect, L: [x1, y1, x2, y2], LE: ["None", "OpenArrow"], C: a.color, BS: { W: w }, AP: { N: appearance(out, rect, content) } });
+          addAnnot(out, page, { Subtype: "Line", Rect: rect, L: [x1, y1, x2, y2], LE: ["None", "OpenArrow"], C: clampRGB(a.color), BS: { W: w }, AP: { N: appearance(out, rect, content) } });
         }
         break;
       }
@@ -94,7 +98,7 @@ export async function writeAnnotations(out: PDFDocument, page: PDFPage, annotati
         const measure = (t: string, s: number) => fonts.helv.widthOfTextAtSize(toWinAnsi(t), s);
         const { lines, fontSize } = layoutInBoxes(a.text, [{ x: x + 2, y, width: b.width - 4, height: b.height }], a.fontSize, measure, { keepOverflow: true });
         let content = `/Tx BMC q ${f(x)} ${f(y)} ${f(b.width)} ${f(b.height)} re W n BT /Helv ${f(fontSize)} Tf ${rgbOps(a.color, "rg")} `;
-        for (const l of lines) content += `1 0 0 1 ${f(l.x)} ${f(l.baseline)} Tm (${escapeLiteral(toWinAnsi(l.text))}) Tj `;
+        for (const l of lines) content += `1 0 0 1 ${f(l.x)} ${f(l.baseline)} Tm ${fonts.helv.encodeText(toWinAnsi(l.text)).toString()} Tj `;
         content += "ET Q EMC";
         const ap = appearance(out, [x, y, x + b.width, y + b.height], content, { Font: { Helv: fonts.helv.ref } });
         addAnnot(out, page, { Subtype: "FreeText", Rect: [x, y, x + b.width, y + b.height], Contents: pdfString(a.text), DA: `/Helv ${f(a.fontSize)} Tf ${rgbOps(a.color, "rg")}`, C: [1, 1, 1], AP: { N: ap } });
@@ -110,7 +114,6 @@ export async function writeAnnotations(out: PDFDocument, page: PDFPage, annotati
   }
 }
 
-function escapeLiteral(s: string) { return s.replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)"); }
 
 export function ensureAcroFormDR(out: PDFDocument, helv: PDFFont) {
   const existing = out.catalog.get(PDFName.of("AcroForm"));
