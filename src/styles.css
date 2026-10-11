@@ -82,3 +82,9 @@ body { background: var(--bg); color: var(--text); font-family: system-ui, sans-s
 .pagelink { background: none; border: 0; color: var(--accent); cursor: pointer; padding: 0; text-decoration: underline; font: inherit; }
 .facts { width: 100%; border-collapse: collapse; } .facts td, .facts th { text-align: left; padding: 4px 6px; border-bottom: 1px solid var(--border); vertical-align: top; }
 .ai-footer { margin-top: auto; padding: 8px 12px; border-top: 1px solid var(--border); font-size: 12px; opacity: 0.7; }
+
+.editOverlay { position: absolute; inset: 0; pointer-events: none; }
+.edit-box { position: absolute; background: white; }
+.edit-line { position: absolute; white-space: pre; line-height: 1; pointer-events: auto; user-select: text; color: black; }
+.ai-selection { margin: 0; padding: 8px 10px; border-left: 3px solid var(--accent); background: var(--bg); font-size: 13px; max-height: 120px; overflow: auto; }
+.ai-result textarea { width: 100%; box-sizing: border-box; font: inherit; padding: 6px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel); color: var(--text); }

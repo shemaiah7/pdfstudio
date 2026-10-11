@@ -6,6 +6,8 @@ import PageView from "./components/PageView";
 import Toolbar from "./components/Toolbar";
 import ErrorBanner from "./components/ErrorBanner";
 import AiPanel from "./components/ai/AiPanel";
+import { useAiStore } from "./store/ai";
+import { captureSelection } from "./pdf/selection";
 
 async function toBytes(files: File[]) {
   return Promise.all(files.map(async (f) => ({ name: f.name, bytes: new Uint8Array(await f.arrayBuffer()) })));
@@ -33,6 +35,12 @@ export default function App() {
     window.addEventListener("keydown", onKey);
     window.addEventListener("beforeunload", onUnload);
     return () => { window.removeEventListener("keydown", onKey); window.removeEventListener("beforeunload", onUnload); };
+  }, []);
+
+  useEffect(() => {
+    const onSel = () => { const sel = captureSelection(); if (sel) useAiStore.getState().setSelection(sel); };
+    document.addEventListener("selectionchange", onSel);
+    return () => document.removeEventListener("selectionchange", onSel);
   }, []);
 
   const handleFiles = useCallback(async (files: File[], mode: "open" | "add" | "auto" = "auto") => {

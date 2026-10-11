@@ -2,9 +2,9 @@ import { useEffect, useRef, useState } from "react";
 import { renderPage } from "../pdf/render";
 import type { PageEntry, SourceFile } from "../pdf/types";
 
-interface Props { source: SourceFile; entry: PageEntry; scale: number; className?: string; lazy?: boolean }
+interface Props { source: SourceFile; entry: PageEntry; scale: number; className?: string; lazy?: boolean; onMeta?: (meta: { heightPt: number; pageRotate: number }) => void }
 
-export default function PageCanvas({ source, entry, scale, className, lazy = false }: Props) {
+export default function PageCanvas({ source, entry, scale, className, lazy = false, onMeta }: Props) {
   const ref = useRef<HTMLCanvasElement>(null);
   const [visible, setVisible] = useState(!lazy);
 
@@ -27,9 +27,10 @@ export default function PageCanvas({ source, entry, scale, className, lazy = fal
       if (!canvas || !pageEl || !canvas.dataset.heightPt) return;
       pageEl.setAttribute("data-height-pt", canvas.dataset.heightPt);
       pageEl.setAttribute("data-page-rotate", canvas.dataset.pageRotate ?? "0");
+      onMeta?.({ heightPt: Number(canvas.dataset.heightPt), pageRotate: Number(canvas.dataset.pageRotate ?? 0) });
     }).catch((err) => console.error("render failed", err));
     return () => handle.cancel();
-  }, [visible, source, entry.sourcePageIndex, entry.rotation, scale]);
+  }, [visible, source, entry.sourcePageIndex, entry.rotation, scale]); // eslint-disable-line react-hooks/exhaustive-deps -- onMeta is a stable setter wrapper
 
   return <canvas ref={ref} className={className} data-page-id={entry.id} />;
 }
