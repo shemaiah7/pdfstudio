@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import type { Edit } from "../pdf/types";
-import { layoutText, regionOf } from "../pdf/layout";
+import { layoutInBoxes } from "../pdf/layout";
+import { usePdfMeasure } from "./usePdfMeasure";
 
 const FONT_CSS: Record<Edit["font"], string> = {
   sans: "400 1px Helvetica, Arial, sans-serif",
@@ -29,7 +30,12 @@ export function overlayTransform(rotation: number, W: number, H: number): string
 
 export default function EditOverlay({ edits, scale, pageHeightPt, pageWidthPt, rotation }: { edits: Edit[]; scale: number; pageHeightPt: number; pageWidthPt: number; rotation: number }) {
   const W = pageWidthPt * scale, H = pageHeightPt * scale;
-  const laid = useMemo(() => edits.map((e) => ({ e, ...layoutText(e.text, regionOf(e.boxes), e.fontSize, measureCss(e.font)) })), [edits]);
+  // Canvas measurer until the pdf-lib metrics (shared with export) are ready.
+  const pdfMeasure = usePdfMeasure(edits.map((e) => e.font));
+  const laid = useMemo(
+    () => edits.map((e) => ({ e, ...layoutInBoxes(e.text, e.boxes, e.fontSize, pdfMeasure[e.font] ?? measureCss(e.font), { keepOverflow: true }) })),
+    [edits, pdfMeasure],
+  );
   return (
     <div className="editOverlay" style={{ width: W, height: H, inset: "auto", left: 0, top: 0, transformOrigin: "0 0", transform: overlayTransform(rotation, W, H) }}>
       {laid.map(({ e, lines, fontSize }) => (

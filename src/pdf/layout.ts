@@ -54,3 +54,56 @@ export function layoutText(text: string, region: Region, fontSize: number, measu
     lines: visible.map((t, i) => ({ text: t, x: region.x, baseline: top - chosen.size - i * chosen.size * 1.2 })),
   };
 }
+
+export interface PlacedLine { text: string; x: number; baseline: number; width: number }
+
+/** Wrap sequentially: line k is limited to widths[k] (extra lines reuse the last width). */
+function wrapSequential(text: string, widths: number[], size: number, measure: Measure): string[] {
+  const lines: string[] = [];
+  const widthFor = () => widths[Math.min(lines.length, widths.length - 1)];
+  for (const para of text.split("\n")) {
+    let line = "";
+    for (const word of para.split(/\s+/).filter(Boolean)) {
+      const candidate = line ? `${line} ${word}` : word;
+      if (measure(candidate, size) <= widthFor()) { line = candidate; continue; }
+      if (line) lines.push(line);
+      line = "";
+      let chunk = "";
+      for (const ch of word) {
+        if (measure(chunk + ch, size) > widthFor() && chunk) { lines.push(chunk); chunk = ""; }
+        chunk += ch;
+      }
+      line = chunk;
+    }
+    if (line) lines.push(line);
+  }
+  return lines;
+}
+
+/**
+ * Lay text out one line per selected line box (top to bottom), using each box's own x and width,
+ * so replacement text never lands over unselected text. With `keepOverflow`, lines that do not fit
+ * are still returned (below the last box) instead of being dropped.
+ */
+export function layoutInBoxes(text: string, boxes: Box[], fontSize: number, measure: Measure, opts: { keepOverflow?: boolean } = {}) {
+  const sorted = [...boxes].sort((a, b) => b.y + b.height - (a.y + a.height) || a.x - b.x);
+  const widths = sorted.map((b) => b.width);
+  const place = (lines: string[], size: number): PlacedLine[] =>
+    lines.map((t, k) => {
+      if (k < sorted.length) {
+        const b = sorted[k];
+        return { text: t, x: b.x, baseline: b.y + b.height - size * 0.85, width: b.width };
+      }
+      const last = sorted[sorted.length - 1];
+      const lastBaseline = last.y + last.height - size * 0.85;
+      return { text: t, x: last.x, baseline: lastBaseline - (k - sorted.length + 1) * size * 1.2, width: last.width };
+    });
+  let size = fontSize;
+  let lines: string[] = [];
+  for (const step of STEPS) {
+    size = fontSize * step;
+    lines = wrapSequential(text, widths, size, measure);
+    if (lines.length <= sorted.length) return { lines: place(lines, size), fontSize: size, overflow: false };
+  }
+  return { lines: place(opts.keepOverflow ? lines : lines.slice(0, sorted.length), size), fontSize: size, overflow: true };
+}

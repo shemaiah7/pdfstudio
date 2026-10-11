@@ -1,5 +1,6 @@
 import { PDFDocument, StandardFonts, degrees, rgb } from "pdf-lib";
-import { layoutText, regionOf } from "./layout";
+import { layoutInBoxes } from "./layout";
+import { toWinAnsi } from "./winansi";
 import type { Edit, PageEntry, Rotation, SourceFile, SourceId } from "./types";
 
 export function addRotation(a: Rotation, delta: 90 | -90 | 180): Rotation {
@@ -10,9 +11,6 @@ export async function countPages(bytes: Uint8Array): Promise<number> {
   const doc = await PDFDocument.load(bytes, { ignoreEncryption: false });
   return doc.getPageCount();
 }
-
-// Standard fonts only encode WinAnsi; replace anything else so export never throws.
-const toWinAnsi = (t: string) => t.replace(/[^\x20-\x7E\u00A0-\u00FF]/g, "?");
 
 export async function buildDocument(
   sources: Map<SourceId, SourceFile>,
@@ -52,10 +50,9 @@ export async function buildDocument(
       for (const e of pageEdits) {
         for (const b of e.boxes) copied.drawRectangle({ x: b.x + ox, y: b.y + oy, width: b.width, height: b.height, color: rgb(1, 1, 1) });
         const font = fonts[e.font];
-        const safeWidth = (t: string, s: number) => {
-          try { return font.widthOfTextAtSize(t, s); } catch { return font.widthOfTextAtSize(toWinAnsi(t), s); }
-        };
-        const { lines, fontSize } = layoutText(e.text, regionOf(e.boxes), e.fontSize, safeWidth);
+        const width = (t: string, s: number) => font.widthOfTextAtSize(toWinAnsi(t), s);
+        // The Insert gate prevents overflow edits; if one slips through, draw every line anyway.
+        const { lines, fontSize } = layoutInBoxes(e.text, e.boxes, e.fontSize, width, { keepOverflow: true });
         const color = rgb(e.color[0], e.color[1], e.color[2]);
         for (const line of lines) {
           const opts = { x: line.x + ox, y: line.baseline + oy, size: fontSize, font, color };

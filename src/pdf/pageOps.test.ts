@@ -148,4 +148,13 @@ describe("edits on export", () => {
     expect(content).toMatch(/1 0 0 1 70 450 cm/);
     expect(content).toMatch(/1 0 0 1 70 \d+(\.\d+)? Tm/);
   });
+  it("lays text out per selected line box", async () => {
+    const s = new Map([["a", src("a", "three", 3)]]);
+    const out = await buildDocument(s, [entry("a", 0)], [
+      { id: "e1", pageEntryId: "a-0", boxes: [{ x: 120, y: 400, width: 80, height: 14 }, { x: 20, y: 380, width: 180, height: 14 }], text: "aaa bbb ccc ddd eee fff", fontSize: 12, font: "sans", color: [0, 0, 0] },
+    ]);
+    const content = await pageContent(await PDFDocument.load(out), 0);
+    const xs = [...content.matchAll(/1 0 0 1 (\d+(?:\.\d+)?) \d+(?:\.\d+)? Tm/g)].map((m) => Number(m[1]));
+    expect(xs.slice(-2)).toEqual([120, 20]); // the page's own text precedes the edit
+  });
 });
