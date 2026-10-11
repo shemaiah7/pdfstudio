@@ -67,13 +67,17 @@ function pageEdits(sourceId: string, pageIndex: number): Edit[] {
   return edits.filter((e) => ids.has(e.pageEntryId));
 }
 
-/** Same rule as hideCoveredSpans: an item goes when its box touches a cover, even if only a slice of a long item is covered. */
-const touches = (i: TextItemBox, b: Box) => {
-  // OCR items are tight boxes whose y is the bottom edge; native items sit on a baseline.
-  const bottom = i.fontName === "ocr" ? i.y : i.y - 0.25 * i.fontSize;
-  const top = i.fontName === "ocr" ? i.y + i.height : i.y + 0.8 * i.fontSize;
-  return i.x < b.x + b.width && b.x < i.x + i.width && bottom < b.y + b.height && b.y < top;
-};
+/**
+ * Same rule as hideCoveredSpans: an item goes when a cover overlaps it horizontally and reaches its central band,
+ * so a neighbouring line that merely grazes a cover's edge (tight or 1.2 leading) stays.
+ * Native items sit on a baseline (band 0.1..0.6 of the font size above it); OCR items are tight boxes whose y is the bottom (middle 60 %).
+ */
+export function coveredBy(i: TextItemBox, boxes: Box[]): boolean {
+  const ocr = i.fontName === "ocr";
+  const bandBottom = ocr ? i.y + 0.2 * i.height : i.y + 0.1 * i.fontSize;
+  const bandTop = ocr ? i.y + 0.8 * i.height : i.y + 0.6 * i.fontSize;
+  return boxes.some((b) => i.x < b.x + b.width && b.x < i.x + i.width && b.y < bandTop && bandBottom < b.y + b.height);
+}
 
 async function applyEdits(items: TextItemBox[], edits: Edit[]): Promise<TextItemBox[]> {
   if (!edits.length) return items;
@@ -83,7 +87,7 @@ async function applyEdits(items: TextItemBox[], edits: Edit[]): Promise<TextItem
     return { e, font, measure, ...placeEdit(e, measure) };
   }));
   const covers = placed.flatMap((p) => p.boxes);
-  let out = items.filter((i) => !covers.some((b) => touches(i, b)));
+  let out = items.filter((i) => !coveredBy(i, covers));
   for (const { font, measure, lines, fontSize } of placed) {
     out = out.concat(lines.map((l) => ({ str: l.text, x: l.x, y: l.baseline, width: measure(l.text, fontSize), height: fontSize, fontSize, fontName: font })));
   }

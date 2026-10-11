@@ -2,7 +2,7 @@ import "fake-indexeddb/auto";
 import { describe, it, expect, beforeEach, beforeAll } from "vitest";
 import { useDocumentStore } from "../store/document";
 import { loadFixture } from "../test/loadFixture";
-import { extractPageText, clearTextCache, invalidatePageText, setOcrLookup, editsStamp } from "./text";
+import { extractPageText, clearTextCache, invalidatePageText, setOcrLookup, editsStamp, coveredBy } from "./text";
 import { layoutBlock } from "../edit/layout";
 import { ocrStore } from "../ocr/store";
 import { linesToOcrPage } from "../ocr/layout";
@@ -129,4 +129,18 @@ describe("crop-relative coordinates and edit overlay rules", () => {
     expect(after.text).toContain("second line");
     expect((await ocrStore.get(src.hash!, 0))!.lines[0].text).toBe("Patient hypertension noted"); // the persistent store is untouched
   });
+});
+
+describe("coveredBy", () => {
+  const cover = { x: 0, y: 100, width: 200, height: 14 };
+  const native = (y: number, extra: object = {}) => ({ str: "t", x: 10, y, width: 100, height: 12, fontSize: 12, fontName: "g_d0_f1", ...extra });
+  it("drops a full-line item with a cover over its middle", () => { expect(coveredBy(native(102), [cover])).toBe(true); });
+  it("keeps a heading above a moved edit at 1.2 leading", () => { expect(coveredBy(native(cover.y + cover.height + 0.95 * 12), [cover])).toBe(false); });
+  it("keeps an OCR line whose box only grazes the cover's edge", () => {
+    const h = 10;
+    expect(coveredBy({ str: "t", x: 10, y: cover.y - 0.81 * h, width: 100, height: h, fontSize: h, fontName: "ocr" }, [cover])).toBe(false); // neighbour above
+    expect(coveredBy({ str: "t", x: 10, y: cover.y + cover.height - 0.19 * h, width: 100, height: h, fontSize: h, fontName: "ocr" }, [cover])).toBe(false); // neighbour below
+  });
+  it("drops an item fully inside the cover", () => { expect(coveredBy(native(102, { width: 20 }), [cover])).toBe(true); });
+  it("keeps an item with no horizontal overlap", () => { expect(coveredBy(native(102, { x: 300 }), [cover])).toBe(false); });
 });

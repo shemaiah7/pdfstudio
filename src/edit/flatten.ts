@@ -14,7 +14,8 @@ export interface FlattenInput {
 
 export function itemsToOcrPage(items: TextItemBox[]): OcrPage {
   const lines: OcrLine[] = linesFrom(items).map((l) => {
-    const words = l.items.map((i) => ({ text: i.str, confidence: 1, box: { x: i.x, y: i.y - 0.25 * i.fontSize, width: i.width, height: 1.2 * i.fontSize } }));
+    // OCR items already carry a tight box whose y is its bottom; native items sit on a baseline and get padded.
+    const words = l.items.map((i) => ({ text: i.str, confidence: 1, box: i.fontName === "ocr" ? { x: i.x, y: i.y, width: i.width, height: i.height } : { x: i.x, y: i.y - 0.25 * i.fontSize, width: i.width, height: 1.2 * i.fontSize } }));
     const x = Math.min(...words.map((w) => w.box.x)), y = Math.min(...words.map((w) => w.box.y));
     const right = Math.max(...words.map((w) => w.box.x + w.box.width)), top = Math.max(...words.map((w) => w.box.y + w.box.height));
     return { text: l.text, box: { x, y, width: right - x, height: top - y }, words };

@@ -76,6 +76,9 @@ test.describe("scan", () => {
     const text = await savedText(page);
     expect(text).toMatch(/hypotension/i);
     expect(text).not.toMatch(/hypertension/i);
+    // The edit must not take neighbouring recognized text with it.
+    expect(text).toMatch(/Patient/);
+    expect(text).toMatch(/lisinopril/i);
     // Edited scans are flattened like typed pages: the edit covers are painted into the raster and the invisible layer comes from the edited text.
     expect(inStreams(await savedStreams(), "hypertension")).toBe(false);
   });

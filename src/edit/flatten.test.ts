@@ -8,6 +8,11 @@ import { PNG_1X1 } from "../test/png";
 const item = (str: string, x: number, y: number, width: number, fontSize = 10): TextItemBox => ({ str, x, y, width, height: fontSize, fontSize, fontName: "g_d0_f1" });
 
 describe("itemsToOcrPage", () => {
+  it("keeps OCR item boxes as they are (y is the box bottom, not a baseline)", () => {
+    const page = itemsToOcrPage([{ str: "Patient", x: 20, y: 100, width: 40, height: 10, fontSize: 10, fontName: "ocr" }]);
+    expect(page.lines[0].words[0].box).toEqual({ x: 20, y: 100, width: 40, height: 10 });
+    expect(page.lines[0].box).toEqual({ x: 20, y: 100, width: 40, height: 10 });
+  });
   it("groups items on a baseline into one line with padded word boxes", () => {
     const page = itemsToOcrPage([item("world", 60, 100, 30), item("hello", 20, 100, 30), item("next", 20, 80, 24)]);
     expect(page.lines.map((l) => l.text)).toEqual(["hello world", "next"]);

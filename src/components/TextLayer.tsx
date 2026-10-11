@@ -32,7 +32,9 @@ export function hideCoveredSpans(container: HTMLElement, boxes: Box[], scale: nu
   for (const span of container.querySelectorAll<HTMLElement>("span")) {
     const r = span.getBoundingClientRect();
     const l = r.left - c.left, t = r.top - c.top, rr = r.right - c.left, bb = r.bottom - c.top;
-    const hit = rects.some((b) => l < b.right && rr > b.left && t < b.bottom && bb > b.top);
+    // Same rule as coveredBy: horizontal overlap plus the span's middle 60 % (screen space, y down) reaching the cover.
+    const h = bb - t, bandTop = t + 0.2 * h, bandBottom = t + 0.8 * h;
+    const hit = rects.some((b) => l < b.right && rr > b.left && bandTop < b.bottom && bandBottom > b.top);
     span.style.visibility = hit ? "hidden" : "";
   }
 }
