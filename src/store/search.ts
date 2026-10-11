@@ -21,6 +21,7 @@ export interface SearchState {
   query: string; results: Hit[]; searching: boolean;
   library: LibrarySummary[];
   usage: number | null;
+  init(): Promise<void>;
   enable(): Promise<void>;
   retryModel(): Promise<void>;
   indexOpen(): Promise<void>;
@@ -51,17 +52,34 @@ async function loadModel(set: (p: Partial<SearchState>) => void) {
   }
 }
 
+async function start() {
+  const { setState, getState } = useSearchStore;
+  await loadModel(setState);
+  if (getState().model.status === "ready") { await getState().refreshIndex(); await getState().indexOpen(); }
+}
+
+function reveal(sourceId: SourceId, hit: Hit) {
+  const entry = useDocumentStore.getState().pages.find((p) => p.sourceId === sourceId && p.sourcePageIndex === hit.page);
+  if (!entry) return;
+  if (typeof document !== "undefined") document.getElementById(`page-${entry.id}`)?.scrollIntoView({ block: "start", behavior: "smooth" });
+  const chunk = index.find((d) => d.hash === hit.hash)?.chunks[hit.chunkIndex];
+  if (chunk) flashChunk(entry.id, chunk.text);
+}
+
 export const useSearchStore = create<SearchState>((set, get) => ({
   enabled: (() => { try { return localStorage.getItem(ENABLED_KEY) === "1"; } catch { return false; } })(),
   model: { status: "idle", loaded: 0, total: 0 },
   docs: {}, hashBySource: {}, persistent: true, lastWriteFailed: false,
   query: "", results: [], searching: false, library: [], usage: null,
 
+  async init() {
+    if (!get().enabled || get().model.status !== "idle") return;
+    await start();
+  },
   async enable() {
     try { localStorage.setItem(ENABLED_KEY, "1"); } catch { /* ignore */ }
     set({ enabled: true });
-    await loadModel(set);
-    if (get().model.status === "ready") { await get().refreshIndex(); await get().indexOpen(); }
+    await start();
   },
   async retryModel() { await loadModel(set); if (get().model.status === "ready") { await get().refreshIndex(); await get().indexOpen(); } },
   async refreshIndex() { index = await library.loadAll(); set({ persistent: library.persistent, lastWriteFailed: library.lastWriteFailed }); },
@@ -74,30 +92,36 @@ export const useSearchStore = create<SearchState>((set, get) => ({
       const hash = get().hashBySource[source.id] ?? (await sha256(source.bytes));
       set((s) => ({ hashBySource: { ...s.hashBySource, [source.id]: hash } }));
       const status = get().docs[hash]?.status;
-      if (status && status !== "failed") continue;
+      if (status && status !== "failed" && !controllers.get(hash)?.signal.aborted) continue;
       const controller = new AbortController();
       controllers.set(hash, controller);
       set((s) => ({ docs: { ...s.docs, [hash]: { status: "queued", done: 0, total: source.pageCount } } }));
-      const dropDoc = () => set((s) => { const d = { ...s.docs }; delete d[hash]; return { docs: d }; });
-      queue = queue.then(async () => {
+      const isCurrent = () => controllers.get(hash) === controller;
+      const dropDoc = () => { if (isCurrent()) set((s) => { const d = { ...s.docs }; delete d[hash]; return { docs: d }; }); };
+      const job = async () => {
         try {
-          if (!useDocumentStore.getState().sources.has(source.id) || controller.signal.aborted) {
+          if (controller.signal.aborted) { dropDoc(); return; }
+          if (!useDocumentStore.getState().sources.has(source.id)) {
             controller.abort(); getEmbedClient().cancel(hash); dropDoc(); return;
           }
           set((s) => ({ docs: { ...s.docs, [hash]: { ...s.docs[hash], status: "indexing" } } }));
-          const r = await indexSource(source, defaultDeps(), (done, total) => set((s) => ({ docs: { ...s.docs, [hash]: { ...s.docs[hash], done, total } } })), controller.signal);
-          if (r.status === "cancelled") dropDoc();
-          else if (r.status === "failed") set((s) => ({ docs: { ...s.docs, [hash]: { ...s.docs[hash], status: "failed", error: r.message } } }));
+          const r = await indexSource(source, defaultDeps(), (done, total) => { if (isCurrent()) set((s) => ({ docs: { ...s.docs, [hash]: { ...s.docs[hash], done, total } } })); }, controller.signal);
+          if (r.status === "cancelled") { dropDoc(); return; }
+          if (!isCurrent()) return;
+          if (r.status === "failed") set((s) => ({ docs: { ...s.docs, [hash]: { ...s.docs[hash], status: "failed", error: r.message } } }));
           else {
             set((s) => ({ docs: { ...s.docs, [hash]: { ...s.docs[hash], status: r.status === "no-text" || r.chunks === 0 ? "no-text" : "indexed" } } }));
             if (r.status !== "cached") await get().refreshIndex();
             else if (!index.some((d) => d.hash === hash)) await get().refreshIndex();
           }
-          if (r.status !== "cancelled") await get().refreshLibrary();
+          await get().refreshLibrary();
+        } catch (err) {
+          if (isCurrent()) set((s) => ({ docs: { ...s.docs, [hash]: { ...s.docs[hash], status: "failed", error: err instanceof Error ? err.message : String(err) } } }));
         } finally {
-          if (controllers.get(hash) === controller) controllers.delete(hash);
+          if (isCurrent()) controllers.delete(hash);
         }
-      });
+      };
+      queue = queue.then(job).catch(() => {});
     }
     await queue;
   },
@@ -115,11 +139,12 @@ export const useSearchStore = create<SearchState>((set, get) => ({
     set({ searching: true });
     try {
       const v = await getEmbedClient().embed([q], "query", undefined);
-      if (get().query.trim() !== q) return;
+      if (get().query.trim() !== q) { set({ searching: false }); return; }
       set({ results: rank(v, index, terms, { limit: SEARCH_LIMIT }), searching: false });
     } catch { set({ results: [], searching: false }); }
   },
   async findSimilar(hash, chunkIndex) {
+    if (debounce) { clearTimeout(debounce); debounce = null; }
     const d = index.find((x) => x.hash === hash);
     if (!d) return;
     const v = d.vectors.subarray(chunkIndex * DIMS, (chunkIndex + 1) * DIMS);
@@ -132,15 +157,16 @@ export const useSearchStore = create<SearchState>((set, get) => ({
       const rec = await library.get(hit.hash);
       if (!rec) return;
       const bytes = new Uint8Array(await rec.bytes.arrayBuffer());
+      const before = new Set(doc.sources.keys());
       await doc.addFiles([{ name: rec.name, bytes }]);
-      await get().indexOpen();
-      return get().openHit(hit);
+      const newId = [...useDocumentStore.getState().sources.keys()].find((id) => !before.has(id));
+      if (!newId) return;
+      set((s) => ({ hashBySource: { ...s.hashBySource, [newId]: hit.hash } }));
+      void get().indexOpen();
+      reveal(newId, hit);
+      return;
     }
-    const entry = doc.pages.find((p) => p.sourceId === sourceId && p.sourcePageIndex === hit.page);
-    if (!entry) return;
-    if (typeof document !== "undefined") document.getElementById(`page-${entry.id}`)?.scrollIntoView({ block: "start", behavior: "smooth" });
-    const chunk = index.find((d) => d.hash === hit.hash)?.chunks[hit.chunkIndex];
-    if (chunk) flashChunk(entry.id, chunk.text);
+    reveal(sourceId, hit);
   },
   async removeFromLibrary(hash) {
     await library.remove(hash);
@@ -148,6 +174,9 @@ export const useSearchStore = create<SearchState>((set, get) => ({
     await get().refreshIndex(); await get().refreshLibrary();
   },
   async clearLibrary() {
+    for (const [hash, c] of controllers) { c.abort(); getEmbedClient().cancel(hash); }
+    controllers.clear();
+    queue = Promise.resolve();
     await library.clear();
     try { localStorage.removeItem(ENABLED_KEY); } catch { /* ignore */ }
     getEmbedClient().dispose();

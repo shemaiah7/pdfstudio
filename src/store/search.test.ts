@@ -7,7 +7,7 @@ const load = vi.fn(async () => "wasm" as const);
 vi.mock("../search/embedClient", () => ({ getEmbedClient: () => ({ load, embed, cancel: vi.fn(), dispose: vi.fn() }) }));
 
 const docs: { hash: string; chunks: { page: number; start: number; end: number; text: string }[]; vectors: Float32Array }[] = [];
-const lib = { loadAll: vi.fn(async () => docs), list: vi.fn(async () => docs.map((d) => ({ hash: d.hash, name: d.hash, size: 1, pageCount: 1, addedAt: 1, modelId: "m", chunkCount: d.chunks.length, stale: false }))), remove: vi.fn(async (h: string) => { const i = docs.findIndex((d) => d.hash === h); if (i >= 0) docs.splice(i, 1); }), clear: vi.fn(async () => { docs.length = 0; }), get: vi.fn(async () => undefined), estimateUsage: vi.fn(async () => 1234), persistent: true, lastWriteFailed: false };
+const lib = { loadAll: vi.fn(async () => docs), list: vi.fn(async () => docs.map((d) => ({ hash: d.hash, name: d.hash, size: 1, pageCount: 1, addedAt: 1, modelId: "m", chunkCount: d.chunks.length, stale: false }))), remove: vi.fn(async (h: string) => { const i = docs.findIndex((d) => d.hash === h); if (i >= 0) docs.splice(i, 1); }), clear: vi.fn(async () => { docs.length = 0; }), get: vi.fn(async () => undefined), put: vi.fn(async () => {}), estimateUsage: vi.fn(async () => 1234), persistent: true, lastWriteFailed: false };
 vi.mock("../search/library", () => ({ get library() { return lib; }, sha256: async (b: Uint8Array) => `h${b[0]}` }));
 
 const indexSource = vi.fn(async (s: { bytes: Uint8Array }, _signal?: AbortSignal): Promise<{ status: "indexed"; hash: string; chunks: number } | { status: "cancelled"; hash: string }> => { const hash = `h${s.bytes[0]}`; if (!docs.find((d) => d.hash === hash)) { const v = new Float32Array(DIMS); v[0] = 1; docs.push({ hash, chunks: [{ page: 0, start: 0, end: 5, text: "hello warfarin" }], vectors: v }); } return { status: "indexed" as const, hash, chunks: 1 }; });
@@ -20,7 +20,7 @@ const src = (id: string, b: number) => ({ id, name: `${id}.pdf`, bytes: new Uint
 
 describe("search store", () => {
   beforeEach(() => {
-    docs.length = 0; indexSource.mockClear(); embed.mockClear();
+    docs.length = 0; indexSource.mockClear(); embed.mockClear(); lib.put.mockClear();
     useSearchStore.setState({ enabled: false, model: { status: "idle", loaded: 0, total: 0 }, docs: {}, hashBySource: {}, query: "", results: [], library: [] });
     useDocumentStore.setState({ sources: new Map([["s1", src("s1", 1)]]), pages: [{ id: "p1", sourceId: "s1", sourcePageIndex: 0, rotation: 0 }] });
   });
@@ -81,5 +81,60 @@ describe("search store", () => {
     useDocumentStore.setState({ sources: new Map(), pages: [] });
     await pending;
     expect(useSearchStore.getState().docs.h1).toBeUndefined();
+  });
+  it("openHit on a closed document does not recurse when addFiles adds no source", async () => {
+    lib.get.mockResolvedValue({ name: "x.pdf", bytes: new Blob([new Uint8Array([9])]) } as never);
+    const original = useDocumentStore.getState().addFiles;
+    const addFiles = vi.fn(async () => { if (addFiles.mock.calls.length > 3) throw new Error("runaway"); return {} as never; });
+    useDocumentStore.setState({ addFiles });
+    await useSearchStore.getState().openHit({ hash: "hx", page: 0, chunkIndex: 0, score: 1, snippet: "" });
+    useDocumentStore.setState({ addFiles: original });
+    lib.get.mockResolvedValue(undefined as never);
+    expect(addFiles).toHaveBeenCalledTimes(1);
+  });
+  it("a job that throws marks its doc failed and does not poison the queue", async () => {
+    useSearchStore.setState({ model: { status: "ready", loaded: 0, total: 0, device: "wasm" } });
+    lib.loadAll.mockRejectedValueOnce(new Error("db gone"));
+    await useSearchStore.getState().indexOpen();
+    expect(useSearchStore.getState().docs.h1).toMatchObject({ status: "failed", error: "db gone" });
+    useDocumentStore.setState({ sources: new Map([["s1", src("s1", 1)], ["s2", src("s2", 2)]]) });
+    await useSearchStore.getState().indexOpen();
+    await vi.waitFor(() => expect(useSearchStore.getState().docs.h2?.status).toBe("indexed"));
+    expect(indexSource.mock.calls.some((c) => c[0].bytes[0] === 2)).toBe(true);
+  });
+  it("reopening the same file under a new source id re-queues an aborted job", async () => {
+    indexSource.mockImplementationOnce((s, signal) => new Promise((resolve) => {
+      signal?.addEventListener("abort", () => resolve({ status: "cancelled" as const, hash: `h${s.bytes[0]}` }));
+    }));
+    useSearchStore.setState({ model: { status: "ready", loaded: 0, total: 0, device: "wasm" } });
+    const pending = useSearchStore.getState().indexOpen();
+    await vi.waitFor(() => expect(indexSource).toHaveBeenCalledTimes(1));
+    useDocumentStore.setState({ sources: new Map([["s2", src("s2", 1)]]), pages: [{ id: "p2", sourceId: "s2", sourcePageIndex: 0, rotation: 0 }] });
+    await pending;
+    await useSearchStore.getState().indexOpen();
+    await vi.waitFor(() => expect(useSearchStore.getState().docs.h1?.status).toBe("indexed"));
+    expect(indexSource).toHaveBeenCalledTimes(2);
+  });
+  it("clearLibrary aborts queued jobs so nothing is written after the clear", async () => {
+    let release: () => void = () => {};
+    indexSource.mockImplementationOnce((s) => new Promise((resolve) => { release = () => resolve({ status: "indexed" as const, hash: `h${s.bytes[0]}`, chunks: 1 }); }));
+    useDocumentStore.setState({ sources: new Map([["s1", src("s1", 1)], ["s2", src("s2", 2)]]) });
+    useSearchStore.setState({ model: { status: "ready", loaded: 0, total: 0, device: "wasm" } });
+    const pending = useSearchStore.getState().indexOpen();
+    await vi.waitFor(() => expect(indexSource).toHaveBeenCalledTimes(1));
+    await useSearchStore.getState().clearLibrary();
+    release();
+    await pending;
+    await new Promise((r) => setTimeout(r, 10));
+    expect(indexSource).toHaveBeenCalledTimes(1);
+    expect(lib.put).not.toHaveBeenCalled();
+    expect(useSearchStore.getState().docs).toEqual({});
+  });
+  it("init loads the model once for a returning user and indexes open sources", async () => {
+    load.mockClear();
+    useSearchStore.setState({ enabled: true });
+    await Promise.all([useSearchStore.getState().init(), useSearchStore.getState().init()]);
+    expect(load).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => expect(useSearchStore.getState().docs.h1?.status).toBe("indexed"));
   });
 });
