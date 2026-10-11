@@ -12,7 +12,7 @@ export function regionOf(boxes: Box[]): Region {
   return { x, y, width: right - x, height: top - y };
 }
 
-function wrap(text: string, width: number, size: number, measure: Measure): string[] {
+export function wrapWords(text: string, width: number, size: number, measure: Measure): string[] {
   const lines: string[] = [];
   for (const para of text.split("\n")) {
     let line = "";
@@ -40,7 +40,7 @@ export function layoutText(text: string, region: Region, fontSize: number, measu
   let chosen = { size: fontSize * 0.7, lines: [] as string[], overflow: true };
   for (const step of STEPS) {
     const size = fontSize * step;
-    const lines = wrap(text, region.width, size, measure);
+    const lines = wrapWords(text, region.width, size, measure);
     const fits = lines.length * size * 1.2 <= region.height + size * 0.2;
     if (fits) { chosen = { size, lines, overflow: false }; break; }
     if (step === STEPS[STEPS.length - 1]) chosen = { size, lines, overflow: true };
