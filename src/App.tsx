@@ -5,6 +5,7 @@ import ThumbnailSidebar from "./components/ThumbnailSidebar";
 import PageView from "./components/PageView";
 import Toolbar from "./components/Toolbar";
 import ErrorBanner from "./components/ErrorBanner";
+import AiPanel from "./components/ai/AiPanel";
 
 async function toBytes(files: File[]) {
   return Promise.all(files.map(async (f) => ({ name: f.name, bytes: new Uint8Array(await f.arrayBuffer()) })));
@@ -72,7 +73,7 @@ export default function App() {
         <div className="workspace">
           <ThumbnailSidebar />
           <PageView scale={scale} />
-          <aside className="rightpanel" />
+          <aside className="rightpanel"><AiPanel /></aside>
           <DropZone onFiles={handleFiles} empty={false} forceOver={dragging} />
         </div>
         </>
