@@ -39,6 +39,12 @@ describe("POST /ai", () => {
     expect(res.status).toBe(400);
   });
 
+  it("413 when content-length exceeds the raw body cap", async () => {
+    const { res, text } = await post(doc, await token(), fakeStream(["x"]), { "content-length": "1000001" });
+    expect(res.status).toBe(413);
+    expect(JSON.parse(text)).toEqual({ error: "document_too_large", maxChars: 600000 });
+  });
+
   it("streams deltas and done, then records usage", async () => {
     const { res, text } = await post(doc, await token());
     expect(res.status).toBe(200);

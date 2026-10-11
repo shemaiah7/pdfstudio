@@ -22,14 +22,19 @@ export async function checkQuota(kv: KVNamespace, vid: string, now: number = Dat
   const day = utcDay(now);
   const resetAt = nextUtcMidnight(now);
   const minute = Math.floor(now / 60);
-  const burstKey = `b:${vid}:${minute}`;
-  const burst = Number((await kv.get(burstKey)) ?? "0");
-  if (burst >= BURST_REQUESTS) return { ok: false, reason: "too_fast", resetAt: (minute + 1) * 60 };
-  await kv.put(burstKey, String(burst + 1), { expirationTtl: 120 });
-
   const state = await readState(kv, `q:${vid}:${day}`);
   if (state.requests >= DAILY_REQUESTS || state.tokens >= DAILY_TOKENS) {
     return { ok: false, reason: "daily_limit", resetAt };
+  }
+
+  const burstKey = `b:${vid}:${minute}`;
+  const burst = Number((await kv.get(burstKey)) ?? "0");
+  if (burst >= BURST_REQUESTS) return { ok: false, reason: "too_fast", resetAt: (minute + 1) * 60 };
+  try {
+    await kv.put(burstKey, String(burst + 1), { expirationTtl: 120 });
+  } catch {
+    // KV limits same-key writes (~1/s); treat a failed write as "too fast" so the client retries.
+    return { ok: false, reason: "too_fast", resetAt: (minute + 1) * 60 };
   }
   return {
     ok: true,
@@ -43,6 +48,10 @@ export async function recordUsage(kv: KVNamespace, vid: string, day: string, tok
   const key = `q:${vid}:${day}`;
   const state = await readState(kv, key);
   const next = { requests: state.requests + 1, tokens: state.tokens + Math.max(0, tokens) };
-  await kv.put(key, JSON.stringify(next), { expirationTtl: 2 * 86400 });
+  try {
+    await kv.put(key, JSON.stringify(next), { expirationTtl: 2 * 86400 });
+  } catch {
+    // Fail open on accounting: never crash an already-streamed response.
+  }
   return next;
 }

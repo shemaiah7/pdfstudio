@@ -13,6 +13,9 @@ export async function aiHandler(request: Request, env: Env, ctx: ExecutionContex
   const session = token ? await verifySession(token, env.SESSION_SECRET) : null;
   if (!session) return json({ error: "unauthorized" }, 401, env);
 
+  const declared = Number(request.headers.get("content-length") ?? "0");
+  if (declared > 1_000_000) return json({ error: "document_too_large", maxChars: 600000 }, 413, env);
+
   let raw: unknown;
   try { raw = await request.json(); } catch { return json({ error: "invalid_body" }, 400, env); }
   const v = validateAiBody(raw);

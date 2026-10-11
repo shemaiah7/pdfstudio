@@ -48,6 +48,25 @@ describe("quota", () => {
     if (nextDay.ok) expect(nextDay.remaining.requests).toBe(DAILY_REQUESTS);
   });
 
+  it("does not burn burst slots when daily-limited", async () => {
+    for (let i = 0; i < DAILY_REQUESTS; i++) await recordUsage(env.QUOTA, "v6", "2026-10-10", 1);
+    for (let i = 0; i < BURST_REQUESTS + 2; i++) {
+      expect(await checkQuota(env.QUOTA, "v6", T0)).toMatchObject({ ok: false, reason: "daily_limit" });
+    }
+    expect(await env.QUOTA.get(`b:v6:${Math.floor(T0 / 60)}`)).toBeNull();
+  });
+
+  it("reports too_fast when the burst write fails", async () => {
+    const kv = { get: async () => null, put: async () => { throw new Error("KV PUT failed: 429"); } } as unknown as KVNamespace;
+    const r = await checkQuota(kv, "v7", T0);
+    expect(r).toEqual({ ok: false, reason: "too_fast", resetAt: (Math.floor(T0 / 60) + 1) * 60 });
+  });
+
+  it("recordUsage returns the computed state when the write fails", async () => {
+    const kv = { get: async () => ({ requests: 2, tokens: 30 }), put: async () => { throw new Error("KV PUT failed: 429"); } } as unknown as KVNamespace;
+    expect(await recordUsage(kv, "v8", "2026-10-10", 10)).toEqual({ requests: 3, tokens: 40 });
+  });
+
   it("nextUtcMidnight", () => {
     expect(nextUtcMidnight(T0)).toBe(Date.UTC(2026, 9, 11) / 1000);
   });
