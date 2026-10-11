@@ -1,7 +1,8 @@
-import { PDFDocument, StandardFonts, degrees, rgb } from "pdf-lib";
+import { PDFDocument, PDFFont, StandardFonts, degrees, rgb } from "pdf-lib";
 import { layoutInBoxes } from "./layout";
 import { toWinAnsi } from "./winansi";
-import type { Edit, PageEntry, Rotation, SourceFile, SourceId } from "./types";
+import { ensureAcroFormDR, isDegenerate, writeAnnotations } from "./annotations";
+import type { Annotation, Edit, PageEntry, Rotation, SourceFile, SourceId } from "./types";
 
 export function addRotation(a: Rotation, delta: 90 | -90 | 180): Rotation {
   return (((a + delta) % 360) + 360) % 360 as Rotation;
@@ -16,9 +17,12 @@ export async function buildDocument(
   sources: Map<SourceId, SourceFile>,
   pages: PageEntry[],
   edits: Edit[] = [],
+  annotations: Annotation[] = [],
 ): Promise<Uint8Array> {
   const out = await PDFDocument.create();
   const loaded = new Map<SourceId, PDFDocument>();
+  let helv: PDFFont | undefined;
+  let wroteFreeText = false;
 
   for (const entry of pages) {
     const source = sources.get(entry.sourceId);
@@ -38,6 +42,8 @@ export async function buildDocument(
     copied.setRotation(degrees((((base + entry.rotation) % 360) + 360) % 360));
     out.addPage(copied);
 
+    // Selection boxes are relative to the crop box origin (pdf.js page.view).
+    const { x: ox, y: oy } = copied.getCropBox();
     const pageEdits = edits.filter((e) => e.pageEntryId === entry.id);
     if (pageEdits.length) {
       const fonts = {
@@ -45,8 +51,6 @@ export async function buildDocument(
         "sans-bold": await out.embedFont(StandardFonts.HelveticaBold),
         serif: await out.embedFont(StandardFonts.TimesRoman),
       };
-      // Selection boxes are relative to the crop box origin (pdf.js page.view).
-      const { x: ox, y: oy } = copied.getCropBox();
       for (const e of pageEdits) {
         for (const b of e.boxes) copied.drawRectangle({ x: b.x + ox, y: b.y + oy, width: b.width, height: b.height, color: rgb(1, 1, 1) });
         const font = fonts[e.font];
@@ -63,7 +67,15 @@ export async function buildDocument(
         }
       }
     }
+
+    const pageAnns = annotations.filter((a) => a.pageEntryId === entry.id);
+    if (pageAnns.length) {
+      helv ??= await out.embedFont(StandardFonts.Helvetica);
+      await writeAnnotations(out, copied, pageAnns, { x: ox, y: oy }, { helv });
+      if (pageAnns.some((a) => a.kind === "freetext" && !isDegenerate(a))) wroteFreeText = true;
+    }
   }
 
+  if (wroteFreeText && helv) ensureAcroFormDR(out, helv);
   return out.save();
 }

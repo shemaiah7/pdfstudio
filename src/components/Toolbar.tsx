@@ -18,7 +18,7 @@ export default function Toolbar({ scale, setScale, onFiles }: Props) {
     const ids = new Set(entries.map((p) => p.id));
     setBusy(true);
     try {
-      const bytes = await buildDocument(s.sources, entries, s.edits.filter((e) => ids.has(e.pageEntryId)));
+      const bytes = await buildDocument(s.sources, entries, s.edits.filter((e) => ids.has(e.pageEntryId)), s.annotations.filter((a) => ids.has(a.pageEntryId)));
       saveBlob(bytes, outputName(firstName, kind));
       if (kind === "edited") s.markClean();
     } catch (err) {
