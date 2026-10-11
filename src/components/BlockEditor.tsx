@@ -1,10 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { useDocumentStore } from "../store/document";
-import { applyEditToOcr } from "../store/ocr";
 import { measureFor } from "../pdf/metrics";
 import { FONT_CSS } from "../pdf/fonts";
 import { toWinAnsi } from "../pdf/winansi";
-import { layoutBlock, coverBoxes } from "../edit/layout";
+import { layoutBlock, coverBoxes, placeEdit } from "../edit/layout";
 import type { Measure } from "../pdf/layout";
 import type { OpenBlock } from "../edit/pageBlocks";
 
@@ -35,14 +34,25 @@ export default function BlockEditor({ open, scale, heightPt, onClose }: { open: 
   const cancel = () => { if (finish()) onClose(); };
   const apply = async () => {
     if (!finish()) return;
-    const clean = (ref.current ? readText(ref.current) : text).replace(/\s+$/g, "");
-    if (clean === original || clean.trim() === "") { onClose(); return; }
-    const l = layoutBlock(clean, block.box, block.fontSize, block.lineHeight, measure);
-    const source = block.fontName === "ocr" || open.existing?.source === "ocr" ? "ocr" : "native";
-    const edit = { pageEntryId: open.entry.id, boxes: coverBoxes(l, block.box), region: block.box, text: clean, fontSize: block.fontSize, font, color: colors.text, background: colors.background, lineHeight: block.lineHeight, source, blockKey: open.blockKey } as const;
-    const id = useDocumentStore.getState().addEdit(edit);
-    if (source === "ocr") await applyEditToOcr(open.entry.sourceId, open.entry.sourcePageIndex, { ...edit, id }, measure);
-    onClose();
+    try {
+      const clean = (ref.current ? readText(ref.current) : text).replace(/\s+$/g, "");
+      if (clean === original || clean.trim() === "") return;
+      const { addEdit, updateEdit } = useDocumentStore.getState();
+      const existing = open.existing;
+      if (existing) {
+        // Reopened edit: update in place. `region` stays the original block; `block.box` is the (possibly moved) text frame.
+        const region = existing.region ?? block.box;
+        updateEdit(existing.id, { text: clean, region, boxes: placeEdit({ ...existing, text: clean, region }, measure).boxes });
+        return;
+      }
+      const l = layoutBlock(clean, block.box, block.fontSize, block.lineHeight, measure);
+      const source = block.fontName === "ocr" ? "ocr" : "native";
+      addEdit({ pageEntryId: open.entry.id, boxes: coverBoxes(l, block.box), region: block.box, text: clean, fontSize: block.fontSize, font, color: colors.text, background: colors.background, lineHeight: block.lineHeight, source, blockKey: open.blockKey });
+    } catch (err) {
+      console.error("Could not apply edit", err);
+    } finally {
+      onClose(); // the editor always closes, even if the store update throws
+    }
   };
   const onKey = (e: React.KeyboardEvent) => {
     if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); cancel(); }

@@ -1,8 +1,7 @@
 import type { SourceFile, Box, Edit } from "./types";
-import { layoutBlock } from "../edit/layout";
+import { placeEdit } from "../edit/layout";
 import { measureFor } from "./metrics";
 import { normalizeFont } from "./fonts";
-import { regionOf } from "./layout";
 import { getPage } from "./render";
 import { ocrStore } from "../ocr/store";
 import { ocrPageToItems, ocrPageText } from "../ocr/layout";
@@ -68,16 +67,25 @@ function pageEdits(sourceId: string, pageIndex: number): Edit[] {
   return edits.filter((e) => ids.has(e.pageEntryId));
 }
 
+/** Same rule as hideCoveredSpans: an item goes when its box touches a cover, even if only a slice of a long item is covered. */
+const touches = (i: TextItemBox, b: Box) => {
+  // OCR items are tight boxes whose y is the bottom edge; native items sit on a baseline.
+  const bottom = i.fontName === "ocr" ? i.y : i.y - 0.25 * i.fontSize;
+  const top = i.fontName === "ocr" ? i.y + i.height : i.y + 0.8 * i.fontSize;
+  return i.x < b.x + b.width && b.x < i.x + i.width && bottom < b.y + b.height && b.y < top;
+};
+
 async function applyEdits(items: TextItemBox[], edits: Edit[]): Promise<TextItemBox[]> {
   if (!edits.length) return items;
-  const inside = (i: TextItemBox, b: Box) => { const cx = i.x + i.width / 2, cy = i.y + i.fontSize * 0.3; return cx >= b.x && cx <= b.x + b.width && cy >= b.y && cy <= b.y + b.height; };
-  let out = items.filter((i) => !edits.some((e) => e.boxes.some((b) => inside(i, b))));
-  for (const e of edits) {
+  const placed = await Promise.all(edits.map(async (e) => {
     const font = normalizeFont(e.font);
     const measure = await measureFor(font);
-    const region = regionOf(e.boxes);
-    const lay = layoutBlock(e.text, region, e.fontSize, e.lineHeight ?? e.fontSize * 1.2, measure);
-    out = out.concat(lay.lines.map((l) => ({ str: l.text, x: l.x, y: l.baseline, width: measure(l.text, e.fontSize), height: e.fontSize, fontSize: e.fontSize, fontName: font })));
+    return { e, font, measure, ...placeEdit(e, measure) };
+  }));
+  const covers = placed.flatMap((p) => p.boxes);
+  let out = items.filter((i) => !covers.some((b) => touches(i, b)));
+  for (const { font, measure, lines, fontSize } of placed) {
+    out = out.concat(lines.map((l) => ({ str: l.text, x: l.x, y: l.baseline, width: measure(l.text, fontSize), height: fontSize, fontSize, fontName: font })));
   }
   return out;
 }
@@ -99,8 +107,10 @@ export async function extractPageText(source: SourceFile, pageIndex: number): Pr
       const page = await getPage(source, pageIndex);
       const content = await page.getTextContent();
       const raw = content.items.filter((i) => "str" in i) as unknown as RawItem[];
+      // pdf.js reports user-space positions; edits, blocks and the flatten layer are relative to the crop box origin.
+      const [ox, oy] = page.view;
       const items: TextItemBox[] = raw.filter((i) => i.str.length > 0).map((i) => ({
-        str: i.str, x: i.transform[4], y: i.transform[5], width: i.width, height: i.height,
+        str: i.str, x: i.transform[4] - ox, y: i.transform[5] - oy, width: i.width, height: i.height,
         fontSize: Math.hypot(i.transform[2], i.transform[3]) || i.height,
         fontName: (i as { fontName?: string }).fontName ?? "",
       }));

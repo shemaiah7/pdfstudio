@@ -27,17 +27,33 @@ describe("EditHandles", () => {
     fireEvent.pointerDown(drag, { clientX: 0, clientY: 0 });
     fireEvent.pointerMove(drag, { clientX: 20, clientY: 10, buttons: 1 });
     fireEvent.pointerUp(drag, { clientX: 20, clientY: 10 });
-    expect(useDocumentStore.getState().edits[0].boxes[0]).toMatchObject({ x: 30, y: 90 });
-    expect(useDocumentStore.getState().edits[0].region).toMatchObject({ x: 30, y: 90, width: 100 });
+    await vi.waitFor(() => expect(useDocumentStore.getState().edits[0].frame).toMatchObject({ x: 30, y: 90, width: 100 }));
+    // Moving shifts only the text frame; the original region stays and is still covered.
+    expect(useDocumentStore.getState().edits[0].region).toMatchObject({ x: 10, y: 100, width: 100 });
+    const covers = useDocumentStore.getState().edits[0].boxes;
+    expect(covers).toContainEqual({ x: 10, y: 100, width: 100, height: 12 });
+    expect(covers.some((b) => b.x === 30 && b.y < 91)).toBe(true);
     const w = screen.getByTestId("edit-width");
     fireEvent.pointerDown(w, { clientX: 0, clientY: 0 });
     fireEvent.pointerMove(w, { clientX: -60, clientY: 0, buttons: 1 });
     fireEvent.pointerUp(w, { clientX: -60, clientY: 0 });
-    await screen.findByTestId("edit-drag");
-    const boxes = useDocumentStore.getState().edits[0].boxes;
-    expect(boxes[0].width).toBeCloseTo(40);
-    expect(useDocumentStore.getState().edits[0].region).toMatchObject({ x: 30, y: 90, width: 40 });
-    expect(boxes.length).toBeGreaterThan(1); // "Dose 10 mg" no longer fits one 40pt line at 5pt/char
+    await vi.waitFor(() => expect(useDocumentStore.getState().edits[0].frame).toMatchObject({ x: 30, y: 90, width: 40 }));
+    const edit1 = useDocumentStore.getState().edits[0];
+    expect(edit1.region).toMatchObject({ x: 10, y: 100, width: 100 });
+    expect(edit1.boxes).toContainEqual(edit1.region);
+    expect(edit1.boxes.length).toBeGreaterThan(2); // "Dose 10 mg" no longer fits one 40pt line at 5pt/char, plus the original region
+  });
+  it("covers the original region after a drag (union of covers contains it)", async () => {
+    render(<EditHandles edit={edit} scale={1} heightPt={400} onReopen={vi.fn()} />);
+    const drag = screen.getByTestId("edit-drag");
+    fireEvent.pointerDown(drag, { clientX: 0, clientY: 0 });
+    fireEvent.pointerMove(drag, { clientX: 300, clientY: -200, buttons: 1 });
+    fireEvent.pointerUp(drag, { clientX: 300, clientY: -200 });
+    await vi.waitFor(() => expect(useDocumentStore.getState().edits[0].frame).toBeDefined());
+    const e = useDocumentStore.getState().edits[0];
+    const r = e.region!;
+    const covered = e.boxes.some((b) => b.x <= r.x && b.y <= r.y && b.x + b.width >= r.x + r.width && b.y + b.height >= r.y + r.height);
+    expect(covered).toBe(true);
   });
   it("re-lays out on font change in one undo step", async () => {
     const wide = { ...edit, text: "Dose 10 mg twice daily", boxes: [{ x: 10, y: 100, width: 100, height: 12 }] };
@@ -65,5 +81,13 @@ describe("EditHandles", () => {
     expect(frame()).toBe(before);
     expect(useDocumentStore.getState().past).toHaveLength(0);
     expect(useDocumentStore.getState().edits[0].boxes[0]).toMatchObject({ x: 10, y: 100 });
+  });
+  it("lets the latest font change win over a slower earlier one", async () => {
+    render(<EditHandles edit={edit} scale={1} heightPt={400} onReopen={vi.fn()} />);
+    fireEvent.change(screen.getByTestId("edit-font"), { target: { value: "courier-bold" } });
+    fireEvent.change(screen.getByTestId("edit-font"), { target: { value: "times" } });
+    await vi.waitFor(() => expect(useDocumentStore.getState().edits[0].font).toBe("times"));
+    await new Promise((r) => setTimeout(r, 20));
+    expect(useDocumentStore.getState().edits[0].font).toBe("times");
   });
 });

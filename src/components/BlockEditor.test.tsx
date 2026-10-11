@@ -72,6 +72,40 @@ describe("BlockEditor", () => {
     expect(Math.max(...e.boxes.map((b) => b.y + b.height))).toBeGreaterThanOrEqual(134);
     expect(blockFromEdit(e).box).toEqual(tall.box);
   });
+  it("two edits on different blocks with equal keys coexist, and reopening updates in place", async () => {
+    const other = { ...block, box: { x: 10, y: 200, width: 100, height: 12 }, text: "Other" };
+    const first = render(<BlockEditor open={open()} scale={1} heightPt={400} onClose={vi.fn()} />);
+    let box = await screen.findByTestId("block-editor");
+    box.textContent = "Dose 20 mg"; fireEvent.input(box); fireEvent.keyDown(box, { key: "Enter" });
+    await waitFor(() => expect(useDocumentStore.getState().edits).toHaveLength(1));
+    first.unmount();
+    render(<BlockEditor open={open({ block: other })} scale={1} heightPt={400} onClose={vi.fn()} />); // same blockKey "s:0:0"
+    box = await screen.findByTestId("block-editor");
+    box.textContent = "Other 2"; fireEvent.input(box); fireEvent.keyDown(box, { key: "Enter" });
+    await waitFor(() => expect(useDocumentStore.getState().edits).toHaveLength(2));
+    expect(useDocumentStore.getState().edits.map((e) => e.text)).toEqual(["Dose 20 mg", "Other 2"]);
+    cleanup();
+    const [a] = useDocumentStore.getState().edits;
+    render(<BlockEditor open={open({ existing: a, block: blockFromEdit(a), font: a.font })} scale={1} heightPt={400} onClose={vi.fn()} />);
+    box = await screen.findByTestId("block-editor");
+    box.textContent = "Dose 30 mg"; fireEvent.input(box); fireEvent.keyDown(box, { key: "Enter" });
+    await waitFor(() => expect(useDocumentStore.getState().edits[0].text).toBe("Dose 30 mg"));
+    expect(useDocumentStore.getState().edits.map((e) => e.id)).toEqual([a.id, useDocumentStore.getState().edits[1].id]);
+    expect(useDocumentStore.getState().edits[1].text).toBe("Other 2");
+  });
+  it("closes the editor even when the store update throws", async () => {
+    const onClose = vi.fn();
+    const real = useDocumentStore.getState().addEdit;
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    useDocumentStore.setState({ addEdit: () => { throw new Error("boom"); } });
+    try {
+      render(<BlockEditor open={open()} scale={1} heightPt={400} onClose={onClose} />);
+      const box = await screen.findByTestId("block-editor");
+      box.textContent = "Dose 20 mg"; fireEvent.input(box);
+      fireEvent.keyDown(box, { key: "Enter" });
+      await waitFor(() => expect(onClose).toHaveBeenCalled());
+    } finally { useDocumentStore.setState({ addEdit: real }); err.mockRestore(); }
+  });
   it("warns about characters outside WinAnsi", async () => {
     render(<BlockEditor open={open()} scale={1} heightPt={400} onClose={vi.fn()} />);
     const box = await screen.findByTestId("block-editor");

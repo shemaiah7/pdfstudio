@@ -197,8 +197,6 @@ export const useDocumentStore = create<DocumentState>((set, get) => {
 
     addEdit(e) {
       const font = normalizeFont(e.font);
-      const existing = e.blockKey ? get().edits.find((x) => x.pageEntryId === e.pageEntryId && x.blockKey === e.blockKey) : undefined;
-      if (existing) { commit({ edits: get().edits.map((x) => (x.id === existing.id ? { ...e, font, id: existing.id } : x)) }); return existing.id; }
       const id = nextId("ed");
       commit({ edits: [...get().edits, { ...e, font, id }] });
       return id;

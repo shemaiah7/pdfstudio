@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { layoutBlock, coverBoxes } from "./layout";
+import { layoutBlock, coverBoxes, layoutEdit, placeEdit } from "./layout";
 const measure = (t: string, s: number) => t.length * s * 0.5;
 
 describe("layoutBlock", () => {
@@ -51,5 +51,32 @@ describe("coverBoxes", () => {
   it("returns only the layout boxes when the text fills or exceeds the region", () => {
     const l = layoutBlock("a\nb\nc\nd", region, 10, 12, measure);
     expect(coverBoxes(l, region)).toEqual(l.boxes);
+  });
+});
+
+describe("layoutEdit / placeEdit", () => {
+  const base = { text: "one", fontSize: 10, lineHeight: 12, boxes: [{ x: 10, y: 100, width: 100, height: 36 }], region: { x: 10, y: 100, width: 100, height: 36 } };
+  it("lays out in the region and covers it when no frame is set", () => {
+    const e = layoutEdit(base, measure);
+    expect(e.lines[0]).toMatchObject({ text: "one", x: 10, baseline: 126 });
+    expect(Math.min(...e.boxes.map((b) => b.y))).toBeCloseTo(100);
+  });
+  it("lays out in the frame and keeps the original region covered", () => {
+    const frame = { x: 200, y: 50, width: 100, height: 36 };
+    const e = layoutEdit({ ...base, frame }, measure);
+    expect(e.lines[0]).toMatchObject({ x: 200, baseline: 50 + 36 - 10 });
+    expect(e.boxes).toContainEqual(base.region);
+    expect(e.boxes.some((b) => b.x === 200)).toBe(true);
+  });
+  it("does not add a sliver box when the remainder is under 0.01pt", () => {
+    const region = { x: 0, y: 0, width: 100, height: 12.005 };
+    const lay = layoutBlock("a", region, 10, 12, measure);
+    expect(coverBoxes(lay, region)).toEqual(lay.boxes);
+  });
+  it("keeps the per-box layout for legacy edits without a region", () => {
+    const legacy = { text: "x", fontSize: 10, boxes: [{ x: 5, y: 50, width: 100, height: 12 }] };
+    const p = placeEdit(legacy, measure);
+    expect(p.lines[0].baseline).toBeCloseTo(50 + 12 - 8.5);
+    expect(p.boxes).toBe(legacy.boxes);
   });
 });

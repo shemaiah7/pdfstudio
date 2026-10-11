@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import type { Edit } from "../pdf/types";
 import { FONT_CSS, normalizeFont } from "../pdf/fonts";
-import { layoutInBoxes } from "../pdf/layout";
+import { placeEdit } from "../edit/layout";
 import { usePdfMeasure } from "./usePdfMeasure";
 import EditHandles from "./EditHandles";
 
@@ -29,14 +29,14 @@ export default function EditOverlay({ edits, scale, pageHeightPt, pageWidthPt, r
   // Canvas measurer until the pdf-lib metrics (shared with export) are ready.
   const pdfMeasure = usePdfMeasure(edits.map((e) => normalizeFont(e.font)));
   const laid = useMemo(
-    () => edits.map((e) => ({ e, ...layoutInBoxes(e.text, e.boxes, e.fontSize, pdfMeasure[normalizeFont(e.font)] ?? measureCss(e.font), { keepOverflow: true }) })),
+    () => edits.map((e) => ({ e, ...placeEdit(e, pdfMeasure[normalizeFont(e.font)] ?? measureCss(e.font)) })),
     [edits, pdfMeasure],
   );
   return (
     <div className="editOverlay" style={{ width: W, height: H, inset: "auto", left: 0, top: 0, transformOrigin: "0 0", transform: overlayTransform(rotation, W, H) }}>
-      {laid.map(({ e, lines, fontSize }) => (
+      {laid.map(({ e, lines, boxes, fontSize }) => (
         <div key={e.id} className="edit" data-edit-id={e.id}>
-          {e.boxes.map((b, i) => (
+          {boxes.map((b, i) => (
             <div key={i} className="edit-box" style={{ left: b.x * scale, top: (pageHeightPt - b.y - b.height) * scale, width: b.width * scale, height: b.height * scale, background: `rgb(${(e.background ?? [1, 1, 1]).map((c) => c * 255).join(",")})` }} />
           ))}
           {lines.map((l, i) => (

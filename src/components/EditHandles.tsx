@@ -2,7 +2,7 @@ import { useRef, useState } from "react";
 import type { Edit, EditFont } from "../pdf/types";
 import { EDIT_FONTS, fontFamily, normalizeFont } from "../pdf/fonts";
 import { regionOf } from "../pdf/layout";
-import { layoutBlock, coverBoxes } from "../edit/layout";
+import { placeEdit } from "../edit/layout";
 import { measureFor } from "../pdf/metrics";
 import { useDocumentStore } from "../store/document";
 
@@ -16,7 +16,8 @@ export default function EditHandles({ edit, scale, heightPt, onReopen }: { edit:
   const [preview, setPreview] = useState({ dx: 0, dy: 0 });
   const [active, setActive] = useState<Mode | null>(null);
   const gesture = useRef<Gesture | null>(null);
-  const region = regionOf(edit.boxes);
+  const seq = useRef(0); // latest-wins: a slower measurer lookup must not overwrite a newer change
+  const frame = edit.frame ?? edit.region ?? regionOf(edit.boxes);
 
   const start = (mode: Mode) => (e: React.PointerEvent<HTMLElement>) => {
     if (e.button !== 0) return;
@@ -37,12 +38,12 @@ export default function EditHandles({ edit, scale, heightPt, onReopen }: { edit:
     setPreview({ dx: 0, dy: 0 });
   };
   const changeFont = async (font: EditFont) => {
-    const cur = useDocumentStore.getState().edits.find((x) => x.id === edit.id);
-    if (!cur) return;
-    const region = cur.region ?? regionOf(cur.boxes);
+    const mine = ++seq.current;
     const m = await measureFor(font);
-    const lay = layoutBlock(cur.text, region, cur.fontSize, cur.lineHeight ?? cur.fontSize * 1.2, m);
-    useDocumentStore.getState().updateEdit(cur.id, { font, boxes: coverBoxes(lay, region), region });
+    const cur = useDocumentStore.getState().edits.find((x) => x.id === edit.id);
+    if (!cur || mine !== seq.current) return;
+    const region = cur.region ?? regionOf(cur.boxes);
+    useDocumentStore.getState().updateEdit(cur.id, { font, region, boxes: placeEdit({ ...cur, region }, m).boxes });
   };
   const end = async (e: React.PointerEvent<HTMLElement>) => {
     const g = gesture.current;
@@ -51,32 +52,26 @@ export default function EditHandles({ edit, scale, heightPt, onReopen }: { edit:
     setActive(null);
     const { dx, dy } = delta(e, g);
     setPreview({ dx: 0, dy: 0 });
-    const { edits, updateEdit } = useDocumentStore.getState();
-    const cur = edits.find((x) => x.id === edit.id);
-    if (!cur) return;
-    if (g.mode === "drag") {
-      if (dx === 0 && dy === 0) return;
-      const r = cur.region;
-      updateEdit(cur.id, { boxes: cur.boxes.map((b) => ({ ...b, x: b.x + dx, y: b.y + dy })), ...(r ? { region: { ...r, x: r.x + dx, y: r.y + dy } } : {}) });
-      return;
-    }
-    if (dx === 0) return;
-    const base = cur.region ?? regionOf(cur.boxes);
-    const width = Math.max(cur.fontSize, base.width + dx);
-    const nextRegion = { ...base, width };
-    const m = await measureFor(normalizeFont(cur.font));
-    const lay = layoutBlock(cur.text, nextRegion, cur.fontSize, cur.lineHeight ?? cur.fontSize * 1.2, m);
-    useDocumentStore.getState().updateEdit(cur.id, { boxes: coverBoxes(lay, nextRegion), region: nextRegion });
+    if (g.mode === "drag" ? dx === 0 && dy === 0 : dx === 0) return;
+    const mine = ++seq.current;
+    const m = await measureFor(normalizeFont(useDocumentStore.getState().edits.find((x) => x.id === edit.id)?.font ?? edit.font));
+    const cur = useDocumentStore.getState().edits.find((x) => x.id === edit.id);
+    if (!cur || mine !== seq.current) return;
+    // `region` stays the original block; only the text frame moves or resizes, and the covers keep the original region.
+    const region = cur.region ?? regionOf(cur.boxes);
+    const base = cur.frame ?? region;
+    const next = g.mode === "drag" ? { ...base, x: base.x + dx, y: base.y + dy } : { ...base, width: Math.max(cur.fontSize, base.width + dx) };
+    useDocumentStore.getState().updateEdit(cur.id, { region, frame: next, boxes: placeEdit({ ...cur, region, frame: next }, m).boxes });
   };
 
   const widthPreview = active === "width" ? preview.dx : 0;
   const movePreview = active === "drag" ? preview : { dx: 0, dy: 0 };
   const style: React.CSSProperties = {
     position: "absolute",
-    left: (region.x + movePreview.dx) * scale,
-    top: (heightPt - region.y - region.height - movePreview.dy) * scale,
-    width: (region.width + widthPreview) * scale,
-    height: region.height * scale,
+    left: (frame.x + movePreview.dx) * scale,
+    top: (heightPt - frame.y - frame.height - movePreview.dy) * scale,
+    width: (frame.width + widthPreview) * scale,
+    height: frame.height * scale,
   };
   const font = normalizeFont(edit.font);
   return (
