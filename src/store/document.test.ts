@@ -168,3 +168,70 @@ describe("edits", () => {
     expect(s().edits).toEqual([]);
   });
 });
+
+describe("annotations", () => {
+  beforeEach(async () => { await s().openFiles([three()]); });
+  const note = (pageEntryId: string) => ({ kind: "note" as const, pageEntryId, x: 10, y: 20, text: "hi", color: [0, 0, 0] as [number, number, number] });
+
+  it("add, update, remove with undo/redo", () => {
+    const id = s().addAnnotation(note(s().pages[0].id));
+    expect(s().annotations[0]).toMatchObject({ id, kind: "note", text: "hi" });
+    s().updateAnnotation(id, { text: "changed" });
+    expect(s().annotations[0]).toMatchObject({ text: "changed" });
+    s().undo();
+    expect(s().annotations[0]).toMatchObject({ text: "hi" });
+    s().redo();
+    s().removeAnnotation(id);
+    expect(s().annotations).toEqual([]);
+    s().undo();
+    expect(s().annotations.length).toBe(1);
+    expect(s().isDirty()).toBe(true);
+  });
+
+  it("deleting a page drops its annotations and one undo restores both", () => {
+    const [a, b] = s().pages.map((p) => p.id);
+    s().addAnnotation({ kind: "signature", pageEntryId: a, box: { x: 0, y: 0, width: 50, height: 20 }, png: "data:image/png;base64,AA==", color: [0, 0, 0] });
+    s().addAnnotation(note(b));
+    s().remove([a]);
+    expect(s().annotations.map((x) => x.kind)).toEqual(["note"]);
+    s().undo();
+    expect(s().pages.length).toBe(3);
+    expect(s().annotations.map((x) => x.kind).sort()).toEqual(["note", "signature"]);
+  });
+
+  it("survives reorder and rotate; openFiles clears", async () => {
+    const a = s().pages[0].id;
+    s().addAnnotation(note(a));
+    s().rotate([a], 90); s().reorder([a], 3);
+    expect(s().annotations.length).toBe(1);
+    await s().openFiles([two()]);
+    expect(s().annotations).toEqual([]);
+    expect(s().formValues.size).toBe(0);
+  });
+
+  it("selection of an annotation is not part of history", () => {
+    const id = s().addAnnotation(note(s().pages[0].id));
+    s().selectAnnotation(id);
+    expect(s().selectedAnnotationId).toBe(id);
+    s().removeAnnotation(id);
+    expect(s().selectedAnnotationId).toBeNull();
+  });
+});
+
+describe("form values", () => {
+  beforeEach(async () => { await s().openFiles([three()]); });
+  it("set, clear, undo, dirty", () => {
+    const src = s().pages[0].sourceId;
+    s().setFormValue(src, "name", "Alice");
+    s().setFormValue(src, "agree", true);
+    expect(s().formValues.get(src)?.get("name")).toBe("Alice");
+    expect(s().isDirty()).toBe(true);
+    s().undo();
+    expect(s().formValues.get(src)?.get("agree")).toBeUndefined();
+    s().redo();
+    s().clearForm(src);
+    expect(s().formValues.get(src)?.size ?? 0).toBe(0);
+    s().undo();
+    expect(s().formValues.get(src)?.get("name")).toBe("Alice");
+  });
+});

@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { countPages, addRotation } from "../pdf/pageOps";
-import type { Edit, PageEntry, SourceFile, SourceId } from "../pdf/types";
+import type { Annotation, Edit, FormValue, FormValues, NewAnnotation, PageEntry, SourceFile, SourceId } from "../pdf/types";
 
 export const SIZE_WARNING_BYTES = 100 * 1024 * 1024;
 
@@ -10,17 +10,22 @@ export const sourceReleasers: Array<(id: SourceId) => void> = [];
 
 export interface OpenResult { skipped: string[]; oversized: string[] }
 
-export interface Snapshot { pages: PageEntry[]; edits: Edit[] }
+export interface Snapshot { pages: PageEntry[]; edits: Edit[]; annotations: Annotation[]; formValues: FormValues }
 
 export interface DocumentState {
   sources: Map<SourceId, SourceFile>;
   pages: PageEntry[];
   selection: Set<string>;
   edits: Edit[];
+  annotations: Annotation[];
+  formValues: FormValues;
+  selectedAnnotationId: string | null;
   past: Snapshot[];
   future: Snapshot[];
   savedPages: PageEntry[] | null;
   savedEdits: Edit[] | null;
+  savedAnnotations: Annotation[] | null;
+  savedFormValues: FormValues | null;
   error: string | null;
   openFiles(files: { name: string; bytes: Uint8Array }[], limit?: number): Promise<OpenResult>;
   addFiles(files: { name: string; bytes: Uint8Array }[], limit?: number): Promise<OpenResult>;
@@ -29,6 +34,12 @@ export interface DocumentState {
   remove(ids: string[]): void;
   addEdit(e: Omit<Edit, "id">): string;
   removeEdit(id: string): void;
+  addAnnotation(a: NewAnnotation): string;
+  updateAnnotation(id: string, patch: Partial<Annotation>): void;
+  removeAnnotation(id: string): void;
+  setFormValue(sourceId: SourceId, field: string, value: FormValue): void;
+  clearForm(sourceId: SourceId): void;
+  selectAnnotation(id: string | null): void;
   undo(): void;
   redo(): void;
   select(ids: string[], mode: "replace" | "toggle" | "add"): void;
@@ -52,6 +63,23 @@ function samePages(a: PageEntry[] | null, b: PageEntry[]): boolean {
 function sameEdits(a: Edit[] | null, b: Edit[]): boolean {
   if (!a || a.length !== b.length) return false;
   return a.every((e, i) => e.id === b[i].id && e.text === b[i].text);
+}
+
+function serializeFormValues(m: FormValues | null): string {
+  if (!m) return "null";
+  const rows = [...m.entries()]
+    .map(([src, fields]) => [src, [...fields.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))] as const)
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+  return JSON.stringify(rows);
+}
+
+function sameFormValues(a: FormValues | null, b: FormValues): boolean {
+  return a !== null && serializeFormValues(a) === serializeFormValues(b);
+}
+
+function sameAnnotations(a: Annotation[] | null, b: Annotation[]): boolean {
+  if (!a || a.length !== b.length) return false;
+  return a.every((x, i) => x.id === b[i].id) && JSON.stringify(a) === JSON.stringify(b);
 }
 
 async function loadSources(
@@ -86,16 +114,22 @@ const initial = () => ({
   pages: [] as PageEntry[],
   selection: new Set<string>(),
   edits: [] as Edit[],
+  annotations: [] as Annotation[],
+  formValues: new Map() as FormValues,
+  selectedAnnotationId: null as string | null,
   past: [] as Snapshot[],
   future: [] as Snapshot[],
   savedPages: null as PageEntry[] | null,
   savedEdits: null as Edit[] | null,
+  savedAnnotations: null as Annotation[] | null,
+  savedFormValues: null as FormValues | null,
   error: null as string | null,
 });
 
 export const useDocumentStore = create<DocumentState>((set, get) => {
-  const commit = (pages: PageEntry[], edits: Edit[] = get().edits) =>
-    set((s) => ({ pages, edits, past: [...s.past, { pages: s.pages, edits: s.edits }], future: [] }));
+  const snap = (s: DocumentState): Snapshot => ({ pages: s.pages, edits: s.edits, annotations: s.annotations, formValues: s.formValues });
+  const commit = (patch: Partial<Snapshot>) =>
+    set((s) => ({ ...patch, past: [...s.past, snap(s)], future: [] }));
 
   return {
     ...initial(),
@@ -109,7 +143,7 @@ export const useDocumentStore = create<DocumentState>((set, get) => {
       for (const id of get().sources.keys()) sourceReleasers.forEach((release) => release(id));
       const map = new Map(sources.map((s) => [s.id, s]));
       const pages = sources.flatMap(entriesFor);
-      set({ ...initial(), sources: map, pages, savedPages: pages, savedEdits: [] });
+      set({ ...initial(), sources: map, pages, savedPages: pages, savedEdits: [], savedAnnotations: [], savedFormValues: new Map() });
       return result;
     },
 
@@ -121,7 +155,7 @@ export const useDocumentStore = create<DocumentState>((set, get) => {
         for (const src of sources) map.set(src.id, src);
         return { sources: map };
       });
-      commit([...get().pages, ...sources.flatMap(entriesFor)]);
+      commit({ pages: [...get().pages, ...sources.flatMap(entriesFor)] });
       return result;
     },
 
@@ -132,35 +166,70 @@ export const useDocumentStore = create<DocumentState>((set, get) => {
       const rest = current.filter((p) => !moving.has(p.id));
       const before = current.slice(0, toIndex).filter((p) => !moving.has(p.id)).length;
       const next = [...rest.slice(0, before), ...picked, ...rest.slice(before)];
-      commit(next);
+      commit({ pages: next });
     },
 
     rotate(ids, delta) {
       const set_ = new Set(ids);
-      commit(get().pages.map((p) => (set_.has(p.id) ? { ...p, rotation: addRotation(p.rotation, delta) } : p)));
+      commit({ pages: get().pages.map((p) => (set_.has(p.id) ? { ...p, rotation: addRotation(p.rotation, delta) } : p)) });
     },
 
     remove(ids) {
       const gone = new Set(ids);
-      commit(get().pages.filter((p) => !gone.has(p.id)), get().edits.filter((e) => !gone.has(e.pageEntryId)));
-      set((s) => ({ selection: new Set([...s.selection].filter((id) => !gone.has(id))) }));
+      const annotations = get().annotations.filter((a) => !gone.has(a.pageEntryId));
+      commit({ pages: get().pages.filter((p) => !gone.has(p.id)), edits: get().edits.filter((e) => !gone.has(e.pageEntryId)), annotations });
+      set((s) => ({
+        selection: new Set([...s.selection].filter((id) => !gone.has(id))),
+        selectedAnnotationId: s.selectedAnnotationId && annotations.some((a) => a.id === s.selectedAnnotationId) ? s.selectedAnnotationId : null,
+      }));
     },
 
     addEdit(e) {
       const id = nextId("ed");
-      commit(get().pages, [...get().edits, { ...e, id }]);
+      commit({ edits: [...get().edits, { ...e, id }] });
       return id;
     },
 
     removeEdit(id) {
-      commit(get().pages, get().edits.filter((e) => e.id !== id));
+      commit({ edits: get().edits.filter((e) => e.id !== id) });
     },
+
+    addAnnotation(a) {
+      const id = nextId("an");
+      commit({ annotations: [...get().annotations, { ...a, id } as Annotation] });
+      return id;
+    },
+
+    updateAnnotation(id, patch) {
+      commit({ annotations: get().annotations.map((a) => (a.id === id ? ({ ...a, ...patch, id } as Annotation) : a)) });
+    },
+
+    removeAnnotation(id) {
+      commit({ annotations: get().annotations.filter((a) => a.id !== id) });
+      if (get().selectedAnnotationId === id) set({ selectedAnnotationId: null });
+    },
+
+    setFormValue(sourceId, field, value) {
+      const formValues = new Map([...get().formValues].map(([k, v]) => [k, new Map(v)]));
+      const inner = formValues.get(sourceId) ?? new Map<string, FormValue>();
+      inner.set(field, value);
+      formValues.set(sourceId, inner);
+      commit({ formValues });
+    },
+
+    clearForm(sourceId) {
+      const formValues = new Map([...get().formValues].map(([k, v]) => [k, new Map(v)]));
+      formValues.delete(sourceId);
+      commit({ formValues });
+    },
+
+    selectAnnotation(id) { set({ selectedAnnotationId: id }); },
 
     undo() {
       set((s) => {
         if (s.past.length === 0) return {};
         const previous = s.past[s.past.length - 1];
-        return { pages: previous.pages, edits: previous.edits, past: s.past.slice(0, -1), future: [{ pages: s.pages, edits: s.edits }, ...s.future] };
+        return { ...previous, past: s.past.slice(0, -1), future: [snap(s), ...s.future] };
       });
     },
 
@@ -168,7 +237,7 @@ export const useDocumentStore = create<DocumentState>((set, get) => {
       set((s) => {
         if (s.future.length === 0) return {};
         const [next, ...rest] = s.future;
-        return { pages: next.pages, edits: next.edits, past: [...s.past, { pages: s.pages, edits: s.edits }], future: rest };
+        return { ...next, past: [...s.past, snap(s)], future: rest };
       });
     },
 
@@ -185,9 +254,13 @@ export const useDocumentStore = create<DocumentState>((set, get) => {
     },
 
     clearSelection() { set({ selection: new Set() }); },
-    markClean() { set((s) => ({ savedPages: s.pages, savedEdits: s.edits })); },
+    markClean() { set((s) => ({ savedPages: s.pages, savedEdits: s.edits, savedAnnotations: s.annotations, savedFormValues: s.formValues })); },
     setError(message) { set({ error: message }); },
-    isDirty() { return !samePages(get().savedPages, get().pages) || !sameEdits(get().savedEdits, get().edits); },
+    isDirty() {
+      const s = get();
+      return !samePages(s.savedPages, s.pages) || !sameEdits(s.savedEdits, s.edits)
+        || !sameAnnotations(s.savedAnnotations, s.annotations) || !sameFormValues(s.savedFormValues, s.formValues);
+    },
     canUndo() { return get().past.length > 0; },
     canRedo() { return get().future.length > 0; },
     reset() { set(initial()); },
