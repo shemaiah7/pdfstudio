@@ -76,3 +76,17 @@ describe("ai store", () => {
     release(); await first;
   });
 });
+
+describe("setSelection reset", () => {
+  const sel = (text: string) => ({ pageEntryId: "p1", text, boxes: [{ x: 0, y: 0, width: 10, height: 10 }], fontSize: 12, bold: false, serif: false });
+  it("clears the result on a different selection but keeps it for an identical one", () => {
+    const st = useAiStore;
+    st.getState().setSelection(sel("a"));
+    st.setState((s) => ({ rewrite: { ...s.rewrite, result: "R", status: "done" } }));
+    st.getState().setSelection(sel("a"));
+    expect(st.getState().rewrite.result).toBe("R");
+    st.getState().setSelection(sel("b"));
+    expect(st.getState().rewrite.result).toBe("");
+    expect(st.getState().rewrite.status).toBe("idle");
+  });
+});

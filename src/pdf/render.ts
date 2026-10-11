@@ -48,6 +48,7 @@ export function renderPage(
     const page = await doc.getPage(pageIndex + 1);
     if (cancelled) return;
     const viewport = page.getViewport({ scale, rotation: page.rotate + rotation });
+    canvas.dataset.widthPt = String(page.view[2] - page.view[0]);
     canvas.dataset.heightPt = String(page.view[3] - page.view[1]);
     canvas.dataset.pageRotate = String(page.rotate);
     const dpr = window.devicePixelRatio || 1;

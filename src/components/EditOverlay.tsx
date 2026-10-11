@@ -18,10 +18,20 @@ export function measureCss(font: Edit["font"]) {
   };
 }
 
-export default function EditOverlay({ edits, scale, pageHeightPt }: { edits: Edit[]; scale: number; pageHeightPt: number }) {
+export function overlayTransform(rotation: number, W: number, H: number): string {
+  switch (((rotation % 360) + 360) % 360) {
+    case 90: return `translate(${H}px,0) rotate(90deg)`;
+    case 180: return `translate(${W}px,${H}px) rotate(180deg)`;
+    case 270: return `translate(0,${W}px) rotate(270deg)`;
+    default: return "none";
+  }
+}
+
+export default function EditOverlay({ edits, scale, pageHeightPt, pageWidthPt, rotation }: { edits: Edit[]; scale: number; pageHeightPt: number; pageWidthPt: number; rotation: number }) {
+  const W = pageWidthPt * scale, H = pageHeightPt * scale;
   const laid = useMemo(() => edits.map((e) => ({ e, ...layoutText(e.text, regionOf(e.boxes), e.fontSize, measureCss(e.font)) })), [edits]);
   return (
-    <div className="editOverlay">
+    <div className="editOverlay" style={{ width: W, height: H, inset: "auto", left: 0, top: 0, transformOrigin: "0 0", transform: overlayTransform(rotation, W, H) }}>
       {laid.map(({ e, lines, fontSize }) => (
         <div key={e.id} className="edit" data-edit-id={e.id}>
           {e.boxes.map((b, i) => (

@@ -47,8 +47,10 @@ export async function buildDocument(
         "sans-bold": await out.embedFont(StandardFonts.HelveticaBold),
         serif: await out.embedFont(StandardFonts.TimesRoman),
       };
+      // Selection boxes are relative to the crop box origin (pdf.js page.view).
+      const { x: ox, y: oy } = copied.getCropBox();
       for (const e of pageEdits) {
-        for (const b of e.boxes) copied.drawRectangle({ x: b.x, y: b.y, width: b.width, height: b.height, color: rgb(1, 1, 1) });
+        for (const b of e.boxes) copied.drawRectangle({ x: b.x + ox, y: b.y + oy, width: b.width, height: b.height, color: rgb(1, 1, 1) });
         const font = fonts[e.font];
         const safeWidth = (t: string, s: number) => {
           try { return font.widthOfTextAtSize(t, s); } catch { return font.widthOfTextAtSize(toWinAnsi(t), s); }
@@ -56,7 +58,7 @@ export async function buildDocument(
         const { lines, fontSize } = layoutText(e.text, regionOf(e.boxes), e.fontSize, safeWidth);
         const color = rgb(e.color[0], e.color[1], e.color[2]);
         for (const line of lines) {
-          const opts = { x: line.x, y: line.baseline, size: fontSize, font, color };
+          const opts = { x: line.x + ox, y: line.baseline + oy, size: fontSize, font, color };
           try { copied.drawText(line.text, opts); }
           catch { copied.drawText(toWinAnsi(line.text), opts); }
         }

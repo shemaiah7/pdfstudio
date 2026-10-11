@@ -51,7 +51,11 @@ export const useAiStore = create<AiState>((set, get) => ({
   ...initial(),
 
   setClient: (client) => set({ client }),
-  setSelection: (selection) => set((s) => ({ rewrite: { ...s.rewrite, selection } })),
+  setSelection: (selection) => set((s) => {
+    const cur = s.rewrite.selection;
+    const same = !!cur && !!selection && cur.pageEntryId === selection.pageEntryId && cur.text === selection.text;
+    return { rewrite: same || (!cur && !selection) ? { ...s.rewrite, selection } : { ...s.rewrite, selection, result: "", status: "idle" as Status, error: null } };
+  }),
   setRewriteMode: (mode) => set((s) => ({ rewrite: { ...s.rewrite, mode } })),
   setLanguage: (language) => set((s) => ({ rewrite: { ...s.rewrite, language } })),
   setSummaryScope: (scope) => set((s) => ({ summary: { ...s.summary, scope } })),

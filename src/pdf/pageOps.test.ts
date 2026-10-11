@@ -139,4 +139,13 @@ describe("edits on export", () => {
     const doc = await PDFDocument.load(out);
     expect(decodeTjStrings(await pageContent(doc, 0))).toContain("Hi ?");
   });
+  it("offsets edits by the crop box origin", async () => {
+    const s = new Map([["o", { id: "o", name: "offset.pdf", bytes: loadFixture("offset"), pageCount: 1 }]]);
+    const out = await buildDocument(s, [entry("o", 0)], [
+      { id: "e1", pageEntryId: "o-0", boxes: [{ x: 20, y: 350, width: 120, height: 24 }], text: "Hi", fontSize: 12, font: "sans", color: [0, 0, 0] },
+    ]);
+    const content = await pageContent(await PDFDocument.load(out), 0);
+    expect(content).toMatch(/1 0 0 1 70 450 cm/);
+    expect(content).toMatch(/1 0 0 1 70 \d+(\.\d+)? Tm/);
+  });
 });
