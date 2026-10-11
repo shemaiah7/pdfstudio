@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { useAiStore, type RewriteMode } from "../../store/ai";
 import { useDocumentStore } from "../../store/document";
 import { layoutInBoxes } from "../../pdf/layout";
+import { normalizeFont } from "../../pdf/fonts";
 import { usePdfMeasure } from "../usePdfMeasure";
 
 const MODES: { value: RewriteMode; label: string }[] = [
@@ -19,8 +20,9 @@ export default function RewriteTab({ disabled }: { disabled: boolean }) {
   const pageEl = sel ? document.querySelector<HTMLElement>(`#page-${sel.pageEntryId}`) : null;
   const effectiveRotation = entry ? ((Number(pageEl?.dataset.pageRotate ?? 0) + entry.rotation) % 360 + 360) % 360 : 0;
   const font = sel ? (sel.serif ? "serif" : sel.bold ? "sans-bold" : "sans") : "sans";
-  const measure = usePdfMeasure([font])[font];
-  const fit = useMemo(() => (sel && rewrite.result && measure ? layoutInBoxes(rewrite.result, sel.boxes, sel.fontSize, measure) : null), [sel, rewrite.result, font, measure]);
+  const face = normalizeFont(font);
+  const measure = usePdfMeasure([face])[face];
+  const fit = useMemo(() => (sel && rewrite.result && measure ? layoutInBoxes(rewrite.result, sel.boxes, sel.fontSize, measure) : null), [sel, rewrite.result, face, measure]);
   const canInsert = !!sel && !!entry && !!fit && !fit.overflow && rewrite.mode !== "explain" && effectiveRotation === 0 && rewrite.status === "done";
 
   const insert = () => {

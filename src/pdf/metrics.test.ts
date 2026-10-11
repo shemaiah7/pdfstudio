@@ -6,16 +6,16 @@ describe("measureFor", () => {
   it("matches pdf-lib's Helvetica width", async () => {
     const doc = await PDFDocument.create();
     const helv = await doc.embedFont(StandardFonts.Helvetica);
-    const measure = await measureFor("sans");
+    const measure = await measureFor("helvetica");
     expect(measure("Hello", 10)).toBe(helv.widthOfTextAtSize("Hello", 10));
   });
   it("measures WinAnsi punctuation as the real glyph", async () => {
     const doc = await PDFDocument.create();
     const helv = await doc.embedFont(StandardFonts.Helvetica);
-    expect((await measureFor("sans"))("a\u2014b", 12)).toBe(helv.widthOfTextAtSize("a\u2014b", 12));
+    expect((await measureFor("helvetica"))("a\u2014b", 12)).toBe(helv.widthOfTextAtSize("a\u2014b", 12));
   });
   it("does not throw on non-WinAnsi text", async () => {
-    const measure = await measureFor("serif");
+    const measure = await measureFor("times");
     expect(measure("Hi 中", 10)).toBeGreaterThan(0);
   });
 });

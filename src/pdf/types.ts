@@ -3,9 +3,10 @@ export type Rotation = 0 | 90 | 180 | 270;
 export interface SourceFile { id: SourceId; name: string; bytes: Uint8Array; pageCount: number; hash?: string }
 export interface PageEntry { id: string; sourceId: SourceId; sourcePageIndex: number; rotation: Rotation; }
 export interface Box { x: number; y: number; width: number; height: number }
-export type EditFont = "sans" | "sans-bold" | "serif";
-export interface Edit { id: string; pageEntryId: string; boxes: Box[]; text: string; fontSize: number; font: EditFont; color: [number, number, number] }
 export type RGB = [number, number, number];
+export type EditFont = "helvetica" | "helvetica-bold" | "helvetica-oblique" | "helvetica-boldoblique" | "times" | "times-bold" | "times-italic" | "times-bolditalic" | "courier" | "courier-bold" | "courier-oblique" | "courier-boldoblique";
+export type LegacyEditFont = "sans" | "sans-bold" | "serif";
+export interface Edit { id: string; pageEntryId: string; boxes: Box[]; text: string; fontSize: number; font: EditFont; color: RGB; background?: RGB; lineHeight?: number; source?: "native" | "ocr"; blockKey?: string }
 export interface AnnotationBase { id: string; pageEntryId: string; color: RGB }
 export interface HighlightAnn extends AnnotationBase { kind: "highlight"; boxes: Box[] }
 export interface NoteAnn extends AnnotationBase { kind: "note"; x: number; y: number; text: string }

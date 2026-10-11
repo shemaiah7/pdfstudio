@@ -5,7 +5,8 @@ import { ensureAcroFormDR, isDegenerate, writeAnnotations } from "./annotations"
 import { applyFormValues, readFieldsFromDoc, rebuildAcroForm } from "./formFill";
 import { addInvisibleText, withoutCoveredWords } from "../ocr/textLayer";
 import type { OcrPage } from "../ocr/types";
-import type { Annotation, Edit, FormValues, PageEntry, Rotation, SourceFile, SourceId } from "./types";
+import { STANDARD_FONTS, normalizeFont } from "./fonts";
+import type { Annotation, Edit, EditFont, FormValues, PageEntry, Rotation, SourceFile, SourceId } from "./types";
 
 export function addRotation(a: Rotation, delta: 90 | -90 | 180): Rotation {
   return (((a + delta) % 360) + 360) % 360 as Rotation;
@@ -58,14 +59,12 @@ export async function buildDocument(
     const { x: ox, y: oy } = copied.getCropBox();
     const pageEdits = edits.filter((e) => e.pageEntryId === entry.id);
     if (pageEdits.length) {
-      const fonts = {
-        sans: await out.embedFont(StandardFonts.Helvetica),
-        "sans-bold": await out.embedFont(StandardFonts.HelveticaBold),
-        serif: await out.embedFont(StandardFonts.TimesRoman),
-      };
+      const fontCache = new Map<EditFont, PDFFont>();
+      const fontFor = async (f: EditFont) => fontCache.get(f) ?? (fontCache.set(f, await out.embedFont(STANDARD_FONTS[f])), fontCache.get(f)!);
       for (const e of pageEdits) {
-        for (const b of e.boxes) copied.drawRectangle({ x: b.x + ox, y: b.y + oy, width: b.width, height: b.height, color: rgb(1, 1, 1) });
-        const font = fonts[e.font];
+        for (const b of e.boxes) copied.drawRectangle({ x: b.x + ox, y: b.y + oy, width: b.width, height: b.height, color: rgb(...(e.background ?? [1, 1, 1])) });
+        const face = normalizeFont(e.font);
+        const font = await fontFor(face);
         const width = (t: string, s: number) => font.widthOfTextAtSize(toWinAnsi(t), s);
         // The Insert gate prevents overflow edits; if one slips through, draw every line anyway.
         const { lines, fontSize } = layoutInBoxes(e.text, e.boxes, e.fontSize, width, { keepOverflow: true });

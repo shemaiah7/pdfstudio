@@ -78,7 +78,7 @@ describe("withoutCoveredWords", () => {
     const entry = { id: "p1", sourceId: "a", sourcePageIndex: 0, rotation: 0 as const };
     const ocr: OcrPage = { engine: "tesseract", confidence: 1, at: 1, lines: [{ text: "secret keep", box: { x: 20, y: 200, width: 200, height: 20 }, words: [
       { text: "secretword", box: { x: 20, y: 200, width: 80, height: 20 }, confidence: 1 }, { text: "keepword", box: { x: 120, y: 200, width: 80, height: 20 }, confidence: 1 }] }] };
-    const edit: Edit = { id: "e", pageEntryId: "p1", boxes: [{ x: 10, y: 195, width: 100, height: 30 }], text: "", fontSize: 12, font: "sans", color: [0, 0, 0] };
+    const edit: Edit = { id: "e", pageEntryId: "p1", boxes: [{ x: 10, y: 195, width: 100, height: 30 }], text: "", fontSize: 12, font: "helvetica", color: [0, 0, 0] };
     const out = await buildDocument(sources, [entry], [edit], [], new Map(), undefined, new Map([["p1", ocr]]));
     const strs = (await textItems(out)).map((i) => i.str).join(" ");
     expect(strs).not.toContain("secretword");
@@ -89,7 +89,7 @@ describe("withoutCoveredWords", () => {
     const entries = [0, 1].map((i) => ({ id: `p${i}`, sourceId: "a", sourcePageIndex: i, rotation: 0 as const }));
     const deep: OcrPage = { engine: "claude", confidence: 1, at: 1, lines: [{ text: "secret keep", box: { x: 20, y: 200, width: 200, height: 20 }, words: [
       { text: "secretword", box: { x: 20, y: 200, width: 80, height: 20 }, confidence: 1 }, { text: "keepword", box: { x: 120, y: 200, width: 80, height: 20 }, confidence: 1 }] }] };
-    const edit: Edit = { id: "e", pageEntryId: "p0", boxes: [{ x: 10, y: 195, width: 100, height: 30 }], text: "", fontSize: 12, font: "sans", color: [0, 0, 0] };
+    const edit: Edit = { id: "e", pageEntryId: "p0", boxes: [{ x: 10, y: 195, width: 100, height: 30 }], text: "", fontSize: 12, font: "helvetica", color: [0, 0, 0] };
     const warnings: string[] = [];
     const out = await buildDocument(sources, entries, [edit], [], new Map(), (m) => warnings.push(m), new Map([["p0", deep], ["p1", deep]]));
     const strs = (await textItems(out)).map((i) => i.str).join(" ");

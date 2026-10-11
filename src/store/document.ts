@@ -1,8 +1,9 @@
 import { create } from "zustand";
+import { normalizeFont } from "../pdf/fonts";
 import { countPages, addRotation } from "../pdf/pageOps";
 import { sha256 } from "../pdf/hash";
 import type { FieldDef } from "../pdf/formFill";
-import type { Annotation, AnnotationPatch, Edit, FormValue, FormValues, NewAnnotation, PageEntry, SourceFile, SourceId } from "../pdf/types";
+import type { Annotation, AnnotationPatch, Edit, EditFont, FormValue, FormValues, LegacyEditFont, NewAnnotation, PageEntry, SourceFile, SourceId } from "../pdf/types";
 
 export const SIZE_WARNING_BYTES = 100 * 1024 * 1024;
 
@@ -34,7 +35,8 @@ export interface DocumentState {
   reorder(ids: string[], toIndex: number): void;
   rotate(ids: string[], delta: 90 | -90): void;
   remove(ids: string[]): void;
-  addEdit(e: Omit<Edit, "id">): string;
+  addEdit(e: Omit<Edit, "id" | "font"> & { font: EditFont | LegacyEditFont }): string;
+  updateEdit(id: string, patch: Partial<Omit<Edit, "id" | "pageEntryId">>): void;
   removeEdit(id: string): void;
   addAnnotation(a: NewAnnotation): string;
   updateAnnotation(id: string, patch: AnnotationPatch): void;
@@ -194,11 +196,17 @@ export const useDocumentStore = create<DocumentState>((set, get) => {
     },
 
     addEdit(e) {
+      const font = normalizeFont(e.font);
+      const existing = e.blockKey ? get().edits.find((x) => x.pageEntryId === e.pageEntryId && x.blockKey === e.blockKey) : undefined;
+      if (existing) { commit({ edits: get().edits.map((x) => (x.id === existing.id ? { ...e, font, id: existing.id } : x)) }); return existing.id; }
       const id = nextId("ed");
-      commit({ edits: [...get().edits, { ...e, id }] });
+      commit({ edits: [...get().edits, { ...e, font, id }] });
       return id;
     },
 
+    updateEdit(id, patch) {
+      commit({ edits: get().edits.map((x) => (x.id === id ? { ...x, ...patch, ...(patch.font ? { font: normalizeFont(patch.font) } : {}) } : x)) });
+    },
     removeEdit(id) {
       commit({ edits: get().edits.filter((e) => e.id !== id) });
     },

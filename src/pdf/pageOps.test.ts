@@ -1,7 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { PDFArray, PDFDocument, PDFRawStream, decodePDFRawStream } from "pdf-lib";
+import { PDFArray, PDFDocument, PDFName, PDFRawStream, decodePDFRawStream } from "pdf-lib";
 import { buildDocument, countPages, addRotation } from "./pageOps";
 import type { SourceFile, PageEntry } from "./types";
+import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
 import { loadFixture } from "../test/loadFixture";
 
 function src(id: string, name: "three" | "two" | "rotated", pageCount: number): SourceFile {
@@ -120,7 +121,7 @@ describe("edits on export", () => {
     const s = new Map([["a", src("a", "three", 3)]]);
     const pages = [entry("a", 0), entry("a", 1)];
     const out = await buildDocument(s, pages, [
-      { id: "e1", pageEntryId: "a-1", boxes: [{ x: 20, y: 350, width: 120, height: 24 }], text: "Replaced", fontSize: 20, font: "sans", color: [0, 0, 0] },
+      { id: "e1", pageEntryId: "a-1", boxes: [{ x: 20, y: 350, width: 120, height: 24 }], text: "Replaced", fontSize: 20, font: "helvetica", color: [0, 0, 0] },
     ]);
     const doc = await PDFDocument.load(out);
     const page0 = await pageContent(doc, 0);
@@ -134,7 +135,7 @@ describe("edits on export", () => {
   it("replaces characters outside WinAnsi instead of throwing", async () => {
     const s = new Map([["a", src("a", "three", 3)]]);
     const out = await buildDocument(s, [entry("a", 0)], [
-      { id: "e1", pageEntryId: "a-0", boxes: [{ x: 20, y: 350, width: 200, height: 24 }], text: "Hi \u4e2d", fontSize: 12, font: "sans", color: [0, 0, 0] },
+      { id: "e1", pageEntryId: "a-0", boxes: [{ x: 20, y: 350, width: 200, height: 24 }], text: "Hi \u4e2d", fontSize: 12, font: "helvetica", color: [0, 0, 0] },
     ]);
     const doc = await PDFDocument.load(out);
     expect(decodeTjStrings(await pageContent(doc, 0))).toContain("Hi ?");
@@ -142,7 +143,7 @@ describe("edits on export", () => {
   it("draws WinAnsi punctuation as measured instead of replacing it", async () => {
     const s = new Map([["a", src("a", "three", 3)]]);
     const out = await buildDocument(s, [entry("a", 0)], [
-      { id: "e1", pageEntryId: "a-0", boxes: [{ x: 20, y: 350, width: 200, height: 24 }], text: "a\u2014b", fontSize: 12, font: "sans", color: [0, 0, 0] },
+      { id: "e1", pageEntryId: "a-0", boxes: [{ x: 20, y: 350, width: 200, height: 24 }], text: "a\u2014b", fontSize: 12, font: "helvetica", color: [0, 0, 0] },
     ]);
     // pdf-lib encodes an em dash as WinAnsi 0x97.
     expect(decodeTjStrings(await pageContent(await PDFDocument.load(out), 0))).toContain("a\u0097b");
@@ -150,7 +151,7 @@ describe("edits on export", () => {
   it("offsets edits by the crop box origin", async () => {
     const s = new Map([["o", { id: "o", name: "offset.pdf", bytes: loadFixture("offset"), pageCount: 1 }]]);
     const out = await buildDocument(s, [entry("o", 0)], [
-      { id: "e1", pageEntryId: "o-0", boxes: [{ x: 20, y: 350, width: 120, height: 24 }], text: "Hi", fontSize: 12, font: "sans", color: [0, 0, 0] },
+      { id: "e1", pageEntryId: "o-0", boxes: [{ x: 20, y: 350, width: 120, height: 24 }], text: "Hi", fontSize: 12, font: "helvetica", color: [0, 0, 0] },
     ]);
     const content = await pageContent(await PDFDocument.load(out), 0);
     expect(content).toMatch(/1 0 0 1 70 450 cm/);
@@ -159,10 +160,34 @@ describe("edits on export", () => {
   it("lays text out per selected line box", async () => {
     const s = new Map([["a", src("a", "three", 3)]]);
     const out = await buildDocument(s, [entry("a", 0)], [
-      { id: "e1", pageEntryId: "a-0", boxes: [{ x: 120, y: 400, width: 80, height: 14 }, { x: 20, y: 380, width: 180, height: 14 }], text: "aaa bbb ccc ddd eee fff", fontSize: 12, font: "sans", color: [0, 0, 0] },
+      { id: "e1", pageEntryId: "a-0", boxes: [{ x: 120, y: 400, width: 80, height: 14 }, { x: 20, y: 380, width: 180, height: 14 }], text: "aaa bbb ccc ddd eee fff", fontSize: 12, font: "helvetica", color: [0, 0, 0] },
     ]);
     const content = await pageContent(await PDFDocument.load(out), 0);
     const xs = [...content.matchAll(/1 0 0 1 (\d+(?:\.\d+)?) \d+(?:\.\d+)? Tm/g)].map((m) => Number(m[1]));
     expect(xs.slice(-2)).toEqual([120, 20]); // the page's own text precedes the edit
   });
+});
+
+it("draws an edit with a courier-bold face, a coloured cover, and the crop origin offset", async () => {
+  const bytes = loadFixture("offset");            // crop box origin (50,100)
+  const sources = new Map([["s", { id: "s", name: "offset.pdf", bytes, pageCount: 1 }]]);
+  const pages = [{ id: "p", sourceId: "s", sourcePageIndex: 0, rotation: 0 as const }];
+  const out = await buildDocument(sources, pages, [{ id: "e", pageEntryId: "p", boxes: [{ x: 20, y: 300, width: 120, height: 14 }], text: "Dose 10 mg", fontSize: 11, font: "courier-bold", color: [0, 0, 1], background: [1, 1, 0.8], lineHeight: 13, source: "native" }]);
+  const pdf = await getDocument({ data: out.slice() }).promise;
+  const page = await pdf.getPage(1);
+  const items = (await page.getTextContent()).items.filter((i): i is typeof i & { str: string; transform: number[] } => "str" in i);
+  const hit = items.find((i) => i.str.includes("Dose"));
+  expect(hit).toBeDefined();
+  expect(hit!.transform[4]).toBeCloseTo(20 + 50, 0);
+  // Fonts live in compressed object streams and content streams are Flate-compressed, so inspect the parsed document.
+  const reloaded = await PDFDocument.load(out);
+  const baseFonts = [...reloaded.context.enumerateIndirectObjects()].map(([, o]) => String((o as { get?: (k: PDFName) => unknown }).get?.(PDFName.of("BaseFont")) ?? ""));
+  expect(baseFonts).toContain("/Courier-Bold");
+  expect(await pageContent(reloaded, 0)).toMatch(/1 1 0\.8 rg/);
+});
+it("still accepts legacy font names from the AI insert", async () => {
+  const bytes = loadFixture("three");
+  const sources = new Map([["s", { id: "s", name: "three.pdf", bytes, pageCount: 1 }]]);
+  const pages = [{ id: "p", sourceId: "s", sourcePageIndex: 0, rotation: 0 as const }];
+  await expect(buildDocument(sources, pages, [{ id: "e", pageEntryId: "p", boxes: [{ x: 20, y: 300, width: 120, height: 14 }], text: "x", fontSize: 11, font: "sans-bold" as never, color: [0, 0, 0] }])).resolves.toBeInstanceOf(Uint8Array);
 });
