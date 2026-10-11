@@ -122,3 +122,9 @@ body { background: var(--bg); color: var(--text); font-family: system-ui, sans-s
 .sigFonts button.active { outline: 2px solid var(--accent); }
 .sigError { color: #c0392b; font-size: 13px; }
 .sigActions { display: flex; gap: 6px; align-items: center; }
+
+/* Form filling layer */
+.formLayer { position: absolute; left: 0; top: 0; transform-origin: 0 0; pointer-events: none; }
+.formLayer input, .formLayer select { position: absolute; box-sizing: border-box; font: 12px Helvetica, Arial, sans-serif; background: rgba(173, 216, 230, 0.35); border: 1px solid rgba(0,0,0,0.25); pointer-events: auto; }
+.formLayer input[type=checkbox], .formLayer input[type=radio] { margin: 0; accent-color: var(--accent); }
+.formLayer .unsupportedField { position: absolute; box-sizing: border-box; border: 1px dashed rgba(0,0,0,0.3); background: rgba(128,128,128,0.15); pointer-events: auto; }

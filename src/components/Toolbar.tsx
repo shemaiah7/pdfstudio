@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import { useDocumentStore } from "../store/document";
 import { buildDocument } from "../pdf/pageOps";
+import { useFields } from "./useFields";
 import { outputName, saveBlob } from "../pdf/download";
 
 interface Props { scale: number; setScale: (s: number) => void; onFiles: (files: File[], mode: "open" | "add") => void }
@@ -13,6 +14,9 @@ export default function Toolbar({ scale, setScale, onFiles }: Props) {
   const selected = [...s.selection];
   const hasSel = selected.length > 0;
   const firstName = s.pages[0] ? s.sources.get(s.pages[0].sourceId)!.name : "document.pdf";
+
+  const firstSource = s.pages[0] ? s.sources.get(s.pages[0].sourceId) : undefined;
+  const firstFields = useFields(firstSource);
 
   const exportPages = async (entries: typeof s.pages, kind: "edited" | "pages") => {
     const ids = new Set(entries.map((p) => p.id));
@@ -48,6 +52,9 @@ export default function Toolbar({ scale, setScale, onFiles }: Props) {
       <button data-testid="delete" disabled={!hasSel} onClick={() => s.remove(selected)}>Delete</button>
       <button data-testid="extract" disabled={!hasSel || busy}
         onClick={() => exportPages(s.pages.filter((p) => s.selection.has(p.id)), "pages")}>Extract selected</button>
+      {firstSource && firstFields && firstFields.length > 0 ? (
+        <button data-testid="clear-form" onClick={() => s.clearForm(firstSource.id)}>Clear form</button>
+      ) : null}
       <span className="sep" />
       <button data-testid="zoom-out" onClick={() => setScale(Math.max(0.4, scale - 0.2))}>−</button>
       <span className="zoom">{Math.round(scale * 100)}%</span>

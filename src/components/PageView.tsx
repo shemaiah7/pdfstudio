@@ -4,7 +4,16 @@ import PageCanvas from "./PageCanvas";
 import TextLayer from "./TextLayer";
 import EditOverlay from "./EditOverlay";
 import { useToolsStore } from "../store/tools";
+import type { SourceFile } from "../pdf/types";
+import type { PageMeta } from "../pdf/geometry";
+import FormLayer from "./FormLayer";
+import { useFields } from "./useFields";
 import AnnotationOverlay from "./AnnotationOverlay";
+
+function PageForm({ source, sourceId, sourcePageIndex, meta }: { source: SourceFile; sourceId: string; sourcePageIndex: number; meta: PageMeta }) {
+  const fields = useFields(source);
+  return fields && fields.length > 0 ? <FormLayer sourceId={sourceId} sourcePageIndex={sourcePageIndex} fields={fields} meta={meta} /> : null;
+}
 
 interface Props { scale: number }
 
@@ -41,6 +50,7 @@ export default function PageView({ scale }: Props) {
             <PageCanvas source={source} entry={entry} scale={scale} lazy onMeta={(m) => onMeta(entry.id, m)} />
             <TextLayer source={source} entry={entry} scale={scale} />
             {heights[entry.id] ? <EditOverlay edits={edits.filter((e) => e.pageEntryId === entry.id)} scale={scale} pageHeightPt={heights[entry.id].heightPt} pageWidthPt={heights[entry.id].widthPt} rotation={(heights[entry.id].pageRotate + entry.rotation) % 360} /> : null}
+            {heights[entry.id] ? <PageForm sourceId={source.id} source={source} sourcePageIndex={entry.sourcePageIndex} meta={{ widthPt: heights[entry.id].widthPt, heightPt: heights[entry.id].heightPt, scale, rotation: ((heights[entry.id].pageRotate + entry.rotation) % 360) as 0 | 90 | 180 | 270 }} /> : null}
             {heights[entry.id] ? <AnnotationOverlay pageEntryId={entry.id} annotations={annotations.filter((a) => a.pageEntryId === entry.id)} meta={{ widthPt: heights[entry.id].widthPt, heightPt: heights[entry.id].heightPt, scale, rotation: ((heights[entry.id].pageRotate + entry.rotation) % 360) as 0 | 90 | 180 | 270 }} pageEl={() => document.getElementById(`page-${entry.id}`)} /> : null}
             <div className="page-label">{i + 1}</div>
           </div>

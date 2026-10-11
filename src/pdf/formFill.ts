@@ -3,7 +3,7 @@ import { PDFDocument, PDFPage, PDFName, PDFDict, PDFArray, PDFRef, PDFHexString,
 import type { Box, FormValue } from "./types";
 
 export type FieldType = "text" | "checkbox" | "radio" | "dropdown" | "unsupported";
-export interface FieldDef { name: string; type: FieldType; options?: string[]; onValue?: string; widgets: { pageIndex: number; rect: Box }[] }
+export interface FieldDef { name: string; type: FieldType; options?: string[]; multiple?: boolean; onValue?: string; widgets: { pageIndex: number; rect: Box }[] }
 
 export function readFieldsFromDoc(doc: PDFDocument): FieldDef[] {
   const annotPage = new Map<PDFDict, number>();
@@ -20,13 +20,17 @@ export function readFieldsFromDoc(doc: PDFDocument): FieldDef[] {
   return form.getFields().map((field): FieldDef => {
     const widgets = field.acroField.getWidgets().map((w) => {
       const r = w.getRectangle();
-      return { pageIndex: annotPage.get(w.dict) ?? 0, rect: { x: r.x, y: r.y, width: r.width, height: r.height } };
+      const pageIndex = annotPage.get(w.dict) ?? 0;
+      // Widget rects are user-space; FieldDef rects are relative to the page's crop-box origin (like edits/annotations).
+      const cb = doc.getPages()[pageIndex]?.getCropBox();
+      return { pageIndex, rect: { x: r.x - (cb?.x ?? 0), y: r.y - (cb?.y ?? 0), width: r.width, height: r.height } };
     });
     const name = field.getName();
     if (field instanceof PDFTextField) return { name, type: "text", widgets };
     if (field instanceof PDFCheckBox) return { name, type: "checkbox", widgets };
     if (field instanceof PDFRadioGroup) return { name, type: "radio", options: field.getOptions(), widgets };
-    if (field instanceof PDFDropdown || field instanceof PDFOptionList) return { name, type: "dropdown", options: field.getOptions(), widgets };
+    if (field instanceof PDFOptionList) return { name, type: "dropdown", options: field.getOptions(), multiple: true, widgets };
+    if (field instanceof PDFDropdown) return { name, type: "dropdown", options: field.getOptions(), widgets };
     return { name, type: "unsupported", widgets };
   });
 }
