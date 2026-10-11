@@ -29,7 +29,13 @@ test("enable search, index a file, find the right page", async ({ page }) => {
   await page.goto("/");
   await page.setInputFiles('input[type="file"]', { name: "clinic.pdf", mimeType: "application/pdf", buffer: await clinicPdf() });
   await page.getByTestId("panel-tab-search").click();
+  const hasGpu = await page.evaluate(async () => { try { return !!(await (navigator as unknown as { gpu?: { requestAdapter(): Promise<unknown> } }).gpu?.requestAdapter()); } catch { return false; } });
+  console.log(`search e2e path: ${hasGpu ? "WebGPU" : "CPU mode (no adapter)"}`);
   await page.getByTestId("search-enable").click();
+  if (!hasGpu) {
+    await expect(page.getByText("Search needs WebGPU, which this browser doesn't provide.")).toBeVisible({ timeout: 30_000 });
+    await page.getByTestId("search-cpu-mode").click(); // downloads about 1 GB
+  }
   await expect(page.getByTestId("search-input")).toBeVisible({ timeout: 540_000 });
   await expect(page.locator(".search-status li").first()).toContainText(/indexed/, { timeout: 60_000 });
   await page.getByTestId("search-input").fill("heart attack symptoms");

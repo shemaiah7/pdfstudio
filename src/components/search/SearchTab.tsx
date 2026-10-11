@@ -28,6 +28,14 @@ export default function SearchTab() {
       </div>
     );
   }
+  if (s.model.status === "unavailable" && s.model.error === "no-webgpu") {
+    return (
+      <div className="ai-tab">
+        <div className="ai-error">Search needs WebGPU, which this browser doesn't provide.</div>
+        <button data-testid="search-cpu-mode" onClick={() => void s.enableCpuMode()}>Use CPU mode (downloads about 1 GB each visit)</button>
+      </div>
+    );
+  }
   if (s.model.status === "unavailable") {
     return (
       <div className="ai-tab">
@@ -38,7 +46,7 @@ export default function SearchTab() {
   }
   return (
     <div className="ai-tab">
-      {s.model.device === "wasm" && <p className="muted">Indexing will be slower on this device (no WebGPU).</p>}
+      {s.model.device === "wasm" && <p className="muted">Indexing will be slower on this device (no WebGPU), and the model is about 1 GB each visit.</p>}
       {!s.persistent && <p className="muted">Documents won't be remembered on this device</p>}
       {s.persistent && s.lastWriteFailed && <p className="muted">One document could not be saved on this device</p>}
       <div className="ai-row">

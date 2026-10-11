@@ -17,14 +17,14 @@ const vectors = (n: number) => { const v = new Float32Array(n * DIMS); for (let 
 
 describe("EmbedClient", () => {
   it("loads with progress and resolves the device", async () => {
-    const w = new FakeWorker((m, r) => { if (m.type === "load") { r({ type: "progress", loaded: 5, total: 10 }); r({ type: "ready", device: "wasm" }); } });
+    const w = new FakeWorker((m, r) => { if (m.type === "load") { r({ type: "progress", loaded: 5, total: 10 }); r({ type: "ready", device: "wasm", dtype: "fp32" }); } });
     const c = new EmbedClient(() => w as unknown as Worker);
     const seen: number[] = [];
     expect(await c.load((l) => seen.push(l))).toBe("wasm");
     expect(seen).toEqual([5]);
   });
   it("embeds in order and returns a flat Float32Array", async () => {
-    const w = new FakeWorker((m, r) => { if (m.type === "load") r({ type: "ready", device: "webgpu" }); if (m.type === "embed") r({ type: "embedded", id: m.id, vectors: vectors(m.texts.length) }); });
+    const w = new FakeWorker((m, r) => { if (m.type === "load") r({ type: "ready", device: "webgpu", dtype: "fp32" }); if (m.type === "embed") r({ type: "embedded", id: m.id, vectors: vectors(m.texts.length) }); });
     const c = new EmbedClient(() => w as unknown as Worker);
     await c.load(() => {});
     const [a, b] = await Promise.all([c.embed(["x", "y"], "document"), c.embed(["q"], "query")]);
@@ -39,7 +39,7 @@ describe("EmbedClient", () => {
   it("cancel drops queued jobs with the tag", async () => {
     let release!: () => void;
     const gate = new Promise<void>((res) => { release = res; });
-    const w = new FakeWorker((m, r) => { if (m.type === "load") r({ type: "ready", device: "wasm" }); if (m.type === "embed") void gate.then(() => r({ type: "embedded", id: m.id, vectors: vectors(m.texts.length) })); });
+    const w = new FakeWorker((m, r) => { if (m.type === "load") r({ type: "ready", device: "wasm", dtype: "fp32" }); if (m.type === "embed") void gate.then(() => r({ type: "embedded", id: m.id, vectors: vectors(m.texts.length) })); });
     const c = new EmbedClient(() => w as unknown as Worker);
     await c.load(() => {});
     const first = c.embed(["a"], "document", "doc1");
@@ -50,7 +50,7 @@ describe("EmbedClient", () => {
     expect((await first).length).toBe(DIMS);
   });
   it("dispose terminates the worker and rejects pending jobs", async () => {
-    const w = new FakeWorker((m, r) => { if (m.type === "load") r({ type: "ready", device: "wasm" }); });
+    const w = new FakeWorker((m, r) => { if (m.type === "load") r({ type: "ready", device: "wasm", dtype: "fp32" }); });
     const c = new EmbedClient(() => w as unknown as Worker);
     await c.load(() => {});
     const p = c.embed(["a"], "query");
@@ -59,7 +59,7 @@ describe("EmbedClient", () => {
     expect(w.terminated).toBe(true);
   });
   it("load caches its promise and resolves immediately once ready", async () => {
-    const w = new FakeWorker((m, r) => { if (m.type === "load") r({ type: "ready", device: "wasm" }); });
+    const w = new FakeWorker((m, r) => { if (m.type === "load") r({ type: "ready", device: "wasm", dtype: "fp32" }); });
     const c = new EmbedClient(() => w as unknown as Worker);
     const p1 = c.load(() => {}); const p2 = c.load(() => {});
     expect(p2).toBe(p1);
@@ -68,7 +68,7 @@ describe("EmbedClient", () => {
     expect(w.sent.filter((s) => s.type === "load").length).toBe(1);
   });
   it("embed before ready waits for load, and rejects if load failed", async () => {
-    const w = new FakeWorker((m, r) => { if (m.type === "load") r({ type: "ready", device: "wasm" }); if (m.type === "embed") r({ type: "embedded", id: m.id, vectors: vectors(1) }); });
+    const w = new FakeWorker((m, r) => { if (m.type === "load") r({ type: "ready", device: "wasm", dtype: "fp32" }); if (m.type === "embed") r({ type: "embedded", id: m.id, vectors: vectors(1) }); });
     const c = new EmbedClient(() => w as unknown as Worker);
     void c.load(() => {});
     expect((await c.embed(["a"], "query")).length).toBe(DIMS);
@@ -78,14 +78,14 @@ describe("EmbedClient", () => {
     await expect(c2.embed(["a"], "query")).rejects.toThrow("offline");
   });
   it("ignores responses whose id is not the head job", async () => {
-    const w = new FakeWorker((m, r) => { if (m.type === "load") r({ type: "ready", device: "wasm" }); if (m.type === "embed") { r({ type: "embedded", id: 999, vectors: vectors(1) }); r({ type: "error", id: 998, message: "stray" }); r({ type: "embedded", id: m.id, vectors: vectors(1) }); } });
+    const w = new FakeWorker((m, r) => { if (m.type === "load") r({ type: "ready", device: "wasm", dtype: "fp32" }); if (m.type === "embed") { r({ type: "embedded", id: 999, vectors: vectors(1) }); r({ type: "error", id: 998, message: "stray" }); r({ type: "embedded", id: m.id, vectors: vectors(1) }); } });
     const c = new EmbedClient(() => w as unknown as Worker);
     await c.load(() => {});
     expect((await c.embed(["a"], "query")).length).toBe(DIMS);
   });
   it("worker crash rejects in-flight and queued jobs, then a fresh worker is created on load", async () => {
     const workers: FakeWorker[] = [];
-    const make = () => { const w = new FakeWorker((m, r) => { if (m.type === "load") r({ type: "ready", device: "wasm" }); }); workers.push(w); return w as unknown as Worker; };
+    const make = () => { const w = new FakeWorker((m, r) => { if (m.type === "load") r({ type: "ready", device: "wasm", dtype: "fp32" }); }); workers.push(w); return w as unknown as Worker; };
     const c = new EmbedClient(make);
     await c.load(() => {});
     const a = c.embed(["a"], "query"); const b = c.embed(["b"], "query");
@@ -105,7 +105,7 @@ describe("EmbedClient", () => {
   });
   it("keeps one job in flight; a per-job error rejects only that job", async () => {
     const pending: Array<(o: WorkerOut) => void> = [];
-    const w = new FakeWorker((m, r) => { if (m.type === "load") r({ type: "ready", device: "wasm" }); if (m.type === "embed") pending.push(r); });
+    const w = new FakeWorker((m, r) => { if (m.type === "load") r({ type: "ready", device: "wasm", dtype: "fp32" }); if (m.type === "embed") pending.push(r); });
     const c = new EmbedClient(() => w as unknown as Worker);
     await c.load(() => {});
     const a = c.embed(["a"], "query"); const b = c.embed(["b"], "query");
@@ -121,7 +121,7 @@ describe("EmbedClient", () => {
   });
   it("cancel never posts the cancelled job, keeps other tags, and the queue continues", async () => {
     const pending: Array<(o: WorkerOut) => void> = [];
-    const w = new FakeWorker((m, r) => { if (m.type === "load") r({ type: "ready", device: "wasm" }); if (m.type === "embed") pending.push(r); });
+    const w = new FakeWorker((m, r) => { if (m.type === "load") r({ type: "ready", device: "wasm", dtype: "fp32" }); if (m.type === "embed") pending.push(r); });
     const c = new EmbedClient(() => w as unknown as Worker);
     await c.load(() => {});
     const first = c.embed(["a"], "document", "t1");
@@ -138,22 +138,16 @@ describe("EmbedClient", () => {
     pending[1]({ type: "embedded", id: 3, vectors: vectors(1) });
     expect((await kept).length).toBe(DIMS);
   });
-  it("restarts on a fresh worker with device wasm when the worker reports a WebGPU failure", async () => {
-    const workers: FakeWorker[] = [];
-    const make = () => {
-      const n = workers.length;
-      const w = new FakeWorker((m, r) => {
-        if (m.type !== "load") return;
-        if (n === 0) r({ type: "error", message: "gpu died", retry: "wasm" });
-        else r({ type: "ready", device: "wasm" });
-      });
-      workers.push(w);
-      return w as unknown as Worker;
-    };
-    const c = new EmbedClient(make);
-    expect(await c.load(() => {})).toBe("wasm");
-    expect(workers.length).toBe(2);
-    expect(workers[0].terminated).toBe(true);
-    expect(workers[1].sent[0]).toEqual({ type: "load", device: "wasm" });
+  it("passes the device on load, exposes the dtype, and rejects with the worker error code", async () => {
+    const w = new FakeWorker((m, r) => { if (m.type === "load") r(m.device ? { type: "ready", device: "wasm", dtype: "fp32" } : { type: "error", message: "no gpu", code: "no-webgpu" }); });
+    const w2 = new FakeWorker((m, r) => { if (m.type === "load") r({ type: "ready", device: "wasm", dtype: "fp32" }); });
+    const ws = [w, w2]; let n = 0;
+    const c = new EmbedClient(() => ws[n++] as unknown as Worker);
+    await expect(c.load(() => {})).rejects.toMatchObject({ code: "no-webgpu" });
+    expect(w.terminated).toBe(true);
+    expect(c.dtype).toBeNull();
+    expect(await c.load(() => {}, "wasm")).toBe("wasm");
+    expect(w2.sent[0]).toEqual({ type: "load", device: "wasm" });
+    expect(c.dtype).toBe("fp32");
   });
 });

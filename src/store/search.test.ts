@@ -3,11 +3,11 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { DIMS } from "../search/constants";
 
 const embed = vi.fn(async (texts: string[], kind: string) => { const v = new Float32Array(texts.length * DIMS); v[0] = kind === "query" ? 1 : 1; return v; });
-const load = vi.fn(async () => "wasm" as const);
+const load = vi.fn(async (_p?: unknown, _d?: "wasm") => "wasm" as const);
 vi.mock("../search/embedClient", () => ({ getEmbedClient: () => ({ load, embed, cancel: vi.fn(), dispose: vi.fn() }) }));
 
 const docs: { hash: string; chunks: { page: number; start: number; end: number; text: string }[]; vectors: Float32Array }[] = [];
-const lib = { loadAll: vi.fn(async () => docs), list: vi.fn(async () => docs.map((d) => ({ hash: d.hash, name: d.hash, size: 1, pageCount: 1, addedAt: 1, modelId: "m", chunkCount: d.chunks.length, stale: false }))), remove: vi.fn(async (h: string) => { const i = docs.findIndex((d) => d.hash === h); if (i >= 0) docs.splice(i, 1); }), clear: vi.fn(async () => { docs.length = 0; }), get: vi.fn(async () => undefined), put: vi.fn(async () => {}), estimateUsage: vi.fn(async () => 1234), persistent: true, lastWriteFailed: false };
+const lib = { setModelTag: vi.fn(), loadAll: vi.fn(async () => docs), list: vi.fn(async () => docs.map((d) => ({ hash: d.hash, name: d.hash, size: 1, pageCount: 1, addedAt: 1, modelId: "m", chunkCount: d.chunks.length, stale: false }))), remove: vi.fn(async (h: string) => { const i = docs.findIndex((d) => d.hash === h); if (i >= 0) docs.splice(i, 1); }), clear: vi.fn(async () => { docs.length = 0; }), get: vi.fn(async () => undefined), put: vi.fn(async () => {}), estimateUsage: vi.fn(async () => 1234), persistent: true, lastWriteFailed: false };
 vi.mock("../search/library", () => ({ get library() { return lib; }, sha256: async (b: Uint8Array) => `h${b[0]}` }));
 
 const indexSource = vi.fn(async (s: { bytes: Uint8Array }, _signal?: AbortSignal): Promise<{ status: "indexed"; hash: string; chunks: number } | { status: "cancelled"; hash: string }> => { const hash = `h${s.bytes[0]}`; if (!docs.find((d) => d.hash === hash)) { const v = new Float32Array(DIMS); v[0] = 1; docs.push({ hash, chunks: [{ page: 0, start: 0, end: 5, text: "hello warfarin" }], vectors: v }); } return { status: "indexed" as const, hash, chunks: 1 }; });
@@ -37,6 +37,19 @@ describe("search store", () => {
     expect(useSearchStore.getState().model).toMatchObject({ status: "unavailable", error: "offline" });
     await useSearchStore.getState().retryModel();
     expect(useSearchStore.getState().model.status).toBe("ready");
+  });
+  it("maps a no-webgpu load error, then enableCpuMode loads wasm, remembers it, and scopes the library tag", async () => {
+    const mem = new Map<string, string>();
+    vi.stubGlobal("localStorage", { getItem: (k: string) => mem.get(k) ?? null, setItem: (k: string, v: string) => { mem.set(k, v); }, removeItem: (k: string) => { mem.delete(k); } });
+    load.mockRejectedValueOnce(Object.assign(new Error("WebGPU is not available"), { code: "no-webgpu" }));
+    await useSearchStore.getState().enable();
+    expect(useSearchStore.getState().model).toMatchObject({ status: "unavailable", error: "no-webgpu" });
+    await useSearchStore.getState().enableCpuMode();
+    expect(load.mock.calls.at(-1)?.[1]).toBe("wasm");
+    expect(mem.get("pdfstudio.search.cpu")).toBe("1");
+    expect(lib.setModelTag).toHaveBeenLastCalledWith(expect.stringMatching(/@fp32$/));
+    expect(useSearchStore.getState().model).toMatchObject({ status: "ready", device: "wasm" });
+    vi.unstubAllGlobals();
   });
   it("search embeds the query and ranks over the library; stop-word-only queries do not call the model", async () => {
     await useSearchStore.getState().enable();

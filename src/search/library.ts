@@ -36,6 +36,7 @@ export function createLibrary(dbName = "pdfstudio-search", open?: Opener) {
   const memory = new Map<string, LibraryRecord>();
   let db: Promise<IDBPDatabase> | null = null;
   const state = { persistent: true, lastWriteFailed: false };
+  let activeTag = MODEL_TAG; // records indexed under another tag (dtype) count as stale
   const opener: Opener = open ?? (() => openLibraryDb(dbName));
   const getDb = async (): Promise<IDBPDatabase | null> => {
     if (!state.persistent) return null;
@@ -43,7 +44,7 @@ export function createLibrary(dbName = "pdfstudio-search", open?: Opener) {
     catch { state.persistent = false; db = null; return null; }
   };
   const valid = (r: { modelId: string; chunkCount: number; vectorLength: number }) =>
-    r.modelId === MODEL_TAG && r.vectorLength === r.chunkCount * DIMS;
+    r.modelId === activeTag && r.vectorLength === r.chunkCount * DIMS;
   const stored = (r: LibraryRecord): StoredSummary => ({ hash: r.hash, name: r.name, size: r.size, pageCount: r.pageCount, addedAt: r.addedAt, modelId: r.modelId, chunkCount: r.chunks.length, vectorLength: r.vectors.length });
   const summary = (s: StoredSummary): LibrarySummary => {
     const { vectorLength: _v, ...rest } = s;
@@ -57,6 +58,8 @@ export function createLibrary(dbName = "pdfstudio-search", open?: Opener) {
   };
 
   return {
+    get modelTag() { return activeTag; },
+    setModelTag(tag: string) { activeTag = tag; },
     get persistent() { return state.persistent; },
     get lastWriteFailed() { return state.lastWriteFailed; },
     async put(record: LibraryRecord) {

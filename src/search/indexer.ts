@@ -1,7 +1,7 @@
 import type { SourceFile } from "../pdf/types";
 import { extractPageText } from "../pdf/text";
 import { chunkPage, type Chunk } from "./chunker";
-import { DIMS, EMBED_BATCH, MODEL_TAG } from "./constants";
+import { DIMS, EMBED_BATCH } from "./constants";
 import { library, sha256, type Library } from "./library";
 import { getEmbedClient } from "./embedClient";
 
@@ -44,7 +44,7 @@ export async function indexSource(source: SourceFile, deps: IndexDeps = defaultD
       vectors.set(result, i * DIMS);
     }
     if (signal?.aborted) return { status: "cancelled", hash };
-    await deps.lib.put({ hash, name: source.name, size: source.bytes.byteLength, pageCount: source.pageCount, addedAt: Date.now(), modelId: MODEL_TAG, bytes: new Blob([source.bytes as BlobPart]), chunks, vectors });
+    await deps.lib.put({ hash, name: source.name, size: source.bytes.byteLength, pageCount: source.pageCount, addedAt: Date.now(), modelId: deps.lib.modelTag, bytes: new Blob([source.bytes as BlobPart]), chunks, vectors });
     return { status: chunks.length === 0 ? "no-text" : "indexed", hash, chunks: chunks.length };
   } catch (err) {
     if (err instanceof Error && (err.message === "cancelled" || err.message === "disposed")) return { status: "cancelled", hash };

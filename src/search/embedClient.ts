@@ -1,4 +1,4 @@
-import { DIMS } from "./constants";
+import { DIMS, type Dtype } from "./constants";
 
 export type WorkerIn =
   | { type: "load"; device?: "wasm" }
@@ -6,9 +6,9 @@ export type WorkerIn =
   | { type: "dispose" };
 export type WorkerOut =
   | { type: "progress"; loaded: number; total: number }
-  | { type: "ready"; device: "webgpu" | "wasm" }
+  | { type: "ready"; device: "webgpu" | "wasm"; dtype: Dtype }
   | { type: "embedded"; id: number; vectors: Float32Array }
-  | { type: "error"; id?: number; message: string; retry?: "wasm" };
+  | { type: "error"; id?: number; message: string; code?: "no-webgpu" };
 
 interface Job { id: number; texts: string[]; kind: "query" | "document"; tag?: string; resolve(v: Float32Array): void; reject(e: Error): void; sent: boolean }
 
@@ -20,23 +20,33 @@ export class EmbedClient {
   private nextId = 1;
   private loadPromise: Promise<Device> | null = null;
   private device: Device | null = null;
+  private loadedDtype: Dtype | null = null;
   private loading: { resolve(d: Device): void; reject(e: Error): void; onProgress(l: number, t: number): void } | null = null;
   private warned = false;
   private makeWorker: () => Worker;
   constructor(makeWorker: () => Worker) { this.makeWorker = makeWorker; }
 
-  load(onProgress: (loaded: number, total: number) => void): Promise<Device> {
+  /** The dtype the worker actually loaded (q4 on WebGPU, fp32 on CPU/wasm); null until ready. */
+  get dtype(): Dtype | null { return this.loadedDtype; }
+
+  load(onProgress: (loaded: number, total: number) => void, device?: "wasm"): Promise<Device> {
     if (this.loadPromise) return this.loadPromise;
     if (this.device) return Promise.resolve(this.device);
     const worker = (this.worker ??= this.attach(this.makeWorker()));
     const p = new Promise<Device>((resolve, reject) => {
       this.loading = { resolve, reject, onProgress };
-      worker.postMessage({ type: "load" } satisfies WorkerIn);
+      worker.postMessage((device ? { type: "load", device } : { type: "load" }) satisfies WorkerIn);
     });
     this.loadPromise = p;
     p.then(
       (d) => { if (this.loadPromise === p) { this.device = d; this.loadPromise = null; } },
-      () => { if (this.loadPromise === p) this.loadPromise = null; },
+      () => {
+        if (this.loadPromise !== p) return;
+        this.loadPromise = null;
+        // A failed attempt can leave onnxruntime-web unusable in that worker (its init chain stays rejected): start fresh next time.
+        this.worker?.terminate();
+        this.worker = null;
+      },
     );
     return p;
   }
@@ -60,6 +70,7 @@ export class EmbedClient {
     this.loading = null;
     this.loadPromise = null;
     this.device = null;
+    this.loadedDtype = null;
     for (const j of this.jobs) j.reject(err);
     this.jobs = [];
     this.worker?.postMessage({ type: "dispose" } satisfies WorkerIn);
@@ -80,18 +91,12 @@ export class EmbedClient {
       if (this.worker !== w) return;
       const m = e.data;
       if (m.type === "progress") this.loading?.onProgress(m.loaded, m.total);
-      else if (m.type === "ready") { this.loading?.resolve(m.device); this.loading = null; }
+      else if (m.type === "ready") { this.loadedDtype = m.dtype; this.loading?.resolve(m.device); this.loading = null; }
       else if (m.type === "embedded") {
         if (this.jobs[0]?.id !== m.id) { this.stray(m.id); return; }
         this.jobs.shift()!.resolve(m.vectors); this.pump();
       } else if (m.type === "error") {
-        if (m.id === undefined && m.retry && this.loading) {
-          // onnxruntime-web's init chain is poisoned by a failed WebGPU attempt, so retry on a fresh worker.
-          this.worker = null;
-          w.terminate();
-          this.worker = this.attach(this.makeWorker());
-          this.worker.postMessage({ type: "load", device: "wasm" } satisfies WorkerIn);
-        } else if (m.id === undefined) { if (this.loading) { this.loading.reject(new Error(m.message)); this.loading = null; } }
+        if (m.id === undefined) { if (this.loading) { this.loading.reject(Object.assign(new Error(m.message), m.code ? { code: m.code } : {})); this.loading = null; } }
         else if (this.jobs[0]?.id !== m.id) this.stray(m.id);
         else { this.jobs.shift()!.reject(new Error(m.message)); this.pump(); }
       }

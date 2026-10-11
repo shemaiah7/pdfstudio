@@ -1,6 +1,8 @@
 export const MODEL_ID = "onnx-community/embeddinggemma-2-ONNX";
 export const DIMS = 256;
-export const MODEL_TAG = `${MODEL_ID}@${DIMS}`;
+export type Dtype = "q4" | "fp32";
+export const modelTag = (dtype: Dtype) => `${MODEL_ID}@${DIMS}@${dtype}`;
+export const MODEL_TAG = modelTag("q4");
 export const CHUNK_WORDS = 200;
 export const CHUNK_STEP = 160;
 export const MIN_WORDS = 3;

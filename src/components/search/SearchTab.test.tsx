@@ -5,7 +5,7 @@ import SearchTab from "./SearchTab";
 import { useSearchStore } from "../../store/search";
 
 vi.mock("../../search/embedClient", () => ({ getEmbedClient: () => ({ load: async () => "wasm", embed: async () => new Float32Array(256), cancel() {}, dispose() {} }) }));
-vi.mock("../../search/library", () => ({ library: { loadAll: async () => [], list: async () => [], estimateUsage: async () => null, get: async () => undefined, remove: async () => {}, clear: async () => {}, persistent: true, lastWriteFailed: false }, sha256: async () => "h" }));
+vi.mock("../../search/library", () => ({ library: { setModelTag() {}, loadAll: async () => [], list: async () => [], estimateUsage: async () => null, get: async () => undefined, remove: async () => {}, clear: async () => {}, persistent: true, lastWriteFailed: false }, sha256: async () => "h" }));
 
 const base = { persistent: true, lastWriteFailed: false, init: async () => {}, retryDoc: async () => {}, findSimilar: async () => {} };
 
@@ -30,6 +30,14 @@ describe("SearchTab", () => {
     render(<SearchTab />);
     fireEvent.click(screen.getByText("Retry"));
     expect(retryModel).toHaveBeenCalled();
+  });
+  it("explains the missing WebGPU and offers explicit CPU mode", () => {
+    const enableCpuMode = vi.fn(async () => {});
+    useSearchStore.setState({ ...base, enabled: true, model: { status: "unavailable", loaded: 0, total: 0, error: "no-webgpu" }, enableCpuMode });
+    render(<SearchTab />);
+    expect(screen.getByText("Search needs WebGPU, which this browser doesn't provide.")).toBeTruthy();
+    fireEvent.click(screen.getByText("Use CPU mode (downloads about 1 GB each visit)"));
+    expect(enableCpuMode).toHaveBeenCalled();
   });
   it("renders results and opens a hit", () => {
     const openHit = vi.fn(async () => {});

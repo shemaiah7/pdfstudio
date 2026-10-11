@@ -5,7 +5,7 @@ import { library, sha256 } from "../search/library";
 import type { LibrarySummary } from "../search/library";
 import { indexSource, defaultDeps } from "../search/indexer";
 import { rank, queryTerms, type Hit, type RankDoc } from "../search/ranker";
-import { ASK_PASSAGES, DIMS, SEARCH_LIMIT, THRESHOLD } from "../search/constants";
+import { ASK_PASSAGES, DIMS, SEARCH_LIMIT, THRESHOLD, modelTag } from "../search/constants";
 import { useDocumentStore } from "./document";
 import type { SourceId } from "../pdf/types";
 
@@ -13,7 +13,7 @@ type ModelStatus = "idle" | "downloading" | "ready" | "unavailable";
 type DocStatus = "queued" | "indexing" | "indexed" | "no-text" | "failed";
 export interface SearchState {
   enabled: boolean;
-  model: { status: ModelStatus; loaded: number; total: number; device?: "webgpu" | "wasm"; error?: string };
+  model: { status: ModelStatus; loaded: number; total: number; device?: "webgpu" | "wasm"; error?: string };  // error "no-webgpu" = no adapter; CPU mode needs an explicit opt-in
   docs: Record<string, { status: DocStatus; done: number; total: number; error?: string }>;
   hashBySource: Record<SourceId, string>;
   persistent: boolean;
@@ -24,6 +24,7 @@ export interface SearchState {
   init(): Promise<void>;
   enable(): Promise<void>;
   retryModel(): Promise<void>;
+  enableCpuMode(): Promise<void>;
   indexOpen(): Promise<void>;
   retryDoc(hash: string): Promise<void>;
   refreshIndex(): Promise<void>;
@@ -37,24 +38,30 @@ export interface SearchState {
 }
 
 const ENABLED_KEY = "pdfstudio.search.enabled";
+const CPU_KEY = "pdfstudio.search.cpu";
+const cpuPreferred = () => { try { return localStorage.getItem(CPU_KEY) === "1"; } catch { return false; } };
 let index: RankDoc[] = [];                    // in-memory copy of the library
 let debounce: ReturnType<typeof setTimeout> | null = null;
 let queue: Promise<void> = Promise.resolve();  // one document at a time
 const controllers = new Map<string, AbortController>(); // one per hash being indexed
 
-async function loadModel(set: (p: Partial<SearchState>) => void) {
+async function loadModel(set: (p: Partial<SearchState>) => void, device?: "wasm") {
   set({ model: { status: "downloading", loaded: 0, total: 0 } });
   try {
-    const device = await getEmbedClient().load((loaded, total) => set({ model: { status: "downloading", loaded, total } }));
-    set({ model: { status: "ready", loaded: 0, total: 0, device } });
+    const client = getEmbedClient();
+    const loaded = await client.load((loaded, total) => set({ model: { status: "downloading", loaded, total } }), device);
+    // fp32 (CPU) and q4 (WebGPU) vectors differ, so the library only trusts records indexed under the active dtype.
+    library.setModelTag(modelTag(client.dtype ?? (loaded === "wasm" ? "fp32" : "q4")));
+    set({ model: { status: "ready", loaded: 0, total: 0, device: loaded } });
   } catch (err) {
-    set({ model: { status: "unavailable", loaded: 0, total: 0, error: err instanceof Error ? err.message : String(err) } });
+    const code = (err as { code?: string } | null)?.code;
+    set({ model: { status: "unavailable", loaded: 0, total: 0, error: code === "no-webgpu" ? "no-webgpu" : err instanceof Error ? err.message : String(err) } });
   }
 }
 
 async function start() {
   const { setState, getState } = useSearchStore;
-  await loadModel(setState);
+  await loadModel(setState, cpuPreferred() ? "wasm" : undefined);
   if (getState().model.status === "ready") { await getState().refreshIndex(); await getState().indexOpen(); }
 }
 
@@ -96,7 +103,12 @@ export const useSearchStore = create<SearchState>((set, get) => ({
     set({ enabled: true });
     await start();
   },
-  async retryModel() { await loadModel(set); if (get().model.status === "ready") { await get().refreshIndex(); await get().indexOpen(); } },
+  async retryModel() { await loadModel(set, cpuPreferred() ? "wasm" : undefined); if (get().model.status === "ready") { await get().refreshIndex(); await get().indexOpen(); } },
+  async enableCpuMode() {
+    try { localStorage.setItem(CPU_KEY, "1"); } catch { /* ignore */ }
+    await loadModel(set, "wasm");
+    if (get().model.status === "ready") { await get().refreshIndex(); await get().indexOpen(); }
+  },
   async refreshIndex() { index = await library.loadAll(); set({ persistent: library.persistent, lastWriteFailed: library.lastWriteFailed }); },
   async refreshLibrary() { set({ library: await library.list(), usage: await library.estimateUsage() }); },
 

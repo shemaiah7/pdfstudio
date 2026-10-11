@@ -2,7 +2,7 @@ import "fake-indexeddb/auto";
 import { openDB } from "idb";
 import { describe, it, expect, beforeEach } from "vitest";
 import { createLibrary, openLibraryDb, sha256, type LibraryRecord } from "./library";
-import { DIMS, MODEL_TAG } from "./constants";
+import { DIMS, MODEL_TAG, modelTag } from "./constants";
 
 const rec = (hash: string, modelId = MODEL_TAG): LibraryRecord => ({
   hash, name: `${hash}.pdf`, size: 3, pageCount: 1, addedAt: 1, modelId,
@@ -118,5 +118,15 @@ describe("library", () => {
     expect(l.lastWriteFailed).toBe(true);
     await l.clear();
     expect(l.lastWriteFailed).toBe(false);
+  });
+  it("scopes validity to the active model tag so fp32 and q4 records never mix", async () => {
+    await lib.put(rec("q4rec"));
+    lib.setModelTag(modelTag("fp32"));
+    expect(await lib.get("q4rec")).toBeUndefined();
+    expect((await lib.list())[0].stale).toBe(true);
+    await lib.put(rec("fp", modelTag("fp32")));
+    expect((await lib.get("fp"))?.hash).toBe("fp");
+    lib.setModelTag(MODEL_TAG);
+    expect(await lib.get("fp")).toBeUndefined();
   });
 });
