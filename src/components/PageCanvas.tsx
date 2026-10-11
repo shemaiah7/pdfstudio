@@ -21,7 +21,13 @@ export default function PageCanvas({ source, entry, scale, className, lazy = fal
     if (!visible || !ref.current) return;
     // Cancel the in-flight render on rerender/unmount so tasks never overlap on this canvas.
     const handle = renderPage(source, entry.sourcePageIndex, entry.rotation, scale, ref.current);
-    handle.promise.catch((err) => console.error("render failed", err));
+    handle.promise.then(() => {
+      const canvas = ref.current;
+      const pageEl = canvas?.closest(".page");
+      if (!canvas || !pageEl || !canvas.dataset.heightPt) return;
+      pageEl.setAttribute("data-height-pt", canvas.dataset.heightPt);
+      pageEl.setAttribute("data-page-rotate", canvas.dataset.pageRotate ?? "0");
+    }).catch((err) => console.error("render failed", err));
     return () => handle.cancel();
   }, [visible, source, entry.sourcePageIndex, entry.rotation, scale]);
 

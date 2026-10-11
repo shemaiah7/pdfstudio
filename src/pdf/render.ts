@@ -20,6 +20,11 @@ function getDoc(source: SourceFile): Promise<PDFDocumentProxy> {
   return p;
 }
 
+export async function getPage(source: SourceFile, pageIndex: number) {
+  const doc = await getDoc(source);
+  return doc.getPage(pageIndex + 1);
+}
+
 export interface RenderHandle { promise: Promise<void>; cancel(): void }
 
 // Per canvas: the previous render's settle promise. A new render waits for it before resizing
@@ -43,6 +48,8 @@ export function renderPage(
     const page = await doc.getPage(pageIndex + 1);
     if (cancelled) return;
     const viewport = page.getViewport({ scale, rotation: page.rotate + rotation });
+    canvas.dataset.heightPt = String(page.view[3] - page.view[1]);
+    canvas.dataset.pageRotate = String(page.rotate);
     const dpr = window.devicePixelRatio || 1;
     // Sized only now, right before drawing, after any previous task has settled.
     canvas.width = Math.floor(viewport.width * dpr);

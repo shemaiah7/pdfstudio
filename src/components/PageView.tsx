@@ -1,5 +1,6 @@
 import { useDocumentStore } from "../store/document";
 import PageCanvas from "./PageCanvas";
+import TextLayer from "./TextLayer";
 
 interface Props { scale: number }
 
@@ -16,8 +17,10 @@ export default function PageView({ scale }: Props) {
         return (
           <div key={entry.id} id={`page-${entry.id}`}
             className={`page ${selection.has(entry.id) ? "selected" : ""}`}
-            onClick={(e) => select([entry.id], e.metaKey || e.ctrlKey ? "toggle" : "replace")}>
+            data-page-entry={entry.id} data-scale={scale} data-rotation={entry.rotation}
+            onClick={(e) => { if (window.getSelection()?.isCollapsed) select([entry.id], e.metaKey || e.ctrlKey ? "toggle" : "replace"); }}>
             <PageCanvas source={source} entry={entry} scale={scale} lazy />
+            <TextLayer source={source} entry={entry} scale={scale} />
             <div className="page-label">{i + 1}</div>
           </div>
         );
