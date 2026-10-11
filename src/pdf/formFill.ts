@@ -48,14 +48,15 @@ export function rebuildAcroForm(out: PDFDocument, src: PDFDocument, copiedPages:
     for (const ref of page.node.Annots()?.asArray() ?? []) {
       if (!(ref instanceof PDFRef)) continue;
       const first = dictOf(ref);
-      if (!first || (first.get(N("Subtype")) !== N("Widget") && !first.has(N("Parent")))) continue;
-      let top: PDFRef = ref; let dict = first;
+      if (!first || first.get(N("Subtype")) !== N("Widget")) continue;
+      let top: PDFRef = ref; let dict = first; let hasFT = dict.has(N("FT"));
       for (let i = 0; i < 64; i++) {
         const parent = dict.get(N("Parent"));
         const pd = parent instanceof PDFRef ? dictOf(parent) : undefined;
         if (!(parent instanceof PDFRef) || !pd) break;
-        top = parent; dict = pd;
+        top = parent; dict = pd; hasFT ||= dict.has(N("FT"));
       }
+      if (!hasFT) continue;
       if (!seen.has(top.toString())) { seen.add(top.toString()); roots.push(top); }
     }
   }
@@ -82,23 +83,31 @@ export function rebuildAcroForm(out: PDFDocument, src: PDFDocument, copiedPages:
   };
 
   // copyPages is called once per page, so a field shared by several pages is cloned once per page: merge clones by name.
+  const ownName = (d: PDFDict) => { const t = d.lookup(N("T")); return t instanceof PDFString || t instanceof PDFHexString ? t.decodeText() : ""; };
+  // Merge clone `b` into survivor `a` (same fully-qualified name): append leaf kids, recurse into same-/T intermediate kids.
+  const mergeInto = (a: PDFRef, b: PDFRef, depth = 0): boolean => {
+    const ad = dictOf(a); const bd = dictOf(b);
+    const ak = ad?.get(N("Kids")); const bk = bd?.get(N("Kids"));
+    if (!ad || !bd || !(ak instanceof PDFArray) || !(bk instanceof PDFArray) || depth > 64) return false;
+    for (const k of bk.asArray()) {
+      const kd = dictOf(k);
+      if (!kd || !(k instanceof PDFRef)) continue;
+      const twin = kd.get(N("Kids")) instanceof PDFArray
+        ? ak.asArray().find((x): x is PDFRef => x instanceof PDFRef && ownName(dictOf(x) ?? kd) === ownName(kd) && dictOf(x)?.get(N("Kids")) instanceof PDFArray && dictOf(x) !== kd)
+        : undefined;
+      if (twin && mergeInto(twin, k, depth + 1)) continue;
+      ak.push(k);
+      kd.set(N("Parent"), a);
+    }
+    return true;
+  };
   const byName = new Map<string, PDFRef>();
   const merged: PDFRef[] = [];
   for (const top of live) {
     const dict = dictOf(top)!;
     const name = fullName(dict);
     const first = name ? byName.get(name) : undefined;
-    const firstDict = first && dictOf(first);
-    const firstKids = firstDict?.get(N("Kids"));
-    const kids = dict.get(N("Kids"));
-    if (first && firstDict && firstKids instanceof PDFArray && kids instanceof PDFArray) {
-      for (const k of kids.asArray()) {
-        firstKids.push(k);
-        const kd = dictOf(k);
-        if (kd) kd.set(N("Parent"), first);
-      }
-      continue;
-    }
+    if (first && mergeInto(first, top)) continue;
     if (name && !first) byName.set(name, top);
     merged.push(top);
   }

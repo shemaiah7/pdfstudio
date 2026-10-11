@@ -43,6 +43,7 @@ async function makeForm() {
   const notes = form.createTextField("notes"); notes.addToPage(p1, { x: 20, y: 100, width: 200, height: 24 }); notes.addToPage(p2, { x: 20, y: 300, width: 200, height: 24 });
   const addr = form.createTextField("addr.street"); addr.addToPage(p1, { x: 20, y: 60, width: 200, height: 24 });
   const pick = form.createOptionList("pick"); pick.addOptions(["a", "b", "c"]); pick.addToPage(p1, { x: 160, y: 200, width: 100, height: 60 });
+  const multi = form.createTextField("grp.multi"); multi.addToPage(p1, { x: 20, y: 20, width: 100, height: 24 }); multi.addToPage(p2, { x: 20, y: 200, width: 100, height: 24 });
   // unsupported: a signature field dict
   const sigRef = doc.context.register(doc.context.obj({ Type: "Annot", Subtype: "Widget", FT: "Sig", T: PDFHexString.fromText("sig"), Rect: [20, 40, 200, 80], F: 4, P: p2.ref }));
   p2.node.addAnnot(sigRef);
