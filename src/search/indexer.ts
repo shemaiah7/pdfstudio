@@ -1,5 +1,5 @@
 import type { SourceFile } from "../pdf/types";
-import { extractPageText } from "../pdf/text";
+import { extractPageText, editsStamp as pageEditsStamp } from "../pdf/text";
 import { chunkPage, type Chunk } from "./chunker";
 import { DIMS, EMBED_BATCH } from "./constants";
 import { library, sha256, type Library } from "./library";
@@ -11,6 +11,7 @@ export interface IndexDeps {
   lib: Library;
   extract: (source: SourceFile, page: number) => Promise<string>;
   ocrVersion?: (source: SourceFile) => Promise<number>;
+  editsStamp?: (source: SourceFile) => number;
 }
 export type IndexResult =
   | { status: "cached" | "indexed" | "no-text"; hash: string; chunks: number }
@@ -23,6 +24,7 @@ export function defaultDeps(): IndexDeps {
     lib: library,
     extract: async (source, page) => (await extractPageText(source, page)).text,
     ocrVersion: async (source) => { if (!source.hash) return 0; const pages = await ocrStore.getAll(source.hash); let v = 0; for (const p of pages.values()) v = Math.max(v, p.at); return v; },
+    editsStamp: (source) => pageEditsStamp(source.id),
   };
 }
 
@@ -31,8 +33,9 @@ export async function indexSource(source: SourceFile, deps: IndexDeps = defaultD
   try {
     hash = source.hash ?? (await sha256(source.bytes));
     const current = (await deps.ocrVersion?.(source)) ?? 0;
+    const stamp = deps.editsStamp ? deps.editsStamp(source) : pageEditsStamp(source.id);
     const existing = await deps.lib.get(hash);
-    if (existing && (existing.ocrVersion ?? 0) >= current) return { status: "cached", hash, chunks: existing.chunks.length };
+    if (existing && (existing.ocrVersion ?? 0) >= current && (existing.editsStamp ?? 0) === stamp) return { status: "cached", hash, chunks: existing.chunks.length };
     const chunks: Chunk[] = [];
     for (let p = 0; p < source.pageCount; p++) {
       if (signal?.aborted) return { status: "cancelled", hash };
@@ -49,7 +52,9 @@ export async function indexSource(source: SourceFile, deps: IndexDeps = defaultD
       onProgress?.(i / EMBED_BATCH + 1, Math.ceil(chunks.length / EMBED_BATCH), "embed");
     }
     if (signal?.aborted) return { status: "cancelled", hash };
-    await deps.lib.put({ hash, name: source.name, size: source.bytes.byteLength, pageCount: source.pageCount, addedAt: Date.now(), modelId: deps.lib.modelTag, bytes: chunks.length === 0 ? new Blob([]) : new Blob([source.bytes as BlobPart]), chunks, vectors, ocrVersion: current });
+    const record = { hash, name: source.name, size: source.bytes.byteLength, pageCount: source.pageCount, addedAt: Date.now(), modelId: deps.lib.modelTag, bytes: chunks.length === 0 ? new Blob([]) : new Blob([source.bytes as BlobPart]), chunks, vectors, ocrVersion: current, editsStamp: stamp };
+    // Edits are not saved with the file, so an index built from them must not outlive the session (or be shown for the closed document later).
+    if (stamp !== 0) deps.lib.putMemory(record); else await deps.lib.put(record);
     return { status: chunks.length === 0 ? "no-text" : "indexed", hash, chunks: chunks.length };
   } catch (err) {
     if (err instanceof Error && (err.message === "cancelled" || err.message === "disposed")) return { status: "cancelled", hash };

@@ -308,3 +308,18 @@ describe("hashing", () => {
     } finally { spy.mockRestore(); }
   });
 });
+
+it("addEdit normalises the font and never replaces by blockKey (equal keys coexist); updateEdit patches in place", async () => {
+  await s().openFiles([three()]);
+  const p = s().pages[0].id;
+  const a = s().addEdit({ pageEntryId: p, boxes: [{ x: 0, y: 0, width: 10, height: 10 }], text: "a", fontSize: 10, font: "sans", color: [0, 0, 0], blockKey: "k" });
+  expect(s().edits[0].font).toBe("helvetica");
+  const b = s().addEdit({ pageEntryId: p, boxes: [{ x: 0, y: 0, width: 10, height: 10 }], text: "b", fontSize: 10, font: "times", color: [0, 0, 0], blockKey: "k" });
+  expect(b).not.toBe(a);
+  expect(s().edits.map((e) => e.text)).toEqual(["a", "b"]);
+  s().updateEdit(a, { font: "courier", text: "c" });
+  expect(s().edits[0]).toMatchObject({ id: a, font: "courier", text: "c" });
+  expect(s().edits[1]).toMatchObject({ id: b, text: "b" });
+  s().undo();
+  expect(s().edits[0].text).toBe("a");
+});

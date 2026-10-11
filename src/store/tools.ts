@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import type { RGB } from "../pdf/types";
-export type Tool = "select" | "highlight" | "note" | "ink" | "rect" | "arrow" | "freetext" | "sign";
+export type Tool = "select" | "edit" | "highlight" | "note" | "ink" | "rect" | "arrow" | "freetext" | "sign";
 export const COLORS: { name: string; rgb: RGB }[] = [
   { name: "black", rgb: [0, 0, 0] }, { name: "red", rgb: [0.86, 0.15, 0.15] }, { name: "blue", rgb: [0.15, 0.39, 0.92] },
   { name: "green", rgb: [0.13, 0.63, 0.3] }, { name: "yellow", rgb: [1, 0.84, 0] }, { name: "purple", rgb: [0.55, 0.25, 0.8] },

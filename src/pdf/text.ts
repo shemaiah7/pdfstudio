@@ -1,13 +1,16 @@
-import type { SourceFile } from "./types";
+import type { SourceFile, Box, Edit } from "./types";
+import { placeEdit } from "../edit/layout";
+import { measureFor } from "./metrics";
+import { normalizeFont } from "./fonts";
 import { getPage } from "./render";
 import { ocrStore } from "../ocr/store";
 import { ocrPageToItems, ocrPageText } from "../ocr/layout";
 import { useDocumentStore, sourceReleasers } from "../store/document";
 
-export interface TextItemBox { str: string; x: number; y: number; width: number; height: number; fontSize: number }
+export interface TextItemBox { str: string; x: number; y: number; width: number; height: number; fontSize: number; fontName: string }
 export interface PageText { text: string; items: TextItemBox[]; ocr?: boolean }
 
-interface RawItem { str: string; transform: number[]; width: number; height: number; hasEOL?: boolean }
+interface RawItem { str: string; transform: number[]; width: number; height: number; hasEOL?: boolean; fontName?: string }
 
 export function linesFromItems(items: RawItem[]): string {
   const placed = items
@@ -55,6 +58,51 @@ export function clearTextCache(sourceId?: string): void {
 
 export function invalidatePageText(sourceId: string, pageIndex: number): void { cache.delete(`${sourceId}:${pageIndex}`); }
 
+const stamps = new Map<string, number>();
+export function editsStamp(sourceId: string): number { return stamps.get(sourceId) ?? 0; }
+
+function pageEdits(sourceId: string, pageIndex: number): Edit[] {
+  const { pages, edits } = useDocumentStore.getState();
+  const ids = new Set(pages.filter((p) => p.sourceId === sourceId && p.sourcePageIndex === pageIndex).map((p) => p.id));
+  return edits.filter((e) => ids.has(e.pageEntryId));
+}
+
+/**
+ * Same rule as hideCoveredSpans: an item goes when a cover overlaps it horizontally and reaches its central band,
+ * so a neighbouring line that merely grazes a cover's edge (tight or 1.2 leading) stays.
+ * Native items sit on a baseline (band 0.1..0.6 of the font size above it); OCR items are tight boxes whose y is the bottom (middle 60 %).
+ */
+export function coveredBy(i: TextItemBox, boxes: Box[]): boolean {
+  const ocr = i.fontName === "ocr";
+  const bandBottom = ocr ? i.y + 0.2 * i.height : i.y + 0.1 * i.fontSize;
+  const bandTop = ocr ? i.y + 0.8 * i.height : i.y + 0.6 * i.fontSize;
+  return boxes.some((b) => i.x < b.x + b.width && b.x < i.x + i.width && b.y < bandTop && bandBottom < b.y + b.height);
+}
+
+async function applyEdits(items: TextItemBox[], edits: Edit[]): Promise<TextItemBox[]> {
+  if (!edits.length) return items;
+  const placed = await Promise.all(edits.map(async (e) => {
+    const font = normalizeFont(e.font);
+    const measure = await measureFor(font);
+    return { e, font, measure, ...placeEdit(e, measure) };
+  }));
+  const covers = placed.flatMap((p) => p.boxes);
+  let out = items.filter((i) => !coveredBy(i, covers));
+  for (const { font, measure, lines, fontSize } of placed) {
+    out = out.concat(lines.map((l) => ({ str: l.text, x: l.x, y: l.baseline, width: measure(l.text, fontSize), height: fontSize, fontSize, fontName: font })));
+  }
+  return out;
+}
+
+const toRaw = (i: TextItemBox): RawItem => ({ str: i.str, transform: [i.fontSize, 0, 0, i.fontSize, i.x, i.y], width: i.width, height: i.height });
+
+async function withEdits(base: PageText, sourceId: string, pageIndex: number): Promise<PageText> {
+  const edits = pageEdits(sourceId, pageIndex);
+  if (!edits.length) return base;
+  const merged = await applyEdits(base.items, edits);
+  return { ...base, text: linesFromItems(merged.map(toRaw)), items: merged };
+}
+
 export async function extractPageText(source: SourceFile, pageIndex: number): Promise<PageText> {
   const key = `${source.id}:${pageIndex}`;
   let p = cache.get(key);
@@ -63,22 +111,38 @@ export async function extractPageText(source: SourceFile, pageIndex: number): Pr
       const page = await getPage(source, pageIndex);
       const content = await page.getTextContent();
       const raw = content.items.filter((i) => "str" in i) as unknown as RawItem[];
+      // pdf.js reports user-space positions; edits, blocks and the flatten layer are relative to the crop box origin.
+      const [ox, oy] = page.view;
       const items: TextItemBox[] = raw.filter((i) => i.str.length > 0).map((i) => ({
-        str: i.str, x: i.transform[4], y: i.transform[5], width: i.width, height: i.height,
+        str: i.str, x: i.transform[4] - ox, y: i.transform[5] - oy, width: i.width, height: i.height,
         fontSize: Math.hypot(i.transform[2], i.transform[3]) || i.height,
+        fontName: (i as { fontName?: string }).fontName ?? "",
       }));
       const text = linesFromItems(raw);
-      if (text.trim().length > 0 || !source.hash) return { text, items };
+      if (text.trim().length > 0 || !source.hash) return withEdits({ text, items }, source.id, pageIndex);
       let ocr: Awaited<ReturnType<typeof ocrStore.get>>;
-      try { ocr = await lookupOcr(source.hash, pageIndex); } catch { return { text: "", items: [] }; }
-      if (!ocr) return { text: "", items: [] };
-      return { text: ocrPageText(ocr), items: ocrPageToItems(ocr), ocr: true };
+      try { ocr = await lookupOcr(source.hash, pageIndex); } catch { return withEdits({ text: "", items: [] }, source.id, pageIndex); }
+      if (!ocr) return withEdits({ text: "", items: [] }, source.id, pageIndex);
+      return withEdits({ text: ocrPageText(ocr), items: ocrPageToItems(ocr), ocr: true }, source.id, pageIndex);
     })();
     p.catch(() => cache.delete(key));
     cache.set(key, p);
   }
   return p;
 }
+
+useDocumentStore.subscribe((s, prev) => {
+  if (s.edits === prev.edits) return;
+  const changed = new Set<string>();
+  for (const e of [...s.edits, ...prev.edits]) {
+    const inNext = s.edits.find((x) => x.id === e.id), inPrev = prev.edits.find((x) => x.id === e.id);
+    if (inNext === inPrev) continue;
+    const entry = s.pages.find((p) => p.id === e.pageEntryId) ?? prev.pages.find((p) => p.id === e.pageEntryId);
+    if (entry) changed.add(`${entry.sourceId}:${entry.sourcePageIndex}`);
+  }
+  const now = Date.now();
+  for (const k of changed) { cache.delete(k); stamps.set(k.slice(0, k.lastIndexOf(":")), now); }
+});
 
 export async function documentText(scope: "all" | "selected"): Promise<{ page: number; text: string }[]> {
   const { pages, sources, selection } = useDocumentStore.getState();

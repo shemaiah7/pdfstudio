@@ -85,3 +85,33 @@ it("re-indexes when the OCR version is newer than the cached record", async () =
   expect(embedCalls).toHaveLength(2);
   expect((await lib.get(await sha256(source.bytes)))?.ocrVersion).toBe(5);
 });
+
+it("re-indexes when the edits stamp changes (stale edited records are not served after a reload)", async () => {
+  const lib = createLibrary(`idx-edits-${Date.now()}`);
+  let stamp = 5;
+  const deps = { lib, extract: async () => "alpha beta gamma delta", embed: async (texts: string[]) => new Float32Array(texts.length * DIMS).fill(0.1), editsStamp: () => stamp };
+  const source = { id: "s", name: "s.pdf", bytes: new Uint8Array([4, 5, 6]), pageCount: 1 };
+  expect((await indexSource(source, deps)).status).toBe("indexed");
+  expect((await indexSource(source, deps)).status).toBe("cached");
+  expect((await lib.get(await sha256(source.bytes)))?.editsStamp).toBe(5);
+  stamp = 0; // simulated reload: edits are not persisted
+  expect((await indexSource(source, deps)).status).toBe("indexed");
+  expect((await lib.get(await sha256(source.bytes)))?.editsStamp).toBe(0);
+});
+
+it("keeps an index built from edits in memory only: a fresh library on the same DB never sees it", async () => {
+  const name = `idx-mem-${Date.now()}`;
+  const lib = createLibrary(name);
+  const source = { id: "s", name: "s.pdf", bytes: new Uint8Array([7, 8, 9]), pageCount: 1 };
+  const hash = await sha256(source.bytes);
+  const deps = (extract: string) => ({ lib, extract: async () => extract, embed: async (texts: string[]) => new Float32Array(texts.length * DIMS).fill(0.1), editsStamp: () => 5 });
+  expect((await indexSource(source, deps("edited secret words here"))).status).toBe("indexed");
+  expect((await lib.get(hash))?.editsStamp).toBe(5);        // searchable in this session
+  expect(await createLibrary(name).get(hash)).toBeUndefined(); // but never persisted
+  expect(await createLibrary(name).list()).toEqual([]);
+  // A persisted clean record stays the persisted one when a later edited index is built.
+  const clean = { ...deps("clean original text"), editsStamp: () => 0 };
+  expect((await indexSource(source, clean)).status).toBe("indexed");
+  expect((await indexSource(source, deps("edited again words"))).status).toBe("indexed");
+  expect((await createLibrary(name).get(hash))?.chunks[0].text).toContain("clean original text");
+});

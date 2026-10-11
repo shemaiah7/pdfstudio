@@ -1,30 +1,24 @@
-import { PDFDocument, StandardFonts, type PDFFont } from "pdf-lib";
+import { PDFDocument, type PDFFont } from "pdf-lib";
 import type { Measure } from "./layout";
 import type { EditFont } from "./types";
+import { STANDARD_FONTS, normalizeFont } from "./fonts";
 import { toWinAnsi } from "./winansi";
 
-const STANDARD: Record<EditFont, StandardFonts> = {
-  sans: StandardFonts.Helvetica,
-  "sans-bold": StandardFonts.HelveticaBold,
-  serif: StandardFonts.TimesRoman,
-};
+let doc: Promise<PDFDocument> | null = null;
+const faces = new Map<EditFont, Promise<PDFFont>>();
 
-let fonts: Promise<Record<EditFont, PDFFont>> | null = null;
-
-function loadFonts() {
-  fonts ??= (async () => {
-    const doc = await PDFDocument.create();
-    return {
-      sans: await doc.embedFont(STANDARD.sans),
-      "sans-bold": await doc.embedFont(STANDARD["sans-bold"]),
-      serif: await doc.embedFont(STANDARD.serif),
-    };
-  })();
-  return fonts;
+function loadFont(face: EditFont): Promise<PDFFont> {
+  doc ??= PDFDocument.create();
+  let p = faces.get(face);
+  if (!p) {
+    p = doc.then((d) => d.embedFont(STANDARD_FONTS[face]));
+    faces.set(face, p);
+  }
+  return p;
 }
 
 /** Measurer backed by the same pdf-lib font metrics the export uses. */
 export async function measureFor(font: EditFont): Promise<Measure> {
-  const f = (await loadFonts())[font];
+  const f = await loadFont(normalizeFont(font));
   return (text, size) => f.widthOfTextAtSize(toWinAnsi(text), size);
 }

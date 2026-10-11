@@ -15,8 +15,16 @@ True content-stream editing remains out of scope: no JavaScript library can rewr
 | Interaction | A new **Edit text** tool: click a line, the whole paragraph block opens as an editable box; text reflows inside it. |
 | Font fidelity | Match the original font by name and flags to the 12 PDF standard faces (Helvetica, Times, Courier × regular/bold/oblique/bold-oblique). No font downloads; pdf-lib embeds them without files. |
 | Colours | Sampled from the rendered page bitmap (background ring, darkest text cluster), so typed pages and scans behave the same. |
-| Scans | Editing an OCR block also rewrites the OCR store words for that block, so search, AI, and the saved invisible text layer carry the change. |
+| Scans | Edits never write to the persistent OCR store (ruling C4). The extraction overlay (`withEdits`) feeds search and AI with the edited text, export draws the edit and flattens the page, and original words under an edit are dropped by intersection. |
 | Rotation | Editing is available only when the page is shown unrotated (page `/Rotate` plus user rotation = 0), matching the current Rewrite insert rule. |
+| Line geometry | A line's baseline is the min y of its items; paragraph join accepts a vertical gap >= 0. |
+| Region and covers | `Edit.region` persists the original block box and never moves; `Edit.frame` (optional) is where the text is laid out after a drag or width change. `layoutEdit` lays out in `frame ?? region`, and its cover boxes are the layout boxes, the unused remainder of the frame (`coverBoxes`, > 0.01 pt), and the original `region`, so moving an edit never uncovers the original. `placeEdit` is the single layout used by the overlay, export, flatten and text extraction; edits without a `region` (legacy) keep the per-box `layoutInBoxes`. |
+| Font change | Changing the font re-lays out the edit. |
+| Library cache | Library records carry `editsStamp`; they are used as a cache only when it equals the session stamp, so edited text never survives a reload in the index. A record built while the session stamp is non-zero is kept in memory only (`library.putMemory`), never written to IndexedDB. |
+| Selecting edits | The first click on an existing edit selects it (handles); clicking its body reopens it. |
+| Export of edited pages (typed and scanned) | Flattened whenever a page has at least one edit and a rasterizer is available: the original page is rasterized at 200 DPI (capped at 16 MP, the Safari canvas limit) with each edit's cover boxes painted into the raster in the edit's background colour, the original content streams are deleted and `/Resources` replaced, edits are drawn on top, and an invisible text layer built from the edited extracted items carries the remaining text. Covered text is therefore in neither the content streams nor the image. If flattening fails after `/Contents` was cleared, the original `/Contents` and `/Resources` are restored and the page is saved unflattened with a warning. Deep OCR pages are flattened without an invisible layer (their synthetic word boxes cannot be trimmed reliably) and warn that searchable text was left out. |
+| Re-editing | Reopening an edit updates it in place (`updateEdit`); `blockKey` is informational only and `addEdit` never replaces by it, so edits on different blocks can never delete each other. |
+| Coordinates | `extractPageText` reports native items relative to the crop box origin (`page.view`), matching OCR items, edits, blocks and the flatten layer. |
 | Rejected | Re-embedding original fonts (subsets lack glyphs; CFF/Type1 cannot be re-embedded). Painting the block as an image (unsearchable). |
 
 ## Data model
@@ -39,7 +47,8 @@ export interface Edit {
   background: RGB;         // cover colour
   lineHeight: number;      // baseline-to-baseline spacing in points
   source: "native" | "ocr";
-  blockKey?: string;       // `${sourceId}:${pageIndex}:${lineIndexOfFirstLine}` so re-editing replaces rather than stacks
+  blockKey?: string;       // `${sourceId}:${pageIndex}:${lineIndexOfFirstLine}`; informational, not used to replace edits
+  frame?: Box;             // text position after a move/resize; `region` stays the original block
 }
 ```
 
@@ -86,27 +95,27 @@ Background: most frequent colour (quantised to 16 levels per channel) in the rin
 
 ### `src/store/document.ts`
 
-- `addEdit` and new `updateEdit(id, patch)` normalise the font and replace an existing edit with the same `blockKey`.
+- `addEdit` and `updateEdit(id, patch)` normalise the font. `addEdit` always appends; reopening uses `updateEdit`.
 - `edits` changes already snapshot for undo.
 
 ### `src/pdf/text.ts`
 
-`extractPageText` gains an edits overlay: after native/OCR items are produced, items whose box centre lies inside any edit box of that page are removed, and each edit's laid-out lines are inserted as items (`fontName` = the edit font) so `linesFromItems` orders them in reading position. The page text cache key includes an `editsVersion` counter bumped on every edits change for that page. Search re-indexes the source when its edits change (same debounce hook as OCR, keyed on `editsVersion`).
+`extractPageText` gains an edits overlay: after native/OCR items are produced, items whose box intersects any cover box of that page (same rule as `hideCoveredSpans`) are removed, and each edit's laid-out lines are inserted as items (`fontName` = the edit font) so `linesFromItems` orders them in reading position. The page text cache key includes an `editsVersion` counter bumped on every edits change for that page. Search re-indexes the source when its edits change (same debounce hook as OCR, keyed on `editsVersion`).
 
 ### `src/store/ocr.ts` (scans)
 
-`applyEditToOcr(sourceId, pageIndex, edit)`: replaces OCR words inside the edit's boxes with words from the edit's layout (one `OcrWord` per word, boxes from the measurer, confidence 1), bumps `at`, writes the store, invalidates the page text. Called on Apply and on edit deletion (restoring the original words is not possible, so deletion keeps the OCR text as last written; the cover is simply removed — documented behaviour).
+~~`applyEditToOcr`~~ was removed (ruling C4): the persistent OCR store is never modified by edits; deleting an edit simply restores the original words in extraction and export.
 
 ### `src/pdf/pageOps.ts` (export)
 
-Per edit: draw the cover rectangle in `background`, then each laid-out line in the matched standard font, `fontSize`, `color`. The OCR invisible layer keeps dropping words under edit boxes (safety net; the OCR store already holds the edited words).
+Per edit: draw the cover rectangle in `background`, then each laid-out line in the matched standard font, `fontSize`, `color`. When a page is not flattened (no rasterizer, or flatten failed) the OCR invisible layer drops words that touch the edit's cover boxes.
 
 ## UI
 
 - **Tool palette**: `Edit text` tool (`data-testid="tool-edit"`, key `E`).
 - **Hover**: with the tool active, the block under the pointer gets an outline (`.block-hint`).
 - **Block editor** (`src/components/BlockEditor.tsx`): a contentEditable div positioned over the block (overlay coordinates), `background` colour, matched font, `fontSize × scale`, `line-height: lineHeight × scale`, pre-filled with the block text, caret at the click. Enter applies, Shift+Enter inserts a newline, Escape cancels, click outside applies. Done and Cancel buttons in a small bar; a hint `Fits` / `Overflows by N line(s)`. The box grows downward with overflow.
-- **Apply**: unchanged text → no edit. Otherwise `addEdit` with boxes from the layout, `blockKey`, colours, font, lineHeight, source. For OCR pages also `applyEditToOcr`.
+- **Apply**: unchanged text → no edit. Otherwise `addEdit` (new block) or `updateEdit` (reopened edit) with boxes from the layout, `blockKey`, colours, font, lineHeight, source.
 - **Existing edits**: clickable with the tool to reopen; a handle bar with `Delete` and a font menu (12 faces, grouped by family) that calls `updateEdit`. Drag to move; drag the right edge to change width (re-layout).
 - **Rotated pages**: tool message `Rotate the page back to its original orientation to edit text.`
 - **No block under click**: tool message `No text here.`
@@ -121,13 +130,13 @@ Per edit: draw the cover rectangle in `background`, then each laid-out line in t
 | Block narrower than one character of the text | Editor does not open; message `Block too narrow to edit.` |
 | Non-WinAnsi characters | Rendered as `?` in export (existing rule); the editor shows a hint `Some characters cannot be saved in this font` when present. |
 | Edit applied on a page whose OCR is still running | Allowed on native text only; OCR blocks are not offered until the page is `done`. |
-| Deleting an edit on a scan | Cover removed; OCR text stays as last written (noted in UI tooltip). |
+| Deleting an edit on a scan | Cover removed; the original OCR words reappear in search, AI and export. |
 
 ## Testing
 
-- Unit: `blocks.ts` grouping (baseline tolerance, paragraph split on gap/left edge/font change, OCR words form blocks, `blockAt`), `fontMatch.ts` table (names, flags, css fallbacks, legacy aliases), `colors.ts` on synthetic ImageData, `layoutBlock` wrap/newline/overflow, `extractPageText` edits overlay (covered items removed, edit lines inserted in order, cache invalidated on edits change), `applyEditToOcr` (words replaced within boxes only, `at` bumped), export draws cover + text with the right face/colour (parse back with pdf.js: text present at position; original absent for OCR pages).
-- Component (jsdom): editor opens pre-filled at the clicked block; Enter applies, Escape cancels, unchanged text creates no edit; reopen replaces the edit (same blockKey); delete removes; font menu updates.
-- E2E (Playwright): on `three.pdf`, Edit tool, click "three:0", type "three:9", Enter, download; saved PDF text contains "three:9" and not "three:0". On `scan.pdf` (gated with `E2E_OCR=1`), after "Text recognized", edit "hypertension" → "hypotension"; the text layer shows the new word and the downloaded PDF's text contains "hypotension" and not "hypertension".
+- Unit: `blocks.ts` grouping (baseline tolerance, paragraph split on gap/left edge/font change, OCR words form blocks, `blockAt`), `fontMatch.ts` table (names, flags, css fallbacks, legacy aliases), `colors.ts` on synthetic ImageData, `layoutBlock` wrap/newline/overflow, `extractPageText` edits overlay (covered items removed, edit lines inserted in order, cache invalidated on edits change), OCR-page editing through `extractPageText` (OCR items plus an edit give the edited text, the store is untouched), export draws cover + text with the right face/colour (parse back with pdf.js: text present at position; original absent for OCR pages).
+- Component (jsdom): editor opens pre-filled at the clicked block; Enter applies, Escape cancels, unchanged text creates no edit; reopen updates the edit in place; equal blockKeys on different blocks coexist; delete removes; font menu updates.
+- E2E (Playwright): on `three.pdf`, Edit tool, click "three:0", type "three:9", Enter, download; saved PDF text contains "three:9" and not "three:0". On `scan.pdf` (gated with `E2E_OCR=1`), after "Text recognized", edit "hypertension" → "hypotension"; the text layer shows the new word and the downloaded (flattened) PDF's text contains "hypotension" and not "hypertension". Both e2e tests also inflate every stream of the saved file and assert the original string is absent.
 
 ## Non-goals
 

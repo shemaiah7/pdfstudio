@@ -314,6 +314,13 @@ useOcrStore.subscribe((s, prev) => {
   for (const [k, st] of Object.entries(s.pages)) if (st.state === "done" && prev.pages[k]?.state !== "done") finishedSources.add(k.slice(0, k.lastIndexOf(":")));
   armOcrReindex(); // any page transition (done, failed, empty, cancelled) may be the one that drains a source
 });
+useDocumentStore.subscribe((s, prev) => {
+  if (s.edits === prev.edits) return;
+  const touched = new Set<string>();
+  for (const e of [...s.edits, ...prev.edits]) { const p = s.pages.find((x) => x.id === e.pageEntryId) ?? prev.pages.find((x) => x.id === e.pageEntryId); if (p) touched.add(p.sourceId); }
+  for (const sid of touched) finishedSources.add(sid);
+  armOcrReindex();
+});
 // A source skipped because it was mid-index is retried once that index run ends.
 useSearchStore.subscribe((s, prev) => {
   if (s.docs === prev.docs || finishedSources.size === 0) return;

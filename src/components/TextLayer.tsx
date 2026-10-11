@@ -1,6 +1,8 @@
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
+import { useShallow } from "zustand/react/shallow";
+import { useDocumentStore } from "../store/document";
 import * as pdfjs from "pdfjs-dist";
-import type { PageEntry, SourceFile } from "../pdf/types";
+import type { Box, PageEntry, SourceFile } from "../pdf/types";
 import { getPage } from "../pdf/render";
 import { useOcrStore, pageKey } from "../store/ocr";
 import { ocrStore } from "../ocr/store";
@@ -23,9 +25,31 @@ export function ocrTextContent(ocr: OcrPage, origin: { x: number; y: number } = 
   return { items, styles: { ocr: { fontFamily: "sans-serif", ascent: 0.9, descent: -0.2, vertical: false } } };
 }
 
+/** Hide text-layer spans covered by an edit so the original text can't be selected or searched through the cover. */
+export function hideCoveredSpans(container: HTMLElement, boxes: Box[], scale: number, heightPt: number) {
+  const c = container.getBoundingClientRect();
+  const rects = boxes.map((b) => ({ left: b.x * scale, right: (b.x + b.width) * scale, top: (heightPt - b.y - b.height) * scale, bottom: (heightPt - b.y) * scale }));
+  for (const span of container.querySelectorAll<HTMLElement>("span")) {
+    const r = span.getBoundingClientRect();
+    const l = r.left - c.left, t = r.top - c.top, rr = r.right - c.left, bb = r.bottom - c.top;
+    // Same rule as coveredBy: horizontal overlap plus the span's middle 60 % (screen space, y down) reaching the cover.
+    const h = bb - t, bandTop = t + 0.2 * h, bandBottom = t + 0.8 * h;
+    const hit = rects.some((b) => l < b.right && rr > b.left && bandTop < b.bottom && bandBottom > b.top);
+    span.style.visibility = hit ? "hidden" : "";
+  }
+}
+
 export default function TextLayer({ source, entry, scale }: Props) {
   const ref = useRef<HTMLDivElement>(null);
+  const pageEdits = useDocumentStore(useShallow((s) => s.edits.filter((e) => e.pageEntryId === entry.id)));
+  const heightPtRef = useRef(0);
   const ocrState = useOcrStore((s) => s.pages[pageKey(source.id, entry.sourcePageIndex)]);
+  const editsRef = useRef(pageEdits);
+  const applyHidden = useCallback(() => {
+    const el = ref.current;
+    if (el && heightPtRef.current) hideCoveredSpans(el, editsRef.current.flatMap((e) => e.boxes), scale, heightPtRef.current);
+  }, [scale]);
+  useEffect(() => { editsRef.current = pageEdits; applyHidden(); }, [pageEdits, applyHidden]);
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
@@ -50,8 +74,11 @@ export default function TextLayer({ source, entry, scale }: Props) {
       }
       layer = new pdfjs.TextLayer({ textContentSource: sourceForLayer as never, container: el, viewport });
       await layer.render();
+      if (cancelled) return;
+      heightPtRef.current = (page.rotate + entry.rotation) % 360 === 0 ? page.view[3] - page.view[1] : 0; // overlay geometry is only valid unrotated
+      applyHidden();
     })().catch((err) => console.error("text layer failed", err));
     return () => { cancelled = true; layer?.cancel(); };
-  }, [source, entry.sourcePageIndex, entry.rotation, scale, ocrState?.state, ocrState?.engine]);
+  }, [source, entry.sourcePageIndex, entry.rotation, scale, ocrState?.state, ocrState?.engine, applyHidden]);
   return <div ref={ref} className="textLayer" />;
 }

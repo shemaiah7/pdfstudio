@@ -246,4 +246,15 @@ describe("search store", () => {
     await vi.waitFor(() => expect(indexSource).toHaveBeenCalledTimes(2));
     ocrMock.pages = {};
   });
+  it("re-indexes a source after its edits change", async () => {
+    await useSearchStore.getState().enable();
+    await vi.waitFor(() => expect(useSearchStore.getState().docs.h1?.status).toBe("indexed"));
+    expect(indexSource).toHaveBeenCalledTimes(1);
+    vi.useFakeTimers();
+    try {
+      useDocumentStore.getState().addEdit({ pageEntryId: "p1", boxes: [{ x: 0, y: 0, width: 10, height: 10 }], text: "z", fontSize: 10, font: "helvetica", color: [0, 0, 0], blockKey: "k" });
+      await vi.advanceTimersByTimeAsync(2100);
+    } finally { vi.useRealTimers(); }
+    await vi.waitFor(() => expect(indexSource).toHaveBeenCalledTimes(2));
+  });
 });
