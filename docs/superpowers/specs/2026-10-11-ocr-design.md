@@ -15,6 +15,8 @@ Scanned PDFs (typed printouts, faxes, forms with tables, handwritten notes, phon
 | Cloud engine | Claude Sonnet 5.5 through the existing Cloudflare AI worker, new `ocr` task. |
 | Trigger | Local OCR runs automatically when a document with text-less pages opens. Deep OCR is always a button. |
 | Output | Text powers the app (selection, AI, search) and is written into the downloaded PDF as an invisible text layer. |
+| Tesseract worker/core scripts | jsDelivr defaults (same policy as the ONNX runtime); only langPath overridden |
+| Custom Web Worker | Not needed; Tesseract.js spawns its own |
 | Rejected | Florence-2 in the browser (WebGPU-only, no handwriting gain). Hosted OCR APIs other than Claude (weaker handwriting, second data processor). |
 
 ## Architecture
@@ -88,7 +90,7 @@ Unchanged in logic: it calls `extract`, which now returns OCR text. The library 
 - **AI tab and Search messages**: while pages of the open document are queued or running, Summarize/Ask/Search show "Recognizing text… try again in a moment." When all scanned pages ended `empty` or `failed`, they show "No text could be recognized. Try Deep OCR."
 - **Setting** "Recognize text automatically" (default on) in the settings popover, persisted to localStorage `pdfstudio.ocr.auto`.
 - **Clear all** in the Library panel also clears the OCR store.
-- Privacy page (owed from earlier sub-projects) gains a paragraph: Tesseract language data is downloaded from jsDelivr; Deep OCR sends page images to the AI worker and Anthropic.
+- Privacy page (owed from earlier sub-projects) gains a paragraph: Tesseract language data is downloaded from jsDelivr; Deep OCR sends page images to the AI worker and Anthropic. Note: the privacy page does not exist yet; the README OCR paragraph carries the disclosure until it is written.
 
 ## Error handling
 
