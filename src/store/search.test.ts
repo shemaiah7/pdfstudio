@@ -156,6 +156,15 @@ describe("search store", () => {
     expect(lib.put).not.toHaveBeenCalled();
     expect(useSearchStore.getState().docs).toEqual({});
   });
+  it("clearLibrary finishes the search teardown even when the OCR clear rejects", async () => {
+    clearAll.mockClear();
+    clearAll.mockRejectedValueOnce(new Error("idb"));
+    useSearchStore.setState({ enabled: true, model: { status: "ready", loaded: 0, total: 0, device: "wasm" } });
+    await useSearchStore.getState().clearLibrary();
+    expect(clearAll).toHaveBeenCalledTimes(1);
+    expect(useSearchStore.getState().enabled).toBe(false);
+    expect(useSearchStore.getState().model.status).toBe("idle");
+  });
   it("init loads the model once for a returning user and indexes open sources", async () => {
     load.mockClear();
     useSearchStore.setState({ enabled: true });

@@ -212,13 +212,14 @@ export const useSearchStore = create<SearchState>((set, get) => ({
     cancelReveal();
     queue = Promise.resolve();
     await library.clear();
-    await useOcrStore.getState().clearAll();
     try { localStorage.removeItem(ENABLED_KEY); localStorage.removeItem(CPU_KEY); } catch { /* ignore */ }
     library.setModelTag(MODEL_TAG);
     if (typeof caches !== "undefined") await caches.delete("transformers-cache").catch(() => {});
     getEmbedClient().dispose();
     set({ enabled: false, model: { status: "idle", loaded: 0, total: 0 }, docs: {}, results: [], query: "", searchError: null, library: [], usage: null });
     index = [];
+    // Last, so a failure (or its re-scan) cannot interrupt the search teardown above.
+    await useOcrStore.getState().clearAll().catch(() => {});
   },
 }));
 
@@ -272,16 +273,22 @@ useDocumentStore.subscribe((s, prev) => {
 });
 
 let ocrDebounce: ReturnType<typeof setTimeout> | null = null;
+const finishedSources = new Set<string>();
 useOcrStore.subscribe((s, prev) => {
   if (s.pages === prev.pages) return;
-  const finished = Object.entries(s.pages).some(([k, st]) => st.state === "done" && prev.pages[k]?.state !== "done");
-  if (!finished) return;
+  for (const [k, st] of Object.entries(s.pages)) if (st.state === "done" && prev.pages[k]?.state !== "done") finishedSources.add(k.slice(0, k.lastIndexOf(":")));
+  if (finishedSources.size === 0) return;
   if (ocrDebounce) clearTimeout(ocrDebounce);
   ocrDebounce = setTimeout(() => {
     const st = useSearchStore.getState();
     if (st.model.status !== "ready") return;
     // Drop the per-hash status so indexOpen re-runs indexSource (which sees the newer ocrVersion).
-    useSearchStore.setState((x) => { const docs = { ...x.docs }; for (const h of Object.values(x.hashBySource)) delete docs[h]; return { docs }; });
+    const sources = [...finishedSources]; finishedSources.clear();
+    useSearchStore.setState((x) => {
+      const docs = { ...x.docs };
+      for (const sid of sources) { const h = x.hashBySource[sid]; const status = h ? docs[h]?.status : undefined; if (h && status !== "queued" && status !== "indexing") delete docs[h]; }
+      return { docs };
+    });
     void st.indexOpen();
   }, 2000);
 });
