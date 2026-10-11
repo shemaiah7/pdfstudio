@@ -4,7 +4,7 @@ import { useDocumentStore } from "../store/document";
 import SignatureDialog from "./SignatureDialog";
 
 const TOOLS: { id: Tool; label: string }[] = [
-  { id: "select", label: "Select" }, { id: "highlight", label: "Highlight" }, { id: "note", label: "Note" }, { id: "ink", label: "Draw" },
+  { id: "select", label: "Select" }, { id: "edit", label: "Edit text" }, { id: "highlight", label: "Highlight" }, { id: "note", label: "Note" }, { id: "ink", label: "Draw" },
   { id: "rect", label: "Rectangle" }, { id: "arrow", label: "Arrow" }, { id: "freetext", label: "Text box" }, { id: "sign", label: "Sign" },
 ];
 
@@ -15,7 +15,14 @@ export default function ToolPalette() {
   const selectedAnnotationId = useDocumentStore((s) => s.selectedAnnotationId);
   const updateAnnotation = useDocumentStore((s) => s.updateAnnotation);
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { setTool("select"); useDocumentStore.getState().selectAnnotation(null); } };
+    const isEditing = () => {
+      const el = document.activeElement as HTMLElement | null;
+      return !!el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") { setTool("select"); useDocumentStore.getState().selectAnnotation(null); }
+      else if (e.key === "e" && !e.metaKey && !e.ctrlKey && !e.altKey && !isEditing()) setTool("edit");
+    };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [setTool]);

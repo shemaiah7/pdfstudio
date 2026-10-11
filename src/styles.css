@@ -149,3 +149,10 @@ body { background: var(--bg); color: var(--text); font-family: system-ui, sans-s
 .deep-ocr summary { cursor: pointer; list-style: none; padding: 4px 8px; border: 1px solid var(--border, #ccc); border-radius: 4px; }
 .deep-ocr-menu { position: absolute; z-index: 20; display: flex; flex-direction: column; background: var(--bg, white); border: 1px solid var(--border, #ccc); border-radius: 4px; padding: 4px; gap: 2px; }
 .ocr-setting { display: block; font-size: 12px; margin: 4px 0 8px; }
+.page.tool-edit .textLayer { pointer-events: none; }
+.page.tool-edit { cursor: text; }
+.block-hint-outline { position: absolute; border: 1px dashed #2563eb; pointer-events: none; }
+.block-editor-wrap { position: absolute; z-index: 30; }
+.block-editor { outline: 1px solid #2563eb; white-space: pre-wrap; overflow: hidden; padding: 0; margin: 0; }
+.block-editor-bar { position: absolute; left: 0; top: 100%; margin-top: 4px; display: flex; gap: 6px; align-items: center; font-size: 12px; background: var(--bg, white); border: 1px solid var(--border, #ccc); border-radius: 4px; padding: 2px 6px; white-space: nowrap; }
+.block-warn { color: #a33; }
