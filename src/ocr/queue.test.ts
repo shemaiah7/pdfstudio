@@ -1,0 +1,68 @@
+import { describe, it, expect, vi } from "vitest";
+import { createOcrQueue, type OcrJob, type OcrJobState } from "./queue";
+import { linesToOcrPage } from "./layout";
+
+const page = (t: string) => linesToOcrPage([t], { widthPt: 100, heightPt: 100 });
+const job = (p: number, engine: "tesseract" | "claude" = "tesseract", sourceId = "s1"): OcrJob => ({ sourceId, pageIndex: p, engine });
+const deferred = <T,>() => { let resolve!: (v: T) => void, reject!: (e: Error) => void; const promise = new Promise<T>((a, b) => { resolve = a; reject = b; }); return { promise, resolve, reject }; };
+const tick = () => new Promise((r) => setTimeout(r, 0));
+
+describe("createOcrQueue", () => {
+  it("runs one job at a time per engine lane, in order, emitting states", async () => {
+    const d1 = deferred<ReturnType<typeof page>>(), d2 = deferred<ReturnType<typeof page>>();
+    const started: number[] = [];
+    const states: [number, OcrJobState][] = [];
+    const q = createOcrQueue((j) => { started.push(j.pageIndex); return j.pageIndex === 0 ? d1.promise : d2.promise; }, { onState: (j, s) => states.push([j.pageIndex, s]) });
+    q.enqueue(job(0)); q.enqueue(job(1));
+    await tick();
+    expect(started).toEqual([0]);
+    expect(q.pending).toBe(2);
+    d1.resolve(page("a")); await tick(); await tick();
+    expect(started).toEqual([0, 1]);
+    d2.resolve(page("b")); await tick(); await tick();
+    expect(states).toEqual([[0, "queued"], [1, "queued"], [0, "running"], [0, "done"], [1, "running"], [1, "done"]]);
+    expect(q.pending).toBe(0);
+  });
+  it("runs tesseract and claude lanes concurrently", async () => {
+    const d = deferred<ReturnType<typeof page>>();
+    const started: string[] = [];
+    const q = createOcrQueue((j) => { started.push(j.engine); return d.promise; }, { onState: () => {} });
+    q.enqueue(job(0, "tesseract")); q.enqueue(job(0, "claude"));
+    await tick();
+    expect(started).toEqual(["tesseract", "claude"]);
+    d.resolve(page("x"));
+  });
+  it("marks empty results, failures, and times out", async () => {
+    vi.useFakeTimers();
+    const states: [number, OcrJobState, string | undefined][] = [];
+    const q = createOcrQueue(async (j, signal) => {
+      if (j.pageIndex === 0) return { ...page("x"), confidence: 0.1 };
+      if (j.pageIndex === 1) throw new Error("boom");
+      return new Promise((_, rej) => signal.addEventListener("abort", () => rej(new Error("cancelled"))));
+    }, { onState: (j, s, e) => states.push([j.pageIndex, s, e?.error]) }, { timeoutMs: 1000 });
+    q.enqueue(job(0)); q.enqueue(job(1)); q.enqueue(job(2));
+    await vi.advanceTimersByTimeAsync(10);
+    await vi.advanceTimersByTimeAsync(1100);
+    vi.useRealTimers();
+    expect(states.filter(([, s]) => s !== "queued" && s !== "running")).toEqual([[0, "empty", undefined], [1, "failed", "boom"], [2, "failed", "timeout"]]);
+  });
+  it("cancelSource drops queued jobs for that source and aborts the running one", async () => {
+    const aborted: number[] = [];
+    const states: [string, number, OcrJobState][] = [];
+    const q = createOcrQueue((j, signal) => new Promise((_, rej) => signal.addEventListener("abort", () => { aborted.push(j.pageIndex); rej(new Error("cancelled")); })), { onState: (j, s) => states.push([j.sourceId, j.pageIndex, s]) });
+    q.enqueue(job(0)); q.enqueue(job(1)); q.enqueue(job(0, "tesseract", "s2"));
+    await tick();
+    q.cancelSource("s1");
+    await tick(); await tick();
+    expect(aborted).toEqual([0]);
+    expect(states.some(([src, , s]) => src === "s1" && (s === "done" || s === "failed"))).toBe(false);
+    expect(states).toContainEqual(["s2", 0, "running"]);
+  });
+  it("ignores duplicate enqueues", async () => {
+    let runs = 0;
+    const q = createOcrQueue(async () => { runs++; return page("x"); }, { onState: () => {} });
+    q.enqueue(job(0)); q.enqueue(job(0));
+    await tick(); await tick();
+    expect(runs).toBe(1);
+  });
+});
