@@ -1,0 +1,14 @@
+export const MODEL_ID = "onnx-community/embeddinggemma-2-ONNX";
+export const DIMS = 256;
+export const MODEL_TAG = `${MODEL_ID}@${DIMS}`;
+export const CHUNK_WORDS = 200;
+export const CHUNK_STEP = 160;
+export const MIN_WORDS = 3;
+export const THRESHOLD = 0.3;
+export const BOOST = 0.05;
+export const BOOST_CAP = 0.15;
+export const SEARCH_LIMIT = 20;
+export const ASK_PASSAGES = 12;
+export const EMBED_BATCH = 16;
+export const QUERY_PREFIX = "task: search result | query: ";
+export const DOC_PREFIX = "title: none | text: ";
