@@ -274,4 +274,22 @@ describe("flatten edited native pages", () => {
     expect(warnings).toEqual(["Saved without flattening; covered text may remain in the file."]);
     expect(await texts(out)).toContain("three:0");
   });
+  it("leaves no original scan image in the file after flattening (sweeps orphaned resources)", async () => {
+    const scanBytes = loadFixture("scan");
+    const scan = new Map([["s", { id: "s", name: "scan.pdf", bytes: scanBytes, pageCount: 1 }]]);
+    const imageStreams = async (bytes: Uint8Array) => {
+      const doc = await PDFDocument.load(bytes);
+      const out: PDFRawStream[] = [];
+      for (const [, o] of doc.context.enumerateIndirectObjects()) if (o instanceof PDFRawStream && o.dict.get(PDFName.of("Subtype")) === PDFName.of("Image")) out.push(o);
+      return out;
+    };
+    const original = await imageStreams(scanBytes);
+    expect(original.some((o) => o.getContents().length === 20402)).toBe(true); // positive control
+    const e = { ...edit, pageEntryId: "s-0", boxes: [{ x: 20, y: 300, width: 100, height: 20 }] };
+    const out = await buildDocument(scan, [entry("s", 0)], [e], [], new Map(), undefined, undefined, { rasterize: flat.rasterize, editedText: async () => [] });
+    const images = await imageStreams(out);
+    expect(images).toHaveLength(1);
+    expect(images.some((o) => o.getContents().length === 20402)).toBe(false);
+    expect(images[0].dict.get(PDFName.of("Width"))?.toString()).toBe("1");
+  });
 });

@@ -5,6 +5,7 @@ import { ensureAcroFormDR, isDegenerate, writeAnnotations } from "./annotations"
 import { applyFormValues, readFieldsFromDoc, rebuildAcroForm } from "./formFill";
 import { addInvisibleText, withoutCoveredWords } from "../ocr/textLayer";
 import type { OcrPage } from "../ocr/types";
+import { sweepUnreachable } from "./sweep";
 import { flattenPage, type RasterCover } from "../edit/flatten";
 import type { TextItemBox } from "./text";
 import { EDIT_FONTS, STANDARD_FONTS, normalizeFont } from "./fonts";
@@ -45,6 +46,7 @@ export async function buildDocument(
   let ocrWarned = false;
   let flattenWarned = false;
   let deepOmitWarned = false;
+  let anyFlattened = false;
   const copiedBySource = new Map<SourceId, PDFPage[]>();
 
   for (const entry of pages) {
@@ -106,6 +108,7 @@ export async function buildDocument(
         helv ??= await out.embedFont(StandardFonts.Helvetica);
         await flattenPage(out, copied, { ...raster, items, cropOrigin: { x: ox, y: oy } }, helv, drawEdits);
         flattened = true;
+        anyFlattened = true;
       } catch {
         if (!flattenWarned) onWarning?.("Saved without flattening; covered text may remain in the file.");
         flattenWarned = true;
@@ -147,13 +150,19 @@ export async function buildDocument(
   }
 
   if (wroteFreeText && helv) ensureAcroFormDR(out, helv);
-  if (!anyFields) return out.save({ updateFieldAppearances: false });
+  // Flattened pages leave their original resources (scan images, Form XObjects) registered but unreferenced; drop them so they can't be recovered.
+  // Field appearances are regenerated first so the sweep sees (and keeps) the final streams.
+  const sweepIfFlattened = () => { if (anyFlattened) sweepUnreachable(out); };
+  if (!anyFields) { sweepIfFlattened(); return out.save({ updateFieldAppearances: false }); }
   try {
-    return await out.save({ updateFieldAppearances: true });
+    out.getForm().updateFieldAppearances();
+    sweepIfFlattened();
+    return await out.save({ updateFieldAppearances: false });
   } catch {
     // Text outside WinAnsi can't be drawn into a field appearance; let the viewer redraw it instead.
     out.getForm().acroForm.dict.set(PDFName.of("NeedAppearances"), PDFBool.True);
     onWarning?.("Some form text will be redrawn by the PDF viewer");
+    sweepIfFlattened();
     return out.save({ updateFieldAppearances: false });
   }
 }
