@@ -24,10 +24,7 @@ export function openLibraryDb(dbName: string): Promise<IDBPDatabase> {
   });
 }
 
-export async function sha256(bytes: Uint8Array): Promise<string> {
-  const buf = await crypto.subtle.digest("SHA-256", bytes as BufferSource);
-  return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
-}
+export { sha256 } from "../pdf/hash";
 
 type Opener = () => Promise<IDBPDatabase>;
 
