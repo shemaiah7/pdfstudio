@@ -56,8 +56,10 @@ export async function buildDocument(
         const color = rgb(e.color[0], e.color[1], e.color[2]);
         for (const line of lines) {
           const opts = { x: line.x + ox, y: line.baseline + oy, size: fontSize, font, color };
-          try { copied.drawText(line.text, opts); }
-          catch { copied.drawText(toWinAnsi(line.text), opts); }
+          // Draw exactly the string that was measured.
+          const drawn = toWinAnsi(line.text);
+          try { copied.drawText(drawn, opts); }
+          catch { copied.drawText(drawn.replace(/[^\x20-\x7E]/g, "?"), opts); }
         }
       }
     }

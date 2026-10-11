@@ -9,6 +9,11 @@ describe("measureFor", () => {
     const measure = await measureFor("sans");
     expect(measure("Hello", 10)).toBe(helv.widthOfTextAtSize("Hello", 10));
   });
+  it("measures WinAnsi punctuation as the real glyph", async () => {
+    const doc = await PDFDocument.create();
+    const helv = await doc.embedFont(StandardFonts.Helvetica);
+    expect((await measureFor("sans"))("a\u2014b", 12)).toBe(helv.widthOfTextAtSize("a\u2014b", 12));
+  });
   it("does not throw on non-WinAnsi text", async () => {
     const measure = await measureFor("serif");
     expect(measure("Hi 中", 10)).toBeGreaterThan(0);

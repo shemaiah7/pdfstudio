@@ -139,6 +139,14 @@ describe("edits on export", () => {
     const doc = await PDFDocument.load(out);
     expect(decodeTjStrings(await pageContent(doc, 0))).toContain("Hi ?");
   });
+  it("draws WinAnsi punctuation as measured instead of replacing it", async () => {
+    const s = new Map([["a", src("a", "three", 3)]]);
+    const out = await buildDocument(s, [entry("a", 0)], [
+      { id: "e1", pageEntryId: "a-0", boxes: [{ x: 20, y: 350, width: 200, height: 24 }], text: "a\u2014b", fontSize: 12, font: "sans", color: [0, 0, 0] },
+    ]);
+    // pdf-lib encodes an em dash as WinAnsi 0x97.
+    expect(decodeTjStrings(await pageContent(await PDFDocument.load(out), 0))).toContain("a\u0097b");
+  });
   it("offsets edits by the crop box origin", async () => {
     const s = new Map([["o", { id: "o", name: "offset.pdf", bytes: loadFixture("offset"), pageCount: 1 }]]);
     const out = await buildDocument(s, [entry("o", 0)], [
