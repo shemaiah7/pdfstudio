@@ -20,4 +20,10 @@ describe("handles", () => {
     const tiny = resizeAnnotation(ft, "se", -500, 500) as Extract<Annotation, { kind: "freetext" }>;
     expect(tiny.box.width).toBe(8); expect(tiny.box.height).toBe(8);
   });
+  it("keeps thin shapes straight and still clamps normal ones", () => {
+    const arrow = resizeAnnotation({ id: "6", kind: "shape", pageEntryId: "p", color: c, shape: "arrow", x1: 10, y1: 50, x2: 110, y2: 50, width: 1 }, "se", 20, 0) as Extract<Annotation, { kind: "shape" }>;
+    expect(arrow.x2).toBe(130); expect(arrow.y1).toBe(50); expect(arrow.y2).toBe(50);
+    const rect = resizeAnnotation({ id: "7", kind: "shape", pageEntryId: "p", color: c, shape: "rect", x1: 10, y1: 10, x2: 110, y2: 50, width: 1 }, "se", -500, 500) as Extract<Annotation, { kind: "shape" }>;
+    expect(Math.abs(rect.x2 - rect.x1)).toBe(8); expect(Math.abs(rect.y2 - rect.y1)).toBe(8);
+  });
 });

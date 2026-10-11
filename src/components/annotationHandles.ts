@@ -18,16 +18,16 @@ export function moveAnnotation(a: Annotation, dx: number, dy: number): Annotatio
     case "freetext": case "signature": return { ...a, box: { ...a.box, x: a.box.x + dx, y: a.box.y + dy } };
   }
 }
-function resizeBox(b: Box, h: Handle, dx: number, dy: number, min: number): Box {
+function resizeBox(b: Box, h: Handle, dx: number, dy: number, minW: number, minH = minW): Box {
   let { x, y, width, height } = b;
   if (h.includes("e")) width += dx; else { x += dx; width -= dx; }
   if (h.includes("n")) height += dy; else { y += dy; height -= dy; }
-  if (width < min) { if (!h.includes("e")) x = b.x + b.width - min; width = min; }
-  if (height < min) { if (!h.includes("n")) y = b.y + b.height - min; height = min; }
+  if (width < minW) { if (!h.includes("e")) x = b.x + b.width - minW; width = minW; }
+  if (height < minH) { if (!h.includes("n")) y = b.y + b.height - minH; height = minH; }
   return { x, y, width, height };
 }
 export function resizeAnnotation(a: Annotation, h: Handle, dx: number, dy: number, min = 8): Annotation {
   if (a.kind === "freetext" || a.kind === "signature") return { ...a, box: resizeBox(a.box, h, dx, dy, min) };
-  if (a.kind === "shape") { const b = resizeBox(boundsOf(a), h, dx, dy, min); const flipX = a.x2 < a.x1, flipY = a.y2 < a.y1; return { ...a, x1: flipX ? b.x + b.width : b.x, x2: flipX ? b.x : b.x + b.width, y1: flipY ? b.y + b.height : b.y, y2: flipY ? b.y : b.y + b.height }; }
+  if (a.kind === "shape") { const ob = boundsOf(a); const b = resizeBox(ob, h, dx, dy, ob.width >= min ? min : 0, ob.height >= min ? min : 0); const flipX = a.x2 < a.x1, flipY = a.y2 < a.y1; return { ...a, x1: flipX ? b.x + b.width : b.x, x2: flipX ? b.x : b.x + b.width, y1: flipY ? b.y + b.height : b.y, y2: flipY ? b.y : b.y + b.height }; }
   return a;
 }

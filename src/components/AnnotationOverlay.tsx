@@ -113,7 +113,10 @@ export default function AnnotationOverlay({ annotations, meta, pageEl }: Props) 
       case "shape": {
         if (a.shape === "rect") {
           const b = boundsOf(a);
-          return <g key={a.id} {...hit(a)}><rect x={b.x} y={b.y} width={b.width} height={b.height} fill="none" stroke={col} strokeWidth={a.width} /></g>;
+          return <g key={a.id} {...hit(a)}>
+            <rect x={b.x} y={b.y} width={b.width} height={b.height} fill="none" stroke="transparent" strokeWidth={Math.max(a.width, 8)} />
+            <rect x={b.x} y={b.y} width={b.width} height={b.height} fill="none" stroke={col} strokeWidth={a.width} />
+          </g>;
         }
         const ang = Math.atan2(a.y2 - a.y1, a.x2 - a.x1), hl = 6 + a.width * 2;
         const h1 = `${a.x2 - hl * Math.cos(ang - Math.PI / 6)},${a.y2 - hl * Math.sin(ang - Math.PI / 6)}`;
