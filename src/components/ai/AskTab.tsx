@@ -14,7 +14,7 @@ export default function AskTab({ disabled }: { disabled: boolean }) {
       </div>
       <div className="ai-row">
         <input value={chat.draft} placeholder="Ask about this document" disabled={disabled}
-          onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") send(); }} />
+          onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) send(); }} />
         <button data-testid="ai-run" className="primary" disabled={disabled || chat.status === "running" || !chat.draft.trim()} onClick={send}>Send</button>
       </div>
     </div>
