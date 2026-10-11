@@ -241,3 +241,7 @@ useDocumentStore.subscribe((s, prev) => {
   }
   for (const id of s.sources.keys()) if (!prev.sources.has(id)) useOcrStore.getState().scanSource(id).catch((err) => console.warn("OCR scan failed", err));
 });
+
+const syncAiStatus = () => useAiStore.setState({ ocrTextStatus: useOcrStore.getState().textStatus() });
+useOcrStore.subscribe((s, prev) => { if (s.pages !== prev.pages) syncAiStatus(); });
+useDocumentStore.subscribe((s, prev) => { if (s.pages !== prev.pages) syncAiStatus(); });

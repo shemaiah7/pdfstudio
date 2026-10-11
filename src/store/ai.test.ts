@@ -224,3 +224,11 @@ describe("ask with retrieval", () => {
     expect(useAiStore.getState().chat).toMatchObject({ status: "error", error: "Still indexing these documents; try again when indexing finishes." });
   });
 });
+
+it("no_text copy follows the OCR status", () => {
+  useAiStore.setState({ ocrTextStatus: "ok" });
+  expect(useAiStore.getState().errorMessage("no_text")).toBe("No text could be recognized. Try Deep OCR.");
+  useAiStore.setState({ ocrTextStatus: "recognizing" });
+  expect(useAiStore.getState().errorMessage("no_text")).toBe("Recognizing text… try again in a moment.");
+  useAiStore.setState({ ocrTextStatus: "ok" });
+});

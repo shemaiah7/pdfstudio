@@ -5,7 +5,7 @@ import { createLibrary, openLibraryDb, sha256, type LibraryRecord } from "./libr
 import { DIMS, MODEL_TAG, modelTag } from "./constants";
 
 const rec = (hash: string, modelId = MODEL_TAG): LibraryRecord => ({
-  hash, name: `${hash}.pdf`, size: 3, pageCount: 1, addedAt: 1, modelId,
+  hash, name: `${hash}.pdf`, size: 3, pageCount: 1, addedAt: 1, modelId, ocrVersion: 0,
   bytes: new Blob([new Uint8Array([1, 2, 3])]),
   chunks: [{ page: 0, start: 0, end: 5, text: "hello" }],
   vectors: new Float32Array(DIMS).fill(0.1),

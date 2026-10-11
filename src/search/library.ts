@@ -6,13 +6,14 @@ import { DIMS, MODEL_TAG } from "./constants";
 export interface LibraryRecord {
   hash: string; name: string; size: number; pageCount: number; addedAt: number; modelId: string;
   bytes: Blob; chunks: Chunk[]; vectors: Float32Array;
+  ocrVersion: number; // newest OCR page timestamp the index was built from; 0 when none
 }
 export interface LibrarySummary { hash: string; name: string; size: number; pageCount: number; addedAt: number; modelId: string; chunkCount: number; stale: boolean }
 
 const STORE = "documents";
 const SUMMARIES = "summaries";
 
-type StoredSummary = Omit<LibrarySummary, "stale"> & { vectorLength: number };
+type StoredSummary = Omit<LibrarySummary, "stale"> & { vectorLength: number; ocrVersion: number };
 
 export function openLibraryDb(dbName: string): Promise<IDBPDatabase> {
   return openDB(dbName, 2, {
@@ -42,12 +43,12 @@ export function createLibrary(dbName = "pdfstudio-search", open?: Opener) {
   };
   const valid = (r: { modelId: string; chunkCount: number; vectorLength: number }) =>
     r.modelId === activeTag && r.vectorLength === r.chunkCount * DIMS;
-  const stored = (r: LibraryRecord): StoredSummary => ({ hash: r.hash, name: r.name, size: r.size, pageCount: r.pageCount, addedAt: r.addedAt, modelId: r.modelId, chunkCount: r.chunks.length, vectorLength: r.vectors.length });
+  const stored = (r: LibraryRecord): StoredSummary => ({ hash: r.hash, name: r.name, size: r.size, pageCount: r.pageCount, addedAt: r.addedAt, modelId: r.modelId, chunkCount: r.chunks.length, vectorLength: r.vectors.length, ocrVersion: r.ocrVersion ?? 0 });
   const summary = (s: StoredSummary): LibrarySummary => {
-    const { vectorLength: _v, ...rest } = s;
+    const { vectorLength: _v, ocrVersion: _o, ...rest } = s;
     return { ...rest, stale: !valid(s) };
   };
-  const revive = (r: LibraryRecord): LibraryRecord => ({ ...r, vectors: r.vectors instanceof Float32Array ? r.vectors : new Float32Array(r.vectors as unknown as ArrayLike<number>) });
+  const revive = (r: LibraryRecord): LibraryRecord => ({ ...r, ocrVersion: r.ocrVersion ?? 0, vectors: r.vectors instanceof Float32Array ? r.vectors : new Float32Array(r.vectors as unknown as ArrayLike<number>) });
   const usable = (r: LibraryRecord | undefined): LibraryRecord | undefined => {
     if (!r) return undefined;
     const v = revive(r);

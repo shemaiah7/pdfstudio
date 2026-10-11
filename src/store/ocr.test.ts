@@ -2,6 +2,7 @@
 import "fake-indexeddb/auto";
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { useDocumentStore } from "./document";
+import { useAiStore } from "./ai";
 import { useOcrStore, configureOcrDeps, pageKey } from "./ocr";
 import { createOcrStore } from "../ocr/store";
 import { linesToOcrPage } from "../ocr/layout";
@@ -106,6 +107,7 @@ describe("useOcrStore", () => {
     void useOcrStore.getState().scanSource(id); await flush();
     expect(useOcrStore.getState().progress()).toEqual({ done: 0, total: 2 });
     expect(useOcrStore.getState().textStatus()).toBe("recognizing");
+    expect(useAiStore.getState().ocrTextStatus).toBe("recognizing");
     useDocumentStore.setState({ sources: new Map(), pages: [] });
     await flush();
     expect(Object.keys(useOcrStore.getState().pages).filter((k) => k.startsWith(id))).toEqual([]);

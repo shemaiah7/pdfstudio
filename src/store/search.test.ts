@@ -13,6 +13,9 @@ vi.mock("../search/library", () => ({ get library() { return lib; }, sha256: asy
 const indexSource = vi.fn(async (s: { bytes: Uint8Array }, _signal?: AbortSignal): Promise<{ status: "indexed"; hash: string; chunks: number } | { status: "cancelled"; hash: string }> => { const hash = `h${s.bytes[0]}`; if (!docs.find((d) => d.hash === hash)) { const v = new Float32Array(DIMS); v[0] = 1; docs.push({ hash, chunks: [{ page: 0, start: 0, end: 5, text: "hello warfarin" }], vectors: v }); } return { status: "indexed" as const, hash, chunks: 1 }; });
 vi.mock("../search/indexer", () => ({ indexSource: (s: never, _d: never, _p: never, signal?: AbortSignal) => indexSource(s, signal), defaultDeps: () => ({}) }));
 
+const clearAll = vi.hoisted(() => vi.fn(async () => {}));
+vi.mock("./ocr", () => ({ useOcrStore: Object.assign(() => undefined, { getState: () => ({ clearAll }), subscribe: () => () => {} }) }));
+
 import { useSearchStore, retrievePassages } from "./search";
 import { useDocumentStore } from "./document";
 
@@ -145,6 +148,7 @@ describe("search store", () => {
     const pending = useSearchStore.getState().indexOpen();
     await vi.waitFor(() => expect(indexSource).toHaveBeenCalledTimes(1));
     await useSearchStore.getState().clearLibrary();
+    expect(clearAll).toHaveBeenCalledTimes(1);
     release();
     await pending;
     await new Promise((r) => setTimeout(r, 10));

@@ -7,6 +7,7 @@ import { indexSource, defaultDeps } from "../search/indexer";
 import { rank, queryTerms, hasSearchableToken, type Hit, type RankDoc } from "../search/ranker";
 import { ASK_PASSAGES, DIMS, MODEL_TAG, SEARCH_LIMIT, THRESHOLD, modelTag } from "../search/constants";
 import { useDocumentStore } from "./document";
+import { useOcrStore } from "./ocr";
 import type { SourceId } from "../pdf/types";
 
 type ModelStatus = "idle" | "downloading" | "ready" | "unavailable";
@@ -211,6 +212,7 @@ export const useSearchStore = create<SearchState>((set, get) => ({
     cancelReveal();
     queue = Promise.resolve();
     await library.clear();
+    await useOcrStore.getState().clearAll();
     try { localStorage.removeItem(ENABLED_KEY); localStorage.removeItem(CPU_KEY); } catch { /* ignore */ }
     library.setModelTag(MODEL_TAG);
     if (typeof caches !== "undefined") await caches.delete("transformers-cache").catch(() => {});
@@ -267,4 +269,19 @@ useDocumentStore.subscribe((s, prev) => {
     if (status === "indexing" || status === "queued") { controllers.get(hash)?.abort(); getEmbedClient().cancel(hash); }
   }
   if (st.model.status === "ready") void st.indexOpen();
+});
+
+let ocrDebounce: ReturnType<typeof setTimeout> | null = null;
+useOcrStore.subscribe((s, prev) => {
+  if (s.pages === prev.pages) return;
+  const finished = Object.entries(s.pages).some(([k, st]) => st.state === "done" && prev.pages[k]?.state !== "done");
+  if (!finished) return;
+  if (ocrDebounce) clearTimeout(ocrDebounce);
+  ocrDebounce = setTimeout(() => {
+    const st = useSearchStore.getState();
+    if (st.model.status !== "ready") return;
+    // Drop the per-hash status so indexOpen re-runs indexSource (which sees the newer ocrVersion).
+    useSearchStore.setState((x) => { const docs = { ...x.docs }; for (const h of Object.values(x.hashBySource)) delete docs[h]; return { docs }; });
+    void st.indexOpen();
+  }, 2000);
 });

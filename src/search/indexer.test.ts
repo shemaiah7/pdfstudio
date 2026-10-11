@@ -3,6 +3,7 @@ import { describe, it, expect, vi } from "vitest";
 import { indexSource } from "./indexer";
 import { createLibrary } from "./library";
 import { DIMS } from "./constants";
+import { sha256 } from "../pdf/hash";
 import type { SourceFile } from "../pdf/types";
 
 const src = (id: string, bytes = [1, 2, 3], pageCount = 2): SourceFile => ({ id, name: `${id}.pdf`, bytes: new Uint8Array(bytes), pageCount });
@@ -69,4 +70,18 @@ describe("indexSource", () => {
     expect(r).toMatchObject({ status: "failed", message: `embedding returned ${DIMS} values, expected ${2 * DIMS}` });
     expect(await lib.get(r.hash)).toBeUndefined();
   });
+});
+
+it("re-indexes when the OCR version is newer than the cached record", async () => {
+  const lib = createLibrary(`idx-ocr-${Date.now()}`);
+  let version = 0;
+  const embedCalls: number[] = [];
+  const deps = { lib, extract: async () => "alpha beta gamma delta", embed: async (texts: string[]) => { embedCalls.push(texts.length); return new Float32Array(texts.length * DIMS).fill(0.1); }, ocrVersion: async () => version };
+  const source = { id: "s", name: "s.pdf", bytes: new Uint8Array([1, 2, 3]), pageCount: 1 };
+  expect((await indexSource(source, deps)).status).toBe("indexed");
+  expect((await indexSource(source, deps)).status).toBe("cached");
+  version = 5;
+  expect((await indexSource(source, deps)).status).toBe("indexed");
+  expect(embedCalls).toHaveLength(2);
+  expect((await lib.get(await sha256(source.bytes)))?.ocrVersion).toBe(5);
 });
