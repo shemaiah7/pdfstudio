@@ -1,12 +1,13 @@
 import type { Env } from "./env";
 import { corsHeaders, json } from "./cors";
 import { sessionHandler } from "./handlers/session";
+import { aiHandler } from "./handlers/ai";
 
 export type Handler = (request: Request, env: Env, ctx: ExecutionContext) => Promise<Response>;
 
 const routes: Record<string, Handler> = {
   "/session": (r, env) => sessionHandler(r, env),
-  "/ai": async (_r, env) => json({ error: "not_implemented" }, 501, env),
+  "/ai": (r, env, ctx) => aiHandler(r, env, ctx),
 };
 
 export default {
