@@ -1,8 +1,9 @@
-import { PDFDocument, PDFFont, StandardFonts, degrees, rgb } from "pdf-lib";
+import { PDFDocument, PDFFont, PDFPage, StandardFonts, degrees, rgb } from "pdf-lib";
 import { layoutInBoxes } from "./layout";
 import { toWinAnsi } from "./winansi";
 import { ensureAcroFormDR, isDegenerate, writeAnnotations } from "./annotations";
-import type { Annotation, Edit, PageEntry, Rotation, SourceFile, SourceId } from "./types";
+import { applyFormValues, readFieldsFromDoc, rebuildAcroForm } from "./formFill";
+import type { Annotation, Edit, FormValues, PageEntry, Rotation, SourceFile, SourceId } from "./types";
 
 export function addRotation(a: Rotation, delta: 90 | -90 | 180): Rotation {
   return (((a + delta) % 360) + 360) % 360 as Rotation;
@@ -18,11 +19,14 @@ export async function buildDocument(
   pages: PageEntry[],
   edits: Edit[] = [],
   annotations: Annotation[] = [],
+  formValues: FormValues = new Map(),
+  onWarning?: (msg: string) => void,
 ): Promise<Uint8Array> {
   const out = await PDFDocument.create();
   const loaded = new Map<SourceId, PDFDocument>();
   let helv: PDFFont | undefined;
   let wroteFreeText = false;
+  const copiedBySource = new Map<SourceId, PDFPage[]>();
 
   for (const entry of pages) {
     const source = sources.get(entry.sourceId);
@@ -41,6 +45,9 @@ export async function buildDocument(
     const base = copied.getRotation().angle;
     copied.setRotation(degrees((((base + entry.rotation) % 360) + 360) % 360));
     out.addPage(copied);
+    const list = copiedBySource.get(entry.sourceId) ?? [];
+    list.push(copied);
+    copiedBySource.set(entry.sourceId, list);
 
     // Selection boxes are relative to the crop box origin (pdf.js page.view).
     const { x: ox, y: oy } = copied.getCropBox();
@@ -76,6 +83,20 @@ export async function buildDocument(
     }
   }
 
+  let anyFields = false;
+  for (const [id, copiedPages] of copiedBySource) {
+    const srcDoc = loaded.get(id)!;
+    try {
+      const defs = readFieldsFromDoc(srcDoc);
+      if (!defs.length) continue;
+      rebuildAcroForm(out, srcDoc, copiedPages);
+      applyFormValues(out, formValues.get(id) ?? new Map(), defs);
+      anyFields = true;
+    } catch {
+      onWarning?.(`Form values for ${sources.get(id)!.name} could not be saved`);
+    }
+  }
+
   if (wroteFreeText && helv) ensureAcroFormDR(out, helv);
-  return out.save();
+  return out.save({ updateFieldAppearances: anyFields });
 }
