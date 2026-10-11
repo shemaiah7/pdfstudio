@@ -14,6 +14,7 @@ export interface Handlers { onDelta(text: string): void; onDone(d: DoneData): vo
 
 export class AiClient {
   private token: string | null = null;
+  private pending: Promise<string> | null = null;
   private baseUrl: string;
   private getTurnstileToken: () => Promise<string>;
   private fetchFn: typeof fetch;
@@ -24,8 +25,15 @@ export class AiClient {
     this.fetchFn = opts.fetchFn ?? ((input, init) => fetch(input, init));
   }
 
-  async ensureSession(force = false): Promise<string> {
-    if (this.token && !force) return this.token;
+  ensureSession(force = false): Promise<string> {
+    if (this.token && !force) return Promise.resolve(this.token);
+    if (!this.pending) {
+      this.pending = this.fetchSession().finally(() => { this.pending = null; });
+    }
+    return this.pending;
+  }
+
+  private async fetchSession(): Promise<string> {
     const turnstileToken = await this.getTurnstileToken();
     const res = await this.fetchFn(`${this.baseUrl}/session`, {
       method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ turnstileToken }),

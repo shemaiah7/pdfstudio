@@ -55,4 +55,15 @@ describe("AiClient", () => {
     await c.runTask({ task: "summarize", document: [{ page: 1, text: "x" }] }, { onDelta: () => {}, onDone: () => {}, onError }).done;
     expect(onError).toHaveBeenCalledWith("interrupted", undefined);
   });
+
+  it("concurrent runTask calls share one session", async () => {
+    const doneBody = 'event: done\ndata: {"usage":{"input":0,"output":0},"stop":"end_turn","remaining":{"requests":1,"tokens":1},"resetAt":1}\n\n';
+    const fetchFn = vi.fn(async (url: RequestInfo | URL) =>
+      String(url).endsWith("/session") ? json({ token: "t", expiresAt: 9e9 }, 200) : sse(doneBody));
+    const c = new AiClient({ baseUrl: "https://ai.test", getTurnstileToken: async () => "tok", fetchFn: fetchFn as never });
+    const h = { onDelta: () => {}, onDone: () => {}, onError: () => {} };
+    const req = { task: "summarize" as const, document: [{ page: 1, text: "x" }] };
+    await Promise.all([c.runTask(req, h).done, c.runTask(req, h).done]);
+    expect(fetchFn.mock.calls.filter((x) => String(x[0]).endsWith("/session"))).toHaveLength(1);
+  });
 });

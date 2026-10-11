@@ -33,6 +33,8 @@ export interface AiState {
 
 interface TaskPatch { status?: Status; error?: string | null; text?: string; result?: string; facts?: Fact[] }
 
+const inflight = new Set<AiRequest["task"]>();
+
 const fmtTime = (unix: number) => new Date(unix * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
 const initial = () => ({
@@ -76,6 +78,16 @@ export const useAiStore = create<AiState>((set, get) => ({
   async run(task) {
     const { client } = get();
     if (!client) return;
+    const current = { summarize: get().summary, ask: get().chat, rewrite: get().rewrite, extract: get().extract }[task];
+    if (current.status === "running" || inflight.has(task)) return;
+    inflight.add(task);
+    try { await runTask(task, client); } finally { inflight.delete(task); }
+  },
+}));
+
+async function runTask(task: AiRequest["task"], client: AiClient) {
+  const { get, set } = { get: useAiStore.getState, set: useAiStore.setState };
+  {
     const setTask = (p: TaskPatch) => set((s) => {
       const common = { ...(p.status !== undefined && { status: p.status }), ...(p.error !== undefined && { error: p.error }) };
       switch (task) {
@@ -94,7 +106,7 @@ export const useAiStore = create<AiState>((set, get) => ({
       const q = get().chat.draft.trim();
       if (!q) return;
       body.question = q;
-      body.history = get().chat.turns.slice(-10);
+      body.history = get().chat.turns.filter((t) => t.text.trim().length > 0).slice(-10).map((t) => ({ ...t, text: t.text.slice(0, 8000) }));
       set((s) => ({ chat: { ...s.chat, turns: [...s.chat.turns, { role: "user", text: q }, { role: "assistant", text: "" }], draft: "", status: "running", error: null } }));
     } else if (task === "rewrite") {
       const r = get().rewrite;
@@ -129,8 +141,13 @@ export const useAiStore = create<AiState>((set, get) => ({
       },
       onError: (code, extra) => {
         if (code === "daily_limit") set({ limitedUntil: Number(extra?.resetAt ?? 0) });
+        if (task === "ask") set((s) => {
+          const turns = s.chat.turns;
+          const last = turns[turns.length - 1];
+          return last && last.role === "assistant" && last.text === "" ? { chat: { ...s.chat, turns: turns.slice(0, -1) } } : {};
+        });
         setTask({ status: "error", error: get().errorMessage(code, extra) });
       },
     }).done;
-  },
-}));
+  }
+}

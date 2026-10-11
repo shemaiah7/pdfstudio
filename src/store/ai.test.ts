@@ -47,4 +47,32 @@ describe("ai store", () => {
     s().resetForNewDocument();
     expect(s().chat.turns).toEqual([]);
   });
+
+  it("ask error then ask again sends no empty history turn", async () => {
+    await useDocumentStore.getState().openFiles([{ name: "three.pdf", bytes: loadFixture("three") }]);
+    s().setClient({ runTask: (_b: unknown, h: { onError(c: string): void }) => { h.onError("busy"); return { abort() {}, done: Promise.resolve() }; } } as never);
+    s().setDraft("Q1");
+    await s().run("ask");
+    expect(s().chat.turns.some((t) => t.role === "assistant" && t.text === "")).toBe(false);
+    useAiStore.setState((st) => ({ chat: { ...st.chat, turns: [...st.chat.turns, { role: "assistant", text: "x".repeat(9000) }, { role: "assistant", text: "" }] } }));
+    let body: { history?: { text: string }[] } = {};
+    s().setClient({ runTask: (b: typeof body, h: { onDone(d: unknown): void }) => { body = b; h.onDone({ usage: { input: 0, output: 0 }, stop: "end_turn", remaining: { requests: 1, tokens: 1 }, resetAt: 1 }); return { abort() {}, done: Promise.resolve() }; } } as never);
+    s().setDraft("Q2");
+    await s().run("ask");
+    expect(body.history!.length).toBeGreaterThan(0);
+    expect(body.history!.every((t) => t.text.length > 0 && t.text.length <= 8000)).toBe(true);
+    expect(body.history!.some((t) => t.text.length === 8000)).toBe(true);
+  });
+
+  it("ignores a second run while running", async () => {
+    await useDocumentStore.getState().openFiles([{ name: "three.pdf", bytes: loadFixture("three") }]);
+    let release!: () => void;
+    const runTask = vi.fn(() => ({ abort() {}, done: new Promise<void>((r) => { release = r; }) }));
+    s().setClient({ runTask } as never);
+    const first = s().run("summarize");
+    await s().run("summarize");
+    expect(runTask).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => expect(runTask).toHaveBeenCalledTimes(1));
+    release(); await first;
+  });
 });
