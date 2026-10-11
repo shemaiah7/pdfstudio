@@ -3,7 +3,7 @@ import { layoutInBoxes } from "./layout";
 import { toWinAnsi } from "./winansi";
 import { ensureAcroFormDR, isDegenerate, writeAnnotations } from "./annotations";
 import { applyFormValues, readFieldsFromDoc, rebuildAcroForm } from "./formFill";
-import { addInvisibleText } from "../ocr/textLayer";
+import { addInvisibleText, withoutCoveredWords } from "../ocr/textLayer";
 import type { OcrPage } from "../ocr/types";
 import type { Annotation, Edit, FormValues, PageEntry, Rotation, SourceFile, SourceId } from "./types";
 
@@ -29,6 +29,7 @@ export async function buildDocument(
   const loaded = new Map<SourceId, PDFDocument>();
   let helv: PDFFont | undefined;
   let wroteFreeText = false;
+  let ocrWarned = false;
   const copiedBySource = new Map<SourceId, PDFPage[]>();
 
   for (const entry of pages) {
@@ -88,8 +89,8 @@ export async function buildDocument(
     const ocr = ocrPages?.get(entry.id);
     if (ocr) {
       helv ??= await out.embedFont(StandardFonts.Helvetica);
-      try { addInvisibleText(copied, helv, ocr, { x: ox, y: oy }); }
-      catch { onWarning?.("Saved without searchable text layer."); }
+      try { addInvisibleText(copied, helv, withoutCoveredWords(ocr, pageEdits.flatMap((e) => e.boxes)), { x: ox, y: oy }); }
+      catch { if (!ocrWarned) onWarning?.("Saved without searchable text layer."); ocrWarned = true; }
     }
   }
 

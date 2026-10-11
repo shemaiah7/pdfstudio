@@ -26,12 +26,18 @@ export default function Toolbar({ scale, setScale, onFiles }: Props) {
     setBusy(true);
     try {
       const ocrPages = new Map<string, OcrPage>();
+      let ocrFailed = false;
       const ocrState = useOcrStore.getState().pages;
       for (const p of entries) {
         const src = s.sources.get(p.sourceId);
         if (!src?.hash || ocrState[pageKey(p.sourceId, p.sourcePageIndex)]?.state !== "done") continue;
-        const page = await ocrStore.get(src.hash, p.sourcePageIndex);
-        if (page) ocrPages.set(p.id, page);
+        try {
+          const page = await ocrStore.get(src.hash, p.sourcePageIndex);
+          if (page) ocrPages.set(p.id, page);
+        } catch {
+          if (!ocrFailed) s.setError("Saved without searchable text layer.");
+          ocrFailed = true;
+        }
       }
       const bytes = await buildDocument(s.sources, entries, s.edits.filter((e) => ids.has(e.pageEntryId)), s.annotations.filter((a) => ids.has(a.pageEntryId)), s.formValues, (msg) => s.setError(msg), ocrPages);
       saveBlob(bytes, outputName(firstName, kind));

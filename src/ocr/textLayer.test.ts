@@ -2,8 +2,11 @@
 import { describe, it, expect } from "vitest";
 import { PDFArray, PDFDocument, PDFRawStream, StandardFonts, decodePDFRawStream, degrees } from "pdf-lib";
 import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
-import { addInvisibleText } from "./textLayer";
+import { addInvisibleText, withoutCoveredWords } from "./textLayer";
 import { linesToOcrPage } from "./layout";
+import { buildDocument } from "../pdf/pageOps";
+import { loadFixture } from "../test/loadFixture";
+import type { Edit, SourceFile } from "../pdf/types";
 import type { OcrPage } from "./types";
 
 async function textItems(bytes: Uint8Array) {
@@ -52,5 +55,33 @@ describe("addInvisibleText", () => {
     addInvisibleText(page, font, linesToOcrPage(["温度 ok"], { widthPt: 300, heightPt: 400 }), { x: 0, y: 0 });
     const items = (await textItems(await doc.save())).filter((i) => i.str.trim());
     expect(items.map((i) => i.str)).toEqual(["??", "ok"]);
+  });
+});
+
+describe("withoutCoveredWords", () => {
+  const w = (text: string, x: number) => ({ text, box: { x, y: 10, width: 20, height: 10 }, confidence: 1 });
+  const page: OcrPage = { engine: "tesseract", confidence: 1, at: 1, lines: [
+    { text: "a b c", box: { x: 0, y: 10, width: 100, height: 10 }, words: [w("a", 0), w("b", 30), w("c", 60)] },
+    { text: "d", box: { x: 0, y: 50, width: 20, height: 10 }, words: [{ ...w("d", 0), box: { x: 0, y: 50, width: 20, height: 10 } }] },
+  ] };
+  it("drops fully covered, partially covered; keeps outside and edge-touching words", () => {
+    const out = withoutCoveredWords(page, [{ x: 25, y: 0, width: 40, height: 30 }]); // b fully inside, a touches edge at 20<25 no, c partial
+    expect(out.lines[0].words.map((x) => x.text)).toEqual(["a"]);
+    expect(withoutCoveredWords(page, [{ x: 20, y: 10, width: 10, height: 10 }]).lines[0].words.length).toBe(3); // touching edges only
+  });
+  it("removes lines left with no words", () => {
+    const out = withoutCoveredWords(page, [{ x: 0, y: 45, width: 30, height: 30 }]);
+    expect(out.lines.map((l) => l.text)).toEqual(["a b c"]);
+  });
+  it("end to end: a word under an edit is absent from the output text", async () => {
+    const sources = new Map<string, SourceFile>([["a", { id: "a", name: "three.pdf", bytes: loadFixture("three"), pageCount: 3 }]]);
+    const entry = { id: "p1", sourceId: "a", sourcePageIndex: 0, rotation: 0 as const };
+    const ocr: OcrPage = { engine: "tesseract", confidence: 1, at: 1, lines: [{ text: "secret keep", box: { x: 20, y: 200, width: 200, height: 20 }, words: [
+      { text: "secretword", box: { x: 20, y: 200, width: 80, height: 20 }, confidence: 1 }, { text: "keepword", box: { x: 120, y: 200, width: 80, height: 20 }, confidence: 1 }] }] };
+    const edit: Edit = { id: "e", pageEntryId: "p1", boxes: [{ x: 10, y: 195, width: 100, height: 30 }], text: "", fontSize: 12, font: "sans", color: [0, 0, 0] };
+    const out = await buildDocument(sources, [entry], [edit], [], new Map(), undefined, new Map([["p1", ocr]]));
+    const strs = (await textItems(out)).map((i) => i.str).join(" ");
+    expect(strs).not.toContain("secretword");
+    expect(strs).toContain("keepword");
   });
 });
