@@ -51,12 +51,14 @@ export default function App() {
       const tools = useToolsStore.getState();
       if (tools.tool !== "highlight") return;
       const sel = captureSelection();
+      const hitPage = e.target instanceof Element ? e.target.closest<HTMLElement>(".page") : null;
       if (sel && sel.boxes.length) {
+        if (!hitPage || hitPage.dataset.pageEntry !== sel.pageEntryId) return;
         useDocumentStore.getState().addAnnotation({ kind: "highlight", pageEntryId: sel.pageEntryId, boxes: sel.boxes, color: tools.color });
         window.getSelection()?.removeAllRanges();
         return;
       }
-      const page = e.target instanceof Element ? e.target.closest(".page") : null;
+      const page = hitPage;
       if (page && !page.querySelector(".textLayer span")) tools.setMessage("No selectable text on this page");
     };
     document.addEventListener("mouseup", onMouseUp);

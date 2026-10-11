@@ -62,6 +62,8 @@ export default function AnnotationOverlay({ pageEntryId, annotations, meta, page
   const { state: ds, handlers: dh } = useDrawingTool(pageEntryId, meta, pageEl, tool, { color, width: toolWidth, fontSize: 12 },
     (id, a) => { if (a.kind === "note") setOpenNote(id); });
 
+  // Only close if this popover's note is still the open one (a newer note may have replaced it in the same batch).
+  const closeNote = (id: string) => setOpenNote((cur) => (cur === id ? null : cur));
   const setD = (d: Drag | null) => { dragRef.current = d; setDrag(d); };
   const apply = (a: Annotation): Annotation => {
     if (!drag || drag.id !== a.id) return a;
@@ -189,9 +191,9 @@ export default function AnnotationOverlay({ pageEntryId, annotations, meta, page
       </div>
       {note && note.kind === "note" && notePos ? (
         <NotePopover key={note.id} left={notePos.lx + 4} top={notePos.ly} text={note.text}
-          onDone={(text) => { useDocumentStore.getState().updateAnnotation(note.id, { text }); setOpenNote(null); }}
-          onDelete={() => { useDocumentStore.getState().removeAnnotation(note.id); setOpenNote(null); }}
-          onClose={() => setOpenNote(null)} />
+          onDone={(text) => { useDocumentStore.getState().updateAnnotation(note.id, { text }); closeNote(note.id); }}
+          onDelete={() => { useDocumentStore.getState().removeAnnotation(note.id); closeNote(note.id); }}
+          onClose={() => closeNote(note.id)} />
       ) : null}
     </>
   );

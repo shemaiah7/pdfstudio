@@ -16,3 +16,17 @@ describe("AnnotationOverlay", () => {
     expect(container.querySelectorAll('[data-annotation-id="i"] path').length).toBeGreaterThanOrEqual(1);
   });
 });
+
+import { fireEvent } from "@testing-library/react";
+import { useToolsStore } from "../store/tools";
+import { useDocumentStore } from "../store/document";
+describe("AnnotationOverlay drawing tools", () => {
+  it("switches back to Select after a note commit and opens its popover", () => {
+    useToolsStore.getState().setTool("note");
+    const el = document.createElement("div");
+    const { container } = render(<AnnotationOverlay pageEntryId="p" annotations={[]} meta={{ widthPt: 100, heightPt: 100, scale: 1, rotation: 0 }} pageEl={() => el} />);
+    fireEvent.pointerDown(container.querySelector(".annotationOverlay")!, { button: 0, clientX: 10, clientY: 10, pointerId: 1 });
+    expect(useToolsStore.getState().tool).toBe("select");
+    expect(useDocumentStore.getState().annotations.some((a) => a.kind === "note")).toBe(true);
+  });
+});

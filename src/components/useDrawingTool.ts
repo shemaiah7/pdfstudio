@@ -3,6 +3,7 @@ import type { NewAnnotation, RGB } from "../pdf/types";
 import type { Tool } from "../store/tools";
 import { simplifyStroke, normalizeBox, shapeTooSmall, pointerToPdf, type PageMeta } from "../pdf/geometry";
 import { useDocumentStore } from "../store/document";
+import { useToolsStore } from "../store/tools";
 
 export interface DrawingState { active: boolean; start: { x: number; y: number } | null; current: { x: number; y: number } | null; points: { x: number; y: number }[] }
 export const initialDrawing: DrawingState = { active: false, start: null, current: null, points: [] };
@@ -44,6 +45,7 @@ export function useDrawingTool(pageEntryId: string, meta: PageMeta, pageEl: () =
       const id = addAnnotation(r.commit);
       if (r.commit.kind === "freetext" || r.commit.kind === "note") selectAnnotation(id);
       cb?.(id, r.commit);
+      if (r.commit.kind === "freetext" || r.commit.kind === "note") useToolsStore.getState().setTool("select");
     }
   }, []);
   const toPdf = (ev: { clientX: number; clientY: number }) => { const el = pageEl(); return el ? pointerToPdf(ev, el, meta) : null; };

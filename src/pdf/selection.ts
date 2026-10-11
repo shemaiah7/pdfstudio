@@ -1,4 +1,5 @@
 import type { Box } from "./types";
+import { localToPdf, type PageMeta } from "./geometry";
 export interface PageSelection { pageEntryId: string; text: string; boxes: Box[]; fontSize: number; bold: boolean; serif: boolean }
 
 // Plain rect (DOMRectReadOnly-compatible) so geometry helpers also run without a DOM.
@@ -32,6 +33,17 @@ export function rectsToBoxes(rects: readonly Rect[], pageRect: Rect, scale: numb
   });
 }
 
+/** Rotation-aware variant: converts every corner of each rect through localToPdf and takes the bounding box. */
+export function rectsToBoxesRotated(rects: readonly Rect[], pageRect: Rect, meta: PageMeta): Box[] {
+  return rects.map((r) => {
+    const pts = [[r.left, r.top], [r.right, r.top], [r.left, r.bottom], [r.right, r.bottom]]
+      .map(([cx, cy]) => localToPdf(cx - pageRect.left, cy - pageRect.top, meta));
+    const xs = pts.map((p) => p.x), ys = pts.map((p) => p.y);
+    const x = Math.min(...xs), y = Math.min(...ys);
+    return { x, y, width: Math.max(...xs) - x, height: Math.max(...ys) - y };
+  });
+}
+
 export function captureSelection(): PageSelection | null {
   const sel = window.getSelection();
   if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return null;
@@ -45,7 +57,11 @@ export function captureSelection(): PageSelection | null {
   if (!Number.isFinite(scale) || !Number.isFinite(heightPt)) return null;
   const rects = mergeLineRects(Array.from(range.getClientRects()));
   if (rects.length === 0) return null;
-  const boxes = rectsToBoxes(rects, pageEl.getBoundingClientRect(), scale, heightPt);
+  const widthPt = Number(pageEl.dataset.widthPt);
+  const rot = ((Number(pageEl.dataset.pageRotate ?? 0) + Number(pageEl.dataset.rotation ?? 0)) % 360 + 360) % 360;
+  const boxes = Number.isFinite(widthPt) && widthPt > 0 && rot !== 0 && [90, 180, 270].includes(rot)
+    ? rectsToBoxesRotated(rects, pageEl.getBoundingClientRect(), { widthPt, heightPt, scale, rotation: rot as 90 | 180 | 270 })
+    : rectsToBoxes(rects, pageEl.getBoundingClientRect(), scale, heightPt);
   const anchorEl = (sel.anchorNode instanceof Element ? sel.anchorNode : sel.anchorNode?.parentElement) as HTMLElement | null;
   const cs = anchorEl ? getComputedStyle(anchorEl) : null;
   const fontSize = cs ? parseFloat(cs.fontSize) / scale : boxes[0].height * 0.85;

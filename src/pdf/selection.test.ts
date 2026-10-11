@@ -19,3 +19,13 @@ describe("rectsToBoxes", () => {
     expect(boxes[0]).toEqual({ x: 10, y: 400 - 10 - 12, width: 30, height: 12 });
   });
 });
+
+import { rectsToBoxesRotated } from "./selection";
+describe("rectsToBoxesRotated", () => {
+  it("maps a top-left rect on a 90-degree rotated page to the unrotated bottom-left region", () => {
+    const pageRect = { x: 0, y: 0, width: 400, height: 300, left: 0, top: 0, right: 400, bottom: 300 };
+    const r = { x: 0, y: 0, width: 50, height: 20, left: 0, top: 0, right: 50, bottom: 20 };
+    const [b] = rectsToBoxesRotated([r], pageRect, { widthPt: 300, heightPt: 400, scale: 1, rotation: 90 });
+    expect(b.x).toBeCloseTo(0); expect(b.y).toBeCloseTo(0); expect(b.width).toBeCloseTo(20); expect(b.height).toBeCloseTo(50);
+  });
+});
