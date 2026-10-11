@@ -1,8 +1,8 @@
 import type { Env } from "../env";
 import { json } from "../cors";
 import { verifySession } from "../session";
-import { validateOcrBody, OCR_MAX_PAGES } from "../validate";
-import { checkQuota, recordTokens, DAILY_REQUESTS, DAILY_TOKENS, BURST_REQUESTS } from "../quota";
+import { validateOcrBody } from "../validate";
+import { checkQuota, recordTokens, DAILY_REQUESTS, DAILY_TOKENS } from "../quota";
 import { ocrWithSdk, mapError, type OcrFn } from "../claude";
 
 const TOKENS_PER_PAGE = 1_600; // ~1568px JPEG
@@ -21,16 +21,9 @@ export async function ocrHandler(request: Request, env: Env, ctx: ExecutionConte
 
   const pages = v.body.pages;
   const now = Date.now() / 1000;
-  const burstLimit = BURST_REQUESTS + OCR_MAX_PAGES;
-  // Each page is one AI request: admit the batch only if every page fits today's quota.
-  let quota = await checkQuota(env.QUOTA, session.vid, now, TOKENS_PER_PAGE, burstLimit);
+  // Each page is one AI request: reserve the whole batch in a single quota call (one burst write, one day write).
+  const quota = await checkQuota(env.QUOTA, session.vid, now, TOKENS_PER_PAGE * pages.length, pages.length);
   if (!quota.ok) return json({ error: quota.reason, resetAt: quota.resetAt }, 429, env);
-  if (quota.charged.requests + pages.length - 1 > DAILY_REQUESTS) return json({ error: "daily_limit", resetAt: quota.resetAt }, 429, env);
-  for (let i = 1; i < pages.length; i++) {
-    const q = await checkQuota(env.QUOTA, session.vid, now, TOKENS_PER_PAGE, burstLimit);
-    if (!q.ok) return json({ error: q.reason, resetAt: q.resetAt }, 429, env);
-    quota = q;
-  }
 
   const out: { page: number; lines: string[] }[] = [];
   const failed: number[] = [];

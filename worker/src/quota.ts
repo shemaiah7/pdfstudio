@@ -18,27 +18,27 @@ async function readState(kv: KVNamespace, key: string): Promise<QuotaState> {
   return (await kv.get<QuotaState>(key, "json")) ?? { requests: 0, tokens: 0 };
 }
 
-export async function checkQuota(kv: KVNamespace, vid: string, now: number = Date.now() / 1000, estimateTokens = 0, burstLimit = BURST_REQUESTS): Promise<QuotaCheck> {
+export async function checkQuota(kv: KVNamespace, vid: string, now: number = Date.now() / 1000, estimateTokens = 0, weight = 1): Promise<QuotaCheck> {
   const day = utcDay(now);
   const resetAt = nextUtcMidnight(now);
   const minute = Math.floor(now / 60);
   const state = await readState(kv, `q:${vid}:${day}`);
-  if (state.requests >= DAILY_REQUESTS || state.tokens >= DAILY_TOKENS) {
+  if (state.requests + weight > DAILY_REQUESTS || state.tokens >= DAILY_TOKENS) {
     return { ok: false, reason: "daily_limit", resetAt };
   }
 
   const burstKey = `b:${vid}:${minute}`;
   const burst = Number((await kv.get(burstKey)) ?? "0");
-  if (burst >= burstLimit) return { ok: false, reason: "too_fast", resetAt: (minute + 1) * 60 };
+  if (burst >= BURST_REQUESTS) return { ok: false, reason: "too_fast", resetAt: (minute + 1) * 60 };
   try {
-    await kv.put(burstKey, String(burst + 1), { expirationTtl: 120 });
+    await kv.put(burstKey, String(burst + weight), { expirationTtl: 120 });
   } catch {
     // KV limits same-key writes (~1/s); treat a failed write as "too fast" so the client retries.
     return { ok: false, reason: "too_fast", resetAt: (minute + 1) * 60 };
   }
   // Charge the request and an input-token estimate at admission so a client that disconnects
   // before the first upstream event is still counted; the handler reconciles at the end.
-  const charged: QuotaState = { requests: state.requests + 1, tokens: state.tokens + Math.max(0, Math.ceil(estimateTokens)) };
+  const charged: QuotaState = { requests: state.requests + weight, tokens: state.tokens + Math.max(0, Math.ceil(estimateTokens)) };
   try {
     await kv.put(`q:${vid}:${day}`, JSON.stringify(charged), { expirationTtl: 2 * 86400 });
   } catch {

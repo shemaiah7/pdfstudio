@@ -43,5 +43,34 @@ describe("POST /ocr", () => {
     const { res, json } = await post(body, tok);
     expect(res.status).toBe(429);
     expect(json.error).toBe("daily_limit");
+    expect(await env.QUOTA.get(`q:vid-ocr2:${day}`, "json")).toMatchObject({ requests: 19 });
+  });
+  it("reserves a 3-page batch with one burst write and one day write", async () => {
+    const puts: string[] = [];
+    const gets: string[] = [];
+    const kv = new Proxy(env.QUOTA, {
+      get(t, prop) {
+        if (prop === "put") return (key: string, ...rest: unknown[]) => {
+          if (puts.includes(key)) throw new Error("KV write limit");
+          puts.push(key);
+          return (t.put as (...a: unknown[]) => Promise<void>)(key, ...rest);
+        };
+        if (prop === "get") return (key: string, ...rest: unknown[]) => { gets.push(key); return (t.get as (...a: unknown[]) => Promise<unknown>)(key, ...rest); };
+        const v = Reflect.get(t, prop);
+        return typeof v === "function" ? v.bind(t) : v;
+      },
+    }) as KVNamespace;
+    const tok = await signSession({ vid: "vid-ocr3", exp: Math.floor(Date.now() / 1000) + 3600 }, env.SESSION_SECRET);
+    const req = new Request("https://ai.example/ocr", { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${tok}` }, body: JSON.stringify({ task: "ocr", pages: [1, 2, 3].map((page) => ({ page, image: "/9j/4AAQ" })) }) });
+    const ctx = createExecutionContext();
+    const res = await ocrHandler(req, { ...env, QUOTA: kv }, ctx, async () => ({ text: "x", inputTokens: 1, outputTokens: 1 }));
+    const json = (await res.json()) as { pages: unknown[]; remaining: { requests: number } };
+    await waitOnExecutionContext(ctx);
+    expect(res.status).toBe(200);
+    expect(json.pages).toHaveLength(3);
+    expect(json.remaining.requests).toBe(17);
+    expect(puts.filter((k) => k.startsWith("b:"))).toHaveLength(1);
+    expect(puts.filter((k) => k.startsWith("q:"))).toHaveLength(1);
+    expect(gets).toHaveLength(2);
   });
 });
