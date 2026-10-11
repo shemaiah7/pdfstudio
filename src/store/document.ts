@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { countPages, addRotation } from "../pdf/pageOps";
+import { sha256 } from "../pdf/hash";
 import type { FieldDef } from "../pdf/formFill";
 import type { Annotation, AnnotationPatch, Edit, FormValue, FormValues, NewAnnotation, PageEntry, SourceFile, SourceId } from "../pdf/types";
 
@@ -97,7 +98,9 @@ async function loadSources(
   for (const f of files) {
     try {
       const pageCount = await countPages(f.bytes);
-      sources.push({ id: nextId("src"), name: f.name, bytes: f.bytes, pageCount });
+      let hash: string | undefined;
+      try { hash = await sha256(f.bytes); } catch { /* no crypto.subtle (e.g. plain http): open without a hash */ }
+      sources.push({ id: nextId("src"), name: f.name, bytes: f.bytes, pageCount, hash });
       if (f.bytes.byteLength > limit) result.oversized.push(f.name);
     } catch {
       result.skipped.push(f.name);

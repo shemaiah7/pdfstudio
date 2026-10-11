@@ -295,3 +295,16 @@ describe("annotation store hardening", () => {
     spy.mockRestore();
   });
 });
+
+describe("hashing", () => {
+  it("opens a file without a hash when crypto.subtle.digest throws", async () => {
+    const spy = vi.spyOn(crypto.subtle, "digest").mockRejectedValue(new Error("insecure context"));
+    try {
+      const r = await s().openFiles([three()]);
+      expect(r.skipped).toEqual([]);
+      const src = [...s().sources.values()][0];
+      expect(src.pageCount).toBe(3);
+      expect(src.hash).toBeUndefined();
+    } finally { spy.mockRestore(); }
+  });
+});

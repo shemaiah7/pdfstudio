@@ -18,6 +18,7 @@ export interface AiState {
   summary: { text: string; status: Status; error: string | null };
   chat: { turns: { role: "user" | "assistant"; text: string }[]; draft: string; status: Status; error: string | null; passages: number | null };
   useSearch: boolean;
+  ocrTextStatus: "recognizing" | "none" | "ok"; // pushed by the OCR store (which imports this one)
   rewrite: { selection: PageSelection | null; mode: RewriteMode; language: string; result: string; status: Status; error: string | null };
   extract: { facts: Fact[]; status: Status; error: string | null };
   noticeDismissed: boolean;
@@ -57,6 +58,7 @@ const initial = () => ({
 export const useAiStore = create<AiState>((set, get) => ({
   client: null,
   useSearch: true,
+  ocrTextStatus: "ok",
   noticeDismissed: (() => { try { return localStorage.getItem("ai-notice") === "1"; } catch { return false; } })(),
   ...initial(),
 
@@ -92,7 +94,7 @@ export const useAiStore = create<AiState>((set, get) => ({
       case "interrupted": return "Response interrupted.";
       case "network": return "Couldn't reach the AI service.";
       case "no_selection": return "Select pages first.";
-      case "no_text": return "This PDF has no selectable text. OCR is coming in a later version.";
+      case "no_text": return get().ocrTextStatus === "recognizing" ? "Recognizing text… try again in a moment." : "No text could be recognized. Try Deep OCR.";
       default: return "Something went wrong talking to the AI.";
     }
   },
@@ -122,6 +124,8 @@ async function runTask(task: AiRequest["task"], client: AiClient) {
         case "extract": return { extract: { ...s.extract, ...common, ...(p.facts !== undefined && { facts: p.facts }) } };
       }
     });
+    // Partial text would give a misleading answer; wait until recognition finishes.
+    if (task !== "rewrite" && get().ocrTextStatus === "recognizing") { setTask({ status: "error", error: get().errorMessage("no_text") }); return; }
     const scope = task === "rewrite" ? "all" : get().scope;
     let document = await documentText(scope);
     if (stale()) return;

@@ -80,3 +80,23 @@ describe("AiClient", () => {
     expect(onDone).not.toHaveBeenCalled();
   });
 });
+
+describe("AiClient.runOcr", () => {
+  it("runOcr posts the pages with the session token and returns the JSON", async () => {
+    const calls: { url: string; body: unknown }[] = [];
+    const client = new AiClient({ baseUrl: "https://ai.example", getTurnstileToken: async () => "ts", fetchFn: async (input, init) => {
+      const url = String(input);
+      calls.push({ url, body: init?.body ? JSON.parse(String(init.body)) : null });
+      if (url.endsWith("/session")) return new Response(JSON.stringify({ token: "tok" }), { status: 200 });
+      return new Response(JSON.stringify({ pages: [{ page: 1, lines: ["a"] }], failed: [], remaining: { requests: 1, tokens: 1 }, resetAt: 0 }), { status: 200 });
+    } });
+    const r = await client.runOcr([{ page: 1, image: "abc" }]);
+    expect(r.pages[0].lines).toEqual(["a"]);
+    expect(calls[1]).toEqual({ url: "https://ai.example/ocr", body: { task: "ocr", pages: [{ page: 1, image: "abc" }] } });
+  });
+  it("runOcr throws the worker's error code", async () => {
+    const client = new AiClient({ baseUrl: "https://ai.example", getTurnstileToken: async () => "ts", fetchFn: async (input) =>
+      String(input).endsWith("/session") ? new Response(JSON.stringify({ token: "tok" })) : new Response(JSON.stringify({ error: "daily_limit", resetAt: 5 }), { status: 429 }) });
+    await expect(client.runOcr([{ page: 1, image: "abc" }])).rejects.toMatchObject({ message: "daily_limit", resetAt: 5 });
+  });
+});

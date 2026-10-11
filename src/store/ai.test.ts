@@ -224,3 +224,24 @@ describe("ask with retrieval", () => {
     expect(useAiStore.getState().chat).toMatchObject({ status: "error", error: "Still indexing these documents; try again when indexing finishes." });
   });
 });
+
+it("no_text copy follows the OCR status", () => {
+  useAiStore.setState({ ocrTextStatus: "ok" });
+  expect(useAiStore.getState().errorMessage("no_text")).toBe("No text could be recognized. Try Deep OCR.");
+  useAiStore.setState({ ocrTextStatus: "recognizing" });
+  expect(useAiStore.getState().errorMessage("no_text")).toBe("Recognizing text… try again in a moment.");
+  useAiStore.setState({ ocrTextStatus: "ok" });
+});
+
+it("Summarize, Ask and Extract refuse to run on partial text while OCR is recognizing", async () => {
+  const bodies: unknown[] = [];
+  const client = { runTask: (b: unknown) => { bodies.push(b); return { abort() {}, done: Promise.resolve() }; } };
+  useAiStore.setState({ client: client as never, ocrTextStatus: "recognizing", scope: "all", chat: { turns: [], draft: "why?", status: "idle", error: null, passages: null } });
+  try {
+    for (const task of ["summarize", "ask", "extract"] as const) await useAiStore.getState().run(task);
+    expect(bodies).toHaveLength(0);
+    expect(useAiStore.getState().summary).toMatchObject({ status: "error", error: "Recognizing text… try again in a moment." });
+    expect(useAiStore.getState().chat).toMatchObject({ status: "error", error: "Recognizing text… try again in a moment.", draft: "why?" });
+    expect(useAiStore.getState().extract).toMatchObject({ status: "error", error: "Recognizing text… try again in a moment." });
+  } finally { useAiStore.setState({ ocrTextStatus: "ok" }); }
+});

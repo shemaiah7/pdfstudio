@@ -30,7 +30,7 @@ describe("LibraryPanel", () => {
     const confirm = vi.spyOn(window, "confirm");
     render(<LibraryPanel />);
     fireEvent.click(screen.getByTestId("library-clear"));
-    expect(confirm).toHaveBeenCalledWith("Remove all stored documents, the downloaded model and turn off search?");
+    expect(confirm).toHaveBeenCalledWith("Remove all stored documents, recognized text, the downloaded model and turn off search?");
     expect(clearLibrary).not.toHaveBeenCalled();
     fireEvent.click(screen.getByTestId("library-clear"));
     expect(clearLibrary).toHaveBeenCalled();

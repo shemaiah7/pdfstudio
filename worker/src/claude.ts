@@ -1,6 +1,8 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { Env } from "./env";
 import type { BuiltRequest } from "./request";
+import { MODEL } from "./request";
+import { OCR } from "./prompts/ocr";
 
 export interface StreamResult {
   events: AsyncIterable<{ type: "text"; text: string }>;
@@ -70,3 +72,17 @@ export function mapError(err: unknown): "busy" | "upstream" {
   if (err instanceof Anthropic.RateLimitError || err instanceof Anthropic.InternalServerError) return "busy";
   return "upstream";
 }
+
+export type OcrFn = (image: string, env: Env) => Promise<{ text: string; inputTokens: number; outputTokens: number }>;
+export const ocrWithSdk: OcrFn = async (image, env) => {
+  const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY, maxRetries: 1 });
+  const m = await client.beta.messages.create({
+    model: MODEL, max_tokens: 4000,
+    system: [{ type: "text", text: OCR, cache_control: { type: "ephemeral" } }],
+    messages: [{ role: "user", content: [{ type: "image", source: { type: "base64", media_type: "image/jpeg", data: image } }, { type: "text", text: "Transcribe this page." }] }],
+    output_config: { effort: "low" },
+    betas: ["server-side-fallback-2026-07-01"], fallbacks: "default",
+  } as never);
+  const text = m.content.filter((c): c is Extract<typeof c, { type: "text" }> => c.type === "text").map((c) => c.text).join("\n");
+  return { text, inputTokens: weightedInput(m.usage), outputTokens: m.usage.output_tokens ?? 0 };
+};

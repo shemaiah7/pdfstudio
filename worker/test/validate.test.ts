@@ -38,3 +38,20 @@ describe("validateAiBody", () => {
     expect(validateAiBody({ task: "ask", document: [{ page: 1, text: "x".repeat(4001) }], question: "q", retrieved: true })).toMatchObject({ ok: false, status: 400 });
   });
 });
+
+import { validateOcrBody } from "../src/validate";
+describe("validateOcrBody", () => {
+  const img = "/9j/4AAQ";
+  it("accepts 1 to 20 pages", () => {
+    expect(validateOcrBody({ task: "ocr", pages: [{ page: 1, image: img }] }).ok).toBe(true);
+    expect(validateOcrBody({ task: "ocr", pages: Array.from({ length: 20 }, (_, i) => ({ page: i + 1, image: img })) }).ok).toBe(true);
+  });
+  it("rejects 0 or 21 pages and bad shapes", () => {
+    expect(validateOcrBody({ task: "ocr", pages: [] })).toMatchObject({ ok: false, status: 400 });
+    expect(validateOcrBody({ task: "ocr", pages: Array.from({ length: 21 }, (_, i) => ({ page: i + 1, image: img })) })).toMatchObject({ ok: false, status: 400 });
+    expect(validateOcrBody({ task: "summarize", pages: [] })).toMatchObject({ ok: false });
+  });
+  it("413 on an oversized image", () => {
+    expect(validateOcrBody({ task: "ocr", pages: [{ page: 1, image: "a".repeat(5_400_001) }] })).toMatchObject({ ok: false, status: 413, error: "image_too_large" });
+  });
+});

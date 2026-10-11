@@ -3,6 +3,8 @@ import { layoutInBoxes } from "./layout";
 import { toWinAnsi } from "./winansi";
 import { ensureAcroFormDR, isDegenerate, writeAnnotations } from "./annotations";
 import { applyFormValues, readFieldsFromDoc, rebuildAcroForm } from "./formFill";
+import { addInvisibleText, withoutCoveredWords } from "../ocr/textLayer";
+import type { OcrPage } from "../ocr/types";
 import type { Annotation, Edit, FormValues, PageEntry, Rotation, SourceFile, SourceId } from "./types";
 
 export function addRotation(a: Rotation, delta: 90 | -90 | 180): Rotation {
@@ -21,11 +23,14 @@ export async function buildDocument(
   annotations: Annotation[] = [],
   formValues: FormValues = new Map(),
   onWarning?: (msg: string) => void,
+  ocrPages?: Map<string, OcrPage>,
 ): Promise<Uint8Array> {
   const out = await PDFDocument.create();
   const loaded = new Map<SourceId, PDFDocument>();
   let helv: PDFFont | undefined;
   let wroteFreeText = false;
+  let ocrWarned = false;
+  let deepOmitWarned = false;
   const copiedBySource = new Map<SourceId, PDFPage[]>();
 
   for (const entry of pages) {
@@ -80,6 +85,17 @@ export async function buildDocument(
       helv ??= await out.embedFont(StandardFonts.Helvetica);
       await writeAnnotations(out, copied, pageAnns, { x: ox, y: oy }, { helv }, (((base + entry.rotation) % 360) + 360) % 360);
       if (pageAnns.some((a) => a.kind === "freetext" && !isDegenerate(a))) wroteFreeText = true;
+    }
+
+    const ocr = ocrPages?.get(entry.id);
+    if (ocr && ocr.engine === "claude" && pageEdits.length > 0) {
+      // Deep OCR word boxes are synthetic (evenly stacked lines), so text under an edit cannot be reliably omitted.
+      if (!deepOmitWarned) onWarning?.("Searchable text left out of edited Deep OCR pages.");
+      deepOmitWarned = true;
+    } else if (ocr) {
+      helv ??= await out.embedFont(StandardFonts.Helvetica);
+      try { addInvisibleText(copied, helv, withoutCoveredWords(ocr, pageEdits.flatMap((e) => e.boxes)), { x: ox, y: oy }); }
+      catch { if (!ocrWarned) onWarning?.("Saved without searchable text layer."); ocrWarned = true; }
     }
   }
 

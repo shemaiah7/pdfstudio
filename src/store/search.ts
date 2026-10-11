@@ -7,6 +7,7 @@ import { indexSource, defaultDeps } from "../search/indexer";
 import { rank, queryTerms, hasSearchableToken, type Hit, type RankDoc } from "../search/ranker";
 import { ASK_PASSAGES, DIMS, MODEL_TAG, SEARCH_LIMIT, THRESHOLD, modelTag } from "../search/constants";
 import { useDocumentStore } from "./document";
+import { useOcrStore } from "./ocr";
 import type { SourceId } from "../pdf/types";
 
 type ModelStatus = "idle" | "downloading" | "ready" | "unavailable";
@@ -116,7 +117,7 @@ export const useSearchStore = create<SearchState>((set, get) => ({
     if (get().model.status !== "ready") return;
     const { sources } = useDocumentStore.getState();
     for (const source of sources.values()) {
-      const hash = get().hashBySource[source.id] ?? (await sha256(source.bytes));
+      const hash = get().hashBySource[source.id] ?? source.hash ?? (await sha256(source.bytes));
       set((s) => ({ hashBySource: { ...s.hashBySource, [source.id]: hash } }));
       const status = get().docs[hash]?.status;
       if (status && status !== "failed" && !controllers.get(hash)?.signal.aborted) continue;
@@ -217,6 +218,8 @@ export const useSearchStore = create<SearchState>((set, get) => ({
     getEmbedClient().dispose();
     set({ enabled: false, model: { status: "idle", loaded: 0, total: 0 }, docs: {}, results: [], query: "", searchError: null, library: [], usage: null });
     index = [];
+    // Last, so a failure (or its re-scan) cannot interrupt the search teardown above.
+    await useOcrStore.getState().clearAll().catch(() => {});
   },
 }));
 
@@ -267,4 +270,52 @@ useDocumentStore.subscribe((s, prev) => {
     if (status === "indexing" || status === "queued") { controllers.get(hash)?.abort(); getEmbedClient().cancel(hash); }
   }
   if (st.model.status === "ready") void st.indexOpen();
+});
+
+let ocrDebounce: ReturnType<typeof setTimeout> | null = null;
+const finishedSources = new Set<string>(); // sources with new OCR text that the index has not seen yet
+const isBusy = (status?: string) => status === "queued" || status === "indexing";
+
+function armOcrReindex() {
+  if (finishedSources.size === 0) return;
+  if (ocrDebounce) clearTimeout(ocrDebounce);
+  ocrDebounce = setTimeout(runOcrReindex, 2000);
+}
+
+/** Re-indexes sources whose OCR has drained and that are not being indexed; the rest wait in finishedSources to be re-armed. */
+function runOcrReindex() {
+  ocrDebounce = null;
+  const st = useSearchStore.getState();
+  if (st.model.status !== "ready") return;
+  const { sources } = useDocumentStore.getState();
+  const ocrPages = useOcrStore.getState().pages;
+  const due: string[] = [];
+  for (const sid of [...finishedSources]) {
+    if (!sources.has(sid)) { finishedSources.delete(sid); continue; }
+    const recognizing = Object.entries(ocrPages).some(([k, p]) => k.startsWith(`${sid}:`) && p.engine === "tesseract" && (p.state === "queued" || p.state === "running"));
+    if (recognizing) continue;
+    const h = st.hashBySource[sid] ?? sources.get(sid)?.hash;
+    if (h && isBusy(st.docs[h]?.status)) continue;
+    finishedSources.delete(sid);
+    due.push(sid);
+  }
+  if (due.length === 0) return;
+  // Drop the per-hash status so indexOpen re-runs indexSource (which sees the newer ocrVersion).
+  useSearchStore.setState((x) => {
+    const docs = { ...x.docs };
+    for (const sid of due) { const h = x.hashBySource[sid]; if (h) delete docs[h]; }
+    return { docs };
+  });
+  void st.indexOpen();
+}
+
+useOcrStore.subscribe((s, prev) => {
+  if (s.pages === prev.pages) return;
+  for (const [k, st] of Object.entries(s.pages)) if (st.state === "done" && prev.pages[k]?.state !== "done") finishedSources.add(k.slice(0, k.lastIndexOf(":")));
+  armOcrReindex(); // any page transition (done, failed, empty, cancelled) may be the one that drains a source
+});
+// A source skipped because it was mid-index is retried once that index run ends.
+useSearchStore.subscribe((s, prev) => {
+  if (s.docs === prev.docs || finishedSources.size === 0) return;
+  for (const [h, d] of Object.entries(prev.docs)) if (isBusy(d.status) && !isBusy(s.docs[h]?.status)) { armOcrReindex(); return; }
 });

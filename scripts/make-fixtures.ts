@@ -1,3 +1,4 @@
+import { createCanvas } from "@napi-rs/canvas";
 import { PDFDocument, StandardFonts, degrees, PDFHexString, PDFName, PDFDict, PDFArray } from "pdf-lib";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -51,4 +52,24 @@ async function makeForm() {
   writeFileSync(join(outDir, "form.pdf"), await doc.save());
 }
 await makeForm();
+async function makeScan() {
+  // 300x400 pt page rendered at 200 DPI as a PNG with no text objects at all.
+  const w = Math.round(300 * 200 / 72), h = Math.round(400 * 200 / 72);
+  const canvas = createCanvas(w, h);
+  const ctx = canvas.getContext("2d");
+  ctx.fillStyle = "white"; ctx.fillRect(0, 0, w, h);
+  ctx.fillStyle = "black"; ctx.font = "bold 48px sans-serif";
+  ctx.fillText("Patient: Jane Example", 60, 120);
+  ctx.font = "40px sans-serif";
+  ctx.fillText("Diagnosis: hypertension", 60, 220);
+  ctx.fillText("Medication: lisinopril 10 mg", 60, 300);
+  const png = canvas.toBuffer("image/png");
+  writeFileSync(join(outDir, "scan.png"), png);
+  const doc = await PDFDocument.create();
+  const image = await doc.embedPng(png);
+  const page = doc.addPage([300, 400]);
+  page.drawImage(image, { x: 0, y: 0, width: 300, height: 400 });
+  writeFileSync(join(outDir, "scan.pdf"), await doc.save());
+}
+await makeScan();
 console.log("fixtures written to", outDir);

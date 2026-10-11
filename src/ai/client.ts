@@ -13,6 +13,8 @@ export interface AiRequest {
 export interface DoneData { usage: { input: number; output: number }; stop: string; remaining: { requests: number; tokens: number }; resetAt: number }
 export interface Handlers { onDelta(text: string): void; onDone(d: DoneData): void; onError(code: string, extra?: Record<string, unknown>): void }
 
+export interface OcrResponse { pages: { page: number; lines: string[] }[]; failed: number[]; remaining: { requests: number; tokens: number }; resetAt: number }
+
 export class AiClient {
   private token: string | null = null;
   private pending: Promise<string> | null = null;
@@ -43,6 +45,21 @@ export class AiClient {
     const body = (await res.json()) as { token: string };
     this.token = body.token;
     return this.token;
+  }
+
+  async runOcr(pages: { page: number; image: string }[], signal?: AbortSignal): Promise<OcrResponse> {
+    let token: string;
+    try { token = await this.ensureSession(); } catch { throw new Error("verification_failed"); }
+    for (let attempt = 0; attempt < 2; attempt++) {
+      let res: Response;
+      try {
+        res = await this.fetchFn(`${this.baseUrl}/ocr`, { method: "POST", signal, headers: { "content-type": "application/json", authorization: `Bearer ${token}` }, body: JSON.stringify({ task: "ocr", pages }) });
+      } catch (err) { throw new Error((err as Error).name === "AbortError" ? "cancelled" : "network"); }
+      if (res.status === 401 && attempt === 0) { try { token = await this.ensureSession(true); continue; } catch { throw new Error("verification_failed"); } }
+      if (!res.ok) { const err = (await res.json().catch(() => ({}))) as { error?: string; resetAt?: number }; throw Object.assign(new Error(err.error ?? "upstream"), { resetAt: err.resetAt }); }
+      return (await res.json()) as OcrResponse;
+    }
+    throw new Error("upstream");
   }
 
   runTask(body: AiRequest, handlers: Handlers): { abort(): void; done: Promise<void> } {

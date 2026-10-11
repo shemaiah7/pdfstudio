@@ -1,9 +1,11 @@
 import type { SourceFile } from "./types";
 import { getPage } from "./render";
+import { ocrStore } from "../ocr/store";
+import { ocrPageToItems, ocrPageText } from "../ocr/layout";
 import { useDocumentStore, sourceReleasers } from "../store/document";
 
 export interface TextItemBox { str: string; x: number; y: number; width: number; height: number; fontSize: number }
-export interface PageText { text: string; items: TextItemBox[] }
+export interface PageText { text: string; items: TextItemBox[]; ocr?: boolean }
 
 interface RawItem { str: string; transform: number[]; width: number; height: number; hasEOL?: boolean }
 
@@ -40,12 +42,18 @@ export function hasAnyText(pages: { text: string }[]): boolean {
   return pages.some((p) => p.text.trim().length > 0);
 }
 
+let lookupOcr: (hash: string, pageIndex: number) => ReturnType<typeof ocrStore.get> = (h, p) => ocrStore.get(h, p);
+/** Test seam: replace (or with no argument, restore) the OCR text lookup. */
+export function setOcrLookup(fn?: typeof lookupOcr): void { lookupOcr = fn ?? ((h, p) => ocrStore.get(h, p)); }
+
 const cache = new Map<string, Promise<PageText>>();
 
 // Document lifetime is owned by render.ts (getPage / releaseSource); this clears only extracted text.
 export function clearTextCache(sourceId?: string): void {
   for (const k of [...cache.keys()]) if (!sourceId || k.startsWith(`${sourceId}:`)) cache.delete(k);
 }
+
+export function invalidatePageText(sourceId: string, pageIndex: number): void { cache.delete(`${sourceId}:${pageIndex}`); }
 
 export async function extractPageText(source: SourceFile, pageIndex: number): Promise<PageText> {
   const key = `${source.id}:${pageIndex}`;
@@ -59,7 +67,12 @@ export async function extractPageText(source: SourceFile, pageIndex: number): Pr
         str: i.str, x: i.transform[4], y: i.transform[5], width: i.width, height: i.height,
         fontSize: Math.hypot(i.transform[2], i.transform[3]) || i.height,
       }));
-      return { text: linesFromItems(raw), items };
+      const text = linesFromItems(raw);
+      if (text.trim().length > 0 || !source.hash) return { text, items };
+      let ocr: Awaited<ReturnType<typeof ocrStore.get>>;
+      try { ocr = await lookupOcr(source.hash, pageIndex); } catch { return { text: "", items: [] }; }
+      if (!ocr) return { text: "", items: [] };
+      return { text: ocrPageText(ocr), items: ocrPageToItems(ocr), ocr: true };
     })();
     p.catch(() => cache.delete(key));
     cache.set(key, p);

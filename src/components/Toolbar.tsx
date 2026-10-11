@@ -2,6 +2,11 @@ import { useRef, useState } from "react";
 import { useDocumentStore } from "../store/document";
 import { buildDocument } from "../pdf/pageOps";
 import { useFields } from "./useFields";
+import { useOcrStore, pageKey } from "../store/ocr";
+import { ocrStore } from "../ocr/store";
+import type { OcrPage } from "../ocr/types";
+import DeepOcrMenu from "./ocr/DeepOcrMenu";
+import OcrPill from "./ocr/OcrPill";
 import { outputName, saveBlob } from "../pdf/download";
 
 interface Props { scale: number; setScale: (s: number) => void; onFiles: (files: File[], mode: "open" | "add") => void }
@@ -22,7 +27,21 @@ export default function Toolbar({ scale, setScale, onFiles }: Props) {
     const ids = new Set(entries.map((p) => p.id));
     setBusy(true);
     try {
-      const bytes = await buildDocument(s.sources, entries, s.edits.filter((e) => ids.has(e.pageEntryId)), s.annotations.filter((a) => ids.has(a.pageEntryId)), s.formValues, (msg) => s.setError(msg));
+      const ocrPages = new Map<string, OcrPage>();
+      let ocrFailed = false;
+      const ocrState = useOcrStore.getState().pages;
+      for (const p of entries) {
+        const src = s.sources.get(p.sourceId);
+        if (!src?.hash || ocrState[pageKey(p.sourceId, p.sourcePageIndex)]?.state !== "done") continue;
+        try {
+          const page = await ocrStore.get(src.hash, p.sourcePageIndex);
+          if (page) ocrPages.set(p.id, page);
+        } catch {
+          if (!ocrFailed) s.setError("Saved without searchable text layer.");
+          ocrFailed = true;
+        }
+      }
+      const bytes = await buildDocument(s.sources, entries, s.edits.filter((e) => ids.has(e.pageEntryId)), s.annotations.filter((a) => ids.has(a.pageEntryId)), s.formValues, (msg) => s.setError(msg), ocrPages);
       saveBlob(bytes, outputName(firstName, kind));
       if (kind === "edited") s.markClean();
     } catch (err) {
@@ -55,10 +74,12 @@ export default function Toolbar({ scale, setScale, onFiles }: Props) {
       {firstSource && firstFields && firstFields.length > 0 ? (
         <button data-testid="clear-form" onClick={() => s.clearForm(firstSource.id, firstFields)}>Clear form</button>
       ) : null}
+      <DeepOcrMenu />
       <span className="sep" />
       <button data-testid="zoom-out" onClick={() => setScale(Math.max(0.4, scale - 0.2))}>−</button>
       <span className="zoom">{Math.round(scale * 100)}%</span>
       <button data-testid="zoom-in" onClick={() => setScale(Math.min(3, scale + 0.2))}>+</button>
+      <OcrPill />
       <span className="grow" />
       <span className="count">{s.pages.length} page{s.pages.length === 1 ? "" : "s"}{s.isDirty() ? " • unsaved" : ""}</span>
       <button data-testid="download" className="primary" disabled={s.pages.length === 0 || busy}

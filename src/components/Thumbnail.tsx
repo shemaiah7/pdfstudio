@@ -1,6 +1,7 @@
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import PageCanvas from "./PageCanvas";
+import OcrBadge from "./ocr/OcrBadge";
 import type { PageEntry, SourceFile } from "../pdf/types";
 
 interface Props {
@@ -17,6 +18,7 @@ export default function Thumbnail({ entry, source, index, selected, multiSource,
       title={multiSource ? source.name : undefined} onClick={onClick}>
       <PageCanvas source={source} entry={entry} scale={0.3} lazy />
       <div className="thumb-label">{index + 1}</div>
+      <OcrBadge sourceId={source.id} pageIndex={entry.sourcePageIndex} />
     </div>
   );
 }

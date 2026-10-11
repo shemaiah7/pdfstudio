@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useSearchStore } from "../../store/search";
 import { useDocumentStore } from "../../store/document";
+import { useOcrStore } from "../../store/ocr";
 import LibraryPanel from "./LibraryPanel";
 
 const mb = (n: number) => `${Math.round(n / 1_048_576)} MB`;
@@ -8,6 +9,7 @@ const mb = (n: number) => `${Math.round(n / 1_048_576)} MB`;
 export default function SearchTab() {
   const s = useSearchStore();
   const sources = useDocumentStore((d) => d.sources);
+  const recognizing = useOcrStore((o) => o.textStatus()) === "recognizing";
   const [libraryOpen, setLibraryOpen] = useState(false);
   const isOpen = (hash: string) => Object.entries(s.hashBySource).some(([sid, h]) => h === hash && sources.has(sid));
   const nameOf = (hash: string) => s.library.find((r) => r.hash === hash)?.name ?? "document";
@@ -57,7 +59,7 @@ export default function SearchTab() {
       </div>
       <ul className="search-status">
         {[...sources.values()].map((src) => { const h = s.hashBySource[src.id]; const d = h ? s.docs[h] : undefined; return (
-          <li key={src.id}>{src.name}: {!d ? "waiting" : d.status === "indexing" ? `${d.phase === "embed" ? "embedding" : d.phase === "extract" ? "reading" : "indexing"} ${d.done}/${d.total}` : d.status === "no-text" ? "No searchable text" : d.status === "failed" ? <>failed <button onClick={() => void s.retryDoc(h)}>Retry</button></> : d.status}</li>
+          <li key={src.id}>{src.name}: {!d ? "waiting" : d.status === "indexing" ? `${d.phase === "embed" ? "embedding" : d.phase === "extract" ? "reading" : "indexing"} ${d.done}/${d.total}` : d.status === "no-text" ? (recognizing ? "Recognizing text… try again in a moment." : "No text could be recognized. Try Deep OCR.") : d.status === "failed" ? <>failed <button onClick={() => void s.retryDoc(h)}>Retry</button></> : d.status}</li>
         ); })}
       </ul>
       {libraryOpen && <LibraryPanel />}
