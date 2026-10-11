@@ -7,6 +7,7 @@ import SummarizeTab from "./SummarizeTab";
 import AskTab from "./AskTab";
 import ExtractTab from "./ExtractTab";
 import RewriteTab from "./RewriteTab";
+import { useOcrStore } from "../../store/ocr";
 import ScopeToggle from "./ScopeToggle";
 
 type Tab = "summarize" | "ask" | "rewrite" | "extract";
@@ -14,6 +15,8 @@ type Tab = "summarize" | "ask" | "rewrite" | "extract";
 export default function AiPanel() {
   const [tab, setTab] = useState<Tab>("summarize");
   const { client, setClient, noticeDismissed, dismissNotice, remaining, limitedUntil, resetForNewDocument } = useAiStore();
+  const ocrEnabled = useOcrStore((s) => s.enabled);
+  const setOcrEnabled = useOcrStore((s) => s.setEnabled);
   const sourcesKey = useDocumentStore((s) => [...s.sources.keys()].join(","));
 
   // Localhost / Turnstile test-key fallbacks are for development only; production must be configured.
@@ -40,6 +43,7 @@ export default function AiPanel() {
           <button onClick={dismissNotice}>Got it</button>
         </div>
       )}
+      <label className="ocr-setting"><input type="checkbox" data-testid="ocr-auto" checked={ocrEnabled} onChange={(e) => setOcrEnabled(e.target.checked)} /> Recognize text automatically</label>
       {tab !== "rewrite" && <ScopeToggle />}
       <div className="ai-tabs">
         {tabs.map((t) => <button key={t} data-testid={`ai-tab-${t}`} className={tab === t ? "active" : ""} onClick={() => setTab(t)}>{t[0].toUpperCase() + t.slice(1)}</button>)}

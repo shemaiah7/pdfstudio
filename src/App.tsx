@@ -6,6 +6,7 @@ import PageView from "./components/PageView";
 import Toolbar from "./components/Toolbar";
 import ToolPalette from "./components/ToolPalette";
 import ErrorBanner from "./components/ErrorBanner";
+import OcrToast from "./components/ocr/OcrToast";
 import RightPanel from "./components/search/RightPanel";
 import { useToolsStore } from "./store/tools";
 import { useAiStore } from "./store/ai";
@@ -97,6 +98,7 @@ export default function App() {
   return (
     <div className="app">
       <ErrorBanner />
+      <OcrToast />
       {empty ? <DropZone onFiles={handleFiles} empty /> : (
         <>
         <Toolbar scale={scale} setScale={setScale} onFiles={handleFiles} />

@@ -5,6 +5,8 @@ import { useFields } from "./useFields";
 import { useOcrStore, pageKey } from "../store/ocr";
 import { ocrStore } from "../ocr/store";
 import type { OcrPage } from "../ocr/types";
+import DeepOcrMenu from "./ocr/DeepOcrMenu";
+import OcrPill from "./ocr/OcrPill";
 import { outputName, saveBlob } from "../pdf/download";
 
 interface Props { scale: number; setScale: (s: number) => void; onFiles: (files: File[], mode: "open" | "add") => void }
@@ -72,10 +74,12 @@ export default function Toolbar({ scale, setScale, onFiles }: Props) {
       {firstSource && firstFields && firstFields.length > 0 ? (
         <button data-testid="clear-form" onClick={() => s.clearForm(firstSource.id, firstFields)}>Clear form</button>
       ) : null}
+      <DeepOcrMenu />
       <span className="sep" />
       <button data-testid="zoom-out" onClick={() => setScale(Math.max(0.4, scale - 0.2))}>−</button>
       <span className="zoom">{Math.round(scale * 100)}%</span>
       <button data-testid="zoom-in" onClick={() => setScale(Math.min(3, scale + 0.2))}>+</button>
+      <OcrPill />
       <span className="grow" />
       <span className="count">{s.pages.length} page{s.pages.length === 1 ? "" : "s"}{s.isDirty() ? " • unsaved" : ""}</span>
       <button data-testid="download" className="primary" disabled={s.pages.length === 0 || busy}

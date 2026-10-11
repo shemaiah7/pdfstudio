@@ -8,6 +8,7 @@ import type { SourceFile } from "../pdf/types";
 import type { PageMeta } from "../pdf/geometry";
 import FormLayer from "./FormLayer";
 import { useFields } from "./useFields";
+import OcrBadge from "./ocr/OcrBadge";
 import AnnotationOverlay from "./AnnotationOverlay";
 
 function PageForm({ source, sourceId, sourcePageIndex, meta }: { source: SourceFile; sourceId: string; sourcePageIndex: number; meta: PageMeta }) {
@@ -53,6 +54,7 @@ export default function PageView({ scale }: Props) {
             {heights[entry.id] ? <PageForm sourceId={source.id} source={source} sourcePageIndex={entry.sourcePageIndex} meta={{ widthPt: heights[entry.id].widthPt, heightPt: heights[entry.id].heightPt, scale, rotation: ((heights[entry.id].pageRotate + entry.rotation) % 360) as 0 | 90 | 180 | 270 }} /> : null}
             {heights[entry.id] ? <AnnotationOverlay pageEntryId={entry.id} annotations={annotations.filter((a) => a.pageEntryId === entry.id)} meta={{ widthPt: heights[entry.id].widthPt, heightPt: heights[entry.id].heightPt, scale, rotation: ((heights[entry.id].pageRotate + entry.rotation) % 360) as 0 | 90 | 180 | 270 }} pageEl={() => document.getElementById(`page-${entry.id}`)} /> : null}
             <div className="page-label">{i + 1}</div>
+            <OcrBadge sourceId={source.id} pageIndex={entry.sourcePageIndex} />
           </div>
         );
       })}
