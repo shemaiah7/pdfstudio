@@ -4,6 +4,7 @@ import { buildDocument, countPages, addRotation } from "./pageOps";
 import type { SourceFile, PageEntry } from "./types";
 import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
 import { loadFixture } from "../test/loadFixture";
+import { PNG_1X1 } from "../test/png";
 
 function src(id: string, name: "three" | "two" | "rotated", pageCount: number): SourceFile {
   return { id, name: `${name}.pdf`, bytes: loadFixture(name), pageCount };
@@ -190,4 +191,30 @@ it("still accepts legacy font names from the AI insert", async () => {
   const sources = new Map([["s", { id: "s", name: "three.pdf", bytes, pageCount: 1 }]]);
   const pages = [{ id: "p", sourceId: "s", sourcePageIndex: 0, rotation: 0 as const }];
   await expect(buildDocument(sources, pages, [{ id: "e", pageEntryId: "p", boxes: [{ x: 20, y: 300, width: 120, height: 14 }], text: "x", fontSize: 11, font: "sans-bold" as never, color: [0, 0, 0] }])).resolves.toBeInstanceOf(Uint8Array);
+});
+
+describe("flatten edited native pages", () => {
+  const edit = { id: "e1", pageEntryId: "a-0", boxes: [{ x: 20, y: 350, width: 200, height: 24 }], text: "thre:9", fontSize: 12, font: "helvetica" as const, color: [0, 0, 0] as [number, number, number] };
+  const texts = async (bytes: Uint8Array) => {
+    const pdf = await getDocument({ data: bytes.slice() }).promise;
+    return (await (await pdf.getPage(1)).getTextContent()).items.map((i) => ("str" in i ? i.str : "")).join(" ");
+  };
+  const s = () => new Map([["a", src("a", "three", 3)]]);
+  const items = [
+    { str: "thre:9", x: 20, y: 352, width: 40, height: 12, fontSize: 12, fontName: "helvetica" },
+    { str: "other", x: 20, y: 200, width: 30, height: 12, fontSize: 12, fontName: "g_d0_f1" },
+  ];
+  it("removes the original text from the output when a rasterizer is supplied", async () => {
+    const out = await buildDocument(s(), [entry("a", 0)], [edit], [], new Map(), undefined, undefined, {
+      rasterize: async () => ({ png: PNG_1X1, widthPt: 612, heightPt: 792 }),
+      editedText: async () => items,
+    });
+    const text = await texts(out);
+    expect(text).not.toContain("three:0");
+    expect(text.match(/thre:9/g)).toHaveLength(1); // visible edit only; edit-font items are not duplicated invisibly
+    expect(text).toContain("other");
+  });
+  it("keeps the original text under the cover without a rasterizer", async () => {
+    expect(await texts(await buildDocument(s(), [entry("a", 0)], [edit]))).toContain("three:0");
+  });
 });

@@ -5,7 +5,9 @@ import { ensureAcroFormDR, isDegenerate, writeAnnotations } from "./annotations"
 import { applyFormValues, readFieldsFromDoc, rebuildAcroForm } from "./formFill";
 import { addInvisibleText, withoutCoveredWords } from "../ocr/textLayer";
 import type { OcrPage } from "../ocr/types";
-import { STANDARD_FONTS, normalizeFont } from "./fonts";
+import { flattenPage } from "../edit/flatten";
+import type { TextItemBox } from "./text";
+import { EDIT_FONTS, STANDARD_FONTS, normalizeFont } from "./fonts";
 import type { Annotation, Edit, EditFont, FormValues, PageEntry, Rotation, SourceFile, SourceId } from "./types";
 
 export function addRotation(a: Rotation, delta: 90 | -90 | 180): Rotation {
@@ -17,6 +19,14 @@ export async function countPages(bytes: Uint8Array): Promise<number> {
   return doc.getPageCount();
 }
 
+export type PageRasterizer = (source: SourceFile, pageIndex: number, dpi: number) => Promise<{ png: Uint8Array; widthPt: number; heightPt: number }>;
+export interface BuildOptions {
+  /** When given, edited native pages are flattened: original raster + edits + invisible text, so covered text is not extractable. */
+  rasterize?: PageRasterizer;
+  editedText?: (source: SourceFile, pageIndex: number) => Promise<TextItemBox[]>;
+}
+const FLATTEN_DPI = 200;
+
 export async function buildDocument(
   sources: Map<SourceId, SourceFile>,
   pages: PageEntry[],
@@ -25,6 +35,7 @@ export async function buildDocument(
   formValues: FormValues = new Map(),
   onWarning?: (msg: string) => void,
   ocrPages?: Map<string, OcrPage>,
+  opts: BuildOptions = {},
 ): Promise<Uint8Array> {
   const out = await PDFDocument.create();
   const loaded = new Map<SourceId, PDFDocument>();
@@ -58,7 +69,8 @@ export async function buildDocument(
     // Selection boxes are relative to the crop box origin (pdf.js page.view).
     const { x: ox, y: oy } = copied.getCropBox();
     const pageEdits = edits.filter((e) => e.pageEntryId === entry.id);
-    if (pageEdits.length) {
+    let flattened = false;
+    const drawEdits = async () => {
       const fontCache = new Map<EditFont, PDFFont>();
       const fontFor = async (f: EditFont) => fontCache.get(f) ?? (fontCache.set(f, await out.embedFont(STANDARD_FONTS[f])), fontCache.get(f)!);
       for (const e of pageEdits) {
@@ -70,14 +82,23 @@ export async function buildDocument(
         const { lines, fontSize } = layoutInBoxes(e.text, e.boxes, e.fontSize, width, { keepOverflow: true });
         const color = rgb(e.color[0], e.color[1], e.color[2]);
         for (const line of lines) {
-          const opts = { x: line.x + ox, y: line.baseline + oy, size: fontSize, font, color };
+          const drawOpts = { x: line.x + ox, y: line.baseline + oy, size: fontSize, font, color };
           // Draw exactly the string that was measured.
           const drawn = toWinAnsi(line.text);
-          try { copied.drawText(drawn, opts); }
-          catch { copied.drawText(drawn.replace(/[^\x20-\x7E]/g, "?"), opts); }
+          try { copied.drawText(drawn, drawOpts); }
+          catch { copied.drawText(drawn.replace(/[^\x20-\x7E]/g, "?"), drawOpts); }
         }
       }
+    };
+    // Edited native pages (not OCR scans, whose text is already a separate layer) are flattened when a rasterizer is supplied.
+    if (pageEdits.length && opts.rasterize && opts.editedText && !ocrPages?.get(entry.id) && !pageEdits.some((e) => e.source === "ocr")) {
+      const items = (await opts.editedText(source, entry.sourcePageIndex)).filter((i) => i.str.trim() && !(EDIT_FONTS as readonly string[]).includes(i.fontName));
+      const raster = await opts.rasterize(source, entry.sourcePageIndex, FLATTEN_DPI);
+      helv ??= await out.embedFont(StandardFonts.Helvetica);
+      await flattenPage(out, copied, { ...raster, items, cropOrigin: { x: ox, y: oy } }, helv, drawEdits);
+      flattened = true;
     }
+    if (pageEdits.length && !flattened) await drawEdits();
 
     const pageAnns = annotations.filter((a) => a.pageEntryId === entry.id);
     if (pageAnns.length) {

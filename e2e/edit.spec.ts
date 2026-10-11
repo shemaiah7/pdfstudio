@@ -31,7 +31,8 @@ test("edit a typed line in place and download", async ({ page }) => {
   await expect(page.locator(".edit-line").first()).toHaveText("thre:9");
   const text = await savedText(page);
   expect(text).toContain("thre:9");
-  // Native pages are overlay-edited: the cover hides the original, which stays in the content stream.
+  // Edited native pages are flattened on export, so the covered original is gone.
+  expect(text).not.toContain("three:0");
 });
 
 test.describe("scan", () => {

@@ -1,6 +1,8 @@
 import { useRef, useState } from "react";
 import { useDocumentStore } from "../store/document";
 import { buildDocument } from "../pdf/pageOps";
+import { rasterizeWithPdfJs } from "../edit/flatten";
+import { extractPageText } from "../pdf/text";
 import { useFields } from "./useFields";
 import { useOcrStore, pageKey } from "../store/ocr";
 import { ocrStore } from "../ocr/store";
@@ -41,7 +43,7 @@ export default function Toolbar({ scale, setScale, onFiles }: Props) {
           ocrFailed = true;
         }
       }
-      const bytes = await buildDocument(s.sources, entries, s.edits.filter((e) => ids.has(e.pageEntryId)), s.annotations.filter((a) => ids.has(a.pageEntryId)), s.formValues, (msg) => s.setError(msg), ocrPages);
+      const bytes = await buildDocument(s.sources, entries, s.edits.filter((e) => ids.has(e.pageEntryId)), s.annotations.filter((a) => ids.has(a.pageEntryId)), s.formValues, (msg) => s.setError(msg), ocrPages, { rasterize: rasterizeWithPdfJs, editedText: async (src, p) => (await extractPageText(src, p)).items });
       saveBlob(bytes, outputName(firstName, kind));
       if (kind === "edited") s.markClean();
     } catch (err) {
