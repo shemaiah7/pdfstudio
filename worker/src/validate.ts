@@ -17,6 +17,7 @@ const union = z.discriminatedUnion("task", [
     task: z.literal("ask"),
     question: z.string().min(1).max(MAX_QUESTION_CHARS),
     history: z.array(turnSchema).max(10).optional(),
+    retrieved: z.boolean().optional(),
   }),
   base.extend({
     task: z.literal("rewrite"),
@@ -27,9 +28,9 @@ const union = z.discriminatedUnion("task", [
   base.extend({ task: z.literal("extract") }),
 ]);
 
-const schema = union.refine((b) => b.task !== "rewrite" || b.mode !== "translate" || !!b.language, {
-  message: "language required for translate",
-});
+const schema = union
+  .refine((b) => b.task !== "rewrite" || b.mode !== "translate" || !!b.language, { message: "language required for translate" })
+  .refine((b) => !(b.task === "ask" && b.retrieved) || (b.document.length <= 40 && b.document.every((p) => p.text.length <= 4_000)), { message: "retrieved passages exceed limits" });
 
 export type AiBody = z.infer<typeof schema>;
 export type Task = AiBody["task"];

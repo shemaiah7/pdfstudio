@@ -163,3 +163,64 @@ describe("setSelection reset", () => {
     expect(st.getState().rewrite.status).toBe("idle");
   });
 });
+
+const fakeClient = (onBody: (b: never) => void) => ({
+  runTask: (b: never, h: { onDone(d: unknown): void }) => {
+    onBody(b);
+    h.onDone({ usage: { input: 1, output: 1 }, stop: "end_turn", remaining: { requests: 1, tokens: 1 }, resetAt: 0 });
+    return { abort() {}, done: Promise.resolve() };
+  },
+}) as never;
+
+describe("ask with retrieval", () => {
+  it("sends retrieved passages with retrieved:true and records the count", async () => {
+    vi.doMock("./search", () => ({ retrievePassages: async () => [{ page: 2, text: "warfarin held" }], useSearchStore: { getState: () => ({ model: { status: "ready" } }) } }));
+    const { useAiStore } = await import("./ai");
+    const bodies: unknown[] = [];
+    useAiStore.setState({ client: fakeClient((b) => bodies.push(b)), useSearch: true, chat: { turns: [], draft: "why?", status: "idle", error: null, passages: null } });
+    await useAiStore.getState().run("ask");
+    expect(bodies[0]).toMatchObject({ task: "ask", retrieved: true, document: [{ page: 2, text: "warfarin held" }] });
+    expect(useAiStore.getState().chat.passages).toBe(1);
+  });
+  it("falls back to the whole document when nothing matches and the document is small", async () => {
+    vi.doMock("./search", () => ({ retrievePassages: async () => [], useSearchStore: { getState: () => ({ model: { status: "ready" } }) } }));
+    const { useAiStore } = await import("./ai");
+    const bodies: { retrieved?: boolean }[] = [];
+    useAiStore.setState({ client: fakeClient((b) => bodies.push(b)), useSearch: true, chat: { turns: [], draft: "why?", status: "idle", error: null, passages: null } });
+    await useAiStore.getState().run("ask");
+    expect(bodies[0].retrieved).toBeUndefined();
+    expect(useAiStore.getState().chat.passages).toBeNull();
+  });
+  it("falls back to the whole document when retrieval rejects", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.doMock("./search", () => ({ retrievePassages: async () => { throw new Error("embed failed"); } }));
+    const { useAiStore } = await import("./ai");
+    const bodies: { retrieved?: boolean }[] = [];
+    useAiStore.setState({ client: fakeClient((b) => bodies.push(b)), useSearch: true, scope: "all", chat: { turns: [], draft: "why?", status: "idle", error: null, passages: null } });
+    await useAiStore.getState().run("ask");
+    expect(bodies[0].retrieved).toBeUndefined();
+    expect(useAiStore.getState().chat.status).toBe("done");
+    expect(warn).toHaveBeenCalledTimes(1);
+    warn.mockRestore();
+  });
+  it("skips retrieval when scope is selected", async () => {
+    const retrieve = vi.fn(async () => [{ page: 2, text: "x" }]);
+    vi.doMock("./search", () => ({ retrievePassages: retrieve }));
+    const { useAiStore } = await import("./ai");
+    const bodies: { retrieved?: boolean }[] = [];
+    useAiStore.setState({ client: fakeClient((b) => bodies.push(b)), useSearch: true, scope: "selected", chat: { turns: [], draft: "why?", status: "idle", error: null, passages: null } });
+    await useAiStore.getState().run("ask");
+    expect(retrieve).not.toHaveBeenCalled();
+    expect(bodies[0].retrieved).toBeUndefined();
+    useAiStore.setState({ scope: "all" });
+  });
+  it("shows an error and sends nothing while documents are still indexing", async () => {
+    vi.doMock("./search", () => ({ retrievePassages: async () => "indexing" }));
+    const { useAiStore } = await import("./ai");
+    const bodies: unknown[] = [];
+    useAiStore.setState({ client: fakeClient((b) => bodies.push(b)), useSearch: true, scope: "all", chat: { turns: [], draft: "why?", status: "idle", error: null, passages: null } });
+    await useAiStore.getState().run("ask");
+    expect(bodies).toHaveLength(0);
+    expect(useAiStore.getState().chat).toMatchObject({ status: "error", error: "Still indexing these documents; try again when indexing finishes." });
+  });
+});

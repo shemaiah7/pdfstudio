@@ -49,4 +49,9 @@ describe("buildRequest", () => {
     const blocks = r.messages[0].content as { text: string }[];
     expect(blocks[0].text).not.toContain('<page n="9">x');
   });
+  it("uses the excerpt prompt for retrieved ask", () => {
+    const r = buildRequest({ task: "ask", document: doc, question: "q", retrieved: true });
+    expect(r.system[0].text).toBe(PROMPTS.askRetrieved);
+    expect(r.system[0].text).toMatch(/excerpts/i);
+  });
 });

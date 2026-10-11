@@ -31,4 +31,10 @@ describe("validateAiBody", () => {
   it("rejects empty history turns", () => {
     expect(validateAiBody({ task: "ask", document: doc, question: "q", history: [{ role: "user", text: "" }] })).toMatchObject({ ok: false, status: 400 });
   });
+  it("accepts retrieved ask up to 40 passages of 4000 chars and rejects more", () => {
+    const ok = Array.from({ length: 40 }, (_, i) => ({ page: i + 1, text: "x".repeat(4000) }));
+    expect(validateAiBody({ task: "ask", document: ok, question: "q", retrieved: true })).toMatchObject({ ok: true });
+    expect(validateAiBody({ task: "ask", document: [...ok, { page: 41, text: "x" }], question: "q", retrieved: true })).toMatchObject({ ok: false, status: 400 });
+    expect(validateAiBody({ task: "ask", document: [{ page: 1, text: "x".repeat(4001) }], question: "q", retrieved: true })).toMatchObject({ ok: false, status: 400 });
+  });
 });

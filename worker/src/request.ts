@@ -42,8 +42,9 @@ export type BuiltRequest = BetaMessageStreamParams & {
 };
 
 export function buildRequest(body: AiBody): BuiltRequest {
+  const promptKey = body.task === "ask" && body.retrieved ? "askRetrieved" : body.task;
   const system: Anthropic.Beta.BetaTextBlockParam[] = [
-    { type: "text", text: PROMPTS[body.task], cache_control: { type: "ephemeral" } },
+    { type: "text", text: PROMPTS[promptKey], cache_control: { type: "ephemeral" } },
   ];
   const doc = documentBlock(body.document);
   const messages: Anthropic.Beta.BetaMessageParam[] = [];

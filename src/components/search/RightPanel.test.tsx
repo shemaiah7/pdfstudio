@@ -1,0 +1,25 @@
+// @vitest-environment jsdom
+import { describe, it, expect, vi, afterEach } from "vitest";
+import { render, cleanup } from "@testing-library/react";
+import RightPanel from "./RightPanel";
+import { useSearchStore } from "../../store/search";
+
+vi.mock("../../ai/turnstile", () => ({ getTurnstileToken: async () => "tok" }));
+vi.mock("../../search/embedClient", () => ({ getEmbedClient: () => ({ load: async () => "wasm", embed: async () => new Float32Array(256), cancel() {}, dispose() {} }) }));
+vi.mock("../../search/library", () => ({ library: { setModelTag() {}, loadAll: async () => [], list: async () => [], estimateUsage: async () => null, get: async () => undefined, remove: async () => {}, clear: async () => {}, persistent: true, lastWriteFailed: false }, sha256: async () => "h" }));
+
+describe("RightPanel", () => {
+  afterEach(cleanup);
+  it("calls init on mount when search is enabled, without opening the Search tab", () => {
+    const init = vi.fn(async () => {});
+    useSearchStore.setState({ init, enabled: true, model: { status: "idle", loaded: 0, total: 0 } });
+    render(<RightPanel />);
+    expect(init).toHaveBeenCalledTimes(1);
+  });
+  it("calls init once even when not enabled (the store decides to no-op)", () => {
+    const init = vi.fn(async () => {});
+    useSearchStore.setState({ init, enabled: false, model: { status: "idle", loaded: 0, total: 0 } });
+    render(<RightPanel />);
+    expect(init).toHaveBeenCalledTimes(1);
+  });
+});

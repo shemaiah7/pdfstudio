@@ -1,11 +1,17 @@
 import { useAiStore } from "../../store/ai";
+import { useSearchStore } from "../../store/search";
 import Markdown from "./Markdown";
 
 export default function AskTab({ disabled }: { disabled: boolean }) {
-  const { chat, setDraft, run } = useAiStore();
+  const { chat, setDraft, run, useSearch, setUseSearch } = useAiStore();
+  const status = useSearchStore((s) => s.model.status);
   const send = () => { if (chat.draft.trim()) void run("ask"); };
   return (
     <div className="ai-tab">
+      {status === "ready" && (
+        <label className="ai-row muted"><input type="checkbox" data-testid="ask-use-search" checked={useSearch} onChange={(e) => setUseSearch(e.target.checked)} /> Use search</label>
+      )}
+      {typeof chat.passages === "number" && <p className="muted" data-testid="ask-passages">Answering from {chat.passages} passages</p>}
       <div className="ai-thread" data-testid="ai-result">
         {chat.turns.map((t, i) => (
           <div key={i} className={`turn ${t.role}`}>{t.role === "user" ? <p>{t.text}</p> : <Markdown text={t.text || "…"} />}</div>

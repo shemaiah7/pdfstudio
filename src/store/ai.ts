@@ -16,7 +16,8 @@ export interface AiState {
   limitedUntil: number | null;
   scope: "all" | "selected";
   summary: { text: string; status: Status; error: string | null };
-  chat: { turns: { role: "user" | "assistant"; text: string }[]; draft: string; status: Status; error: string | null };
+  chat: { turns: { role: "user" | "assistant"; text: string }[]; draft: string; status: Status; error: string | null; passages: number | null };
+  useSearch: boolean;
   rewrite: { selection: PageSelection | null; mode: RewriteMode; language: string; result: string; status: Status; error: string | null };
   extract: { facts: Fact[]; status: Status; error: string | null };
   noticeDismissed: boolean;
@@ -25,6 +26,7 @@ export interface AiState {
   setRewriteMode(m: RewriteMode): void;
   setLanguage(l: string): void;
   setScope(s: "all" | "selected"): void;
+  setUseSearch(b: boolean): void;
   setDraft(d: string): void;
   setRewriteResult(t: string): void;
   dismissNotice(): void;
@@ -47,13 +49,14 @@ const initial = () => ({
   remaining: null, limitedUntil: null,
   scope: "all" as "all" | "selected",
   summary: { text: "", ...idle() },
-  chat: { turns: [], draft: "", ...idle() },
+  chat: { turns: [], draft: "", passages: null as number | null, ...idle() },
   rewrite: { selection: null, mode: "rewrite" as RewriteMode, language: "", result: "", ...idle() },
   extract: { facts: [] as Fact[], ...idle() },
 });
 
 export const useAiStore = create<AiState>((set, get) => ({
   client: null,
+  useSearch: true,
   noticeDismissed: (() => { try { return localStorage.getItem("ai-notice") === "1"; } catch { return false; } })(),
   ...initial(),
 
@@ -66,6 +69,7 @@ export const useAiStore = create<AiState>((set, get) => ({
   setRewriteMode: (mode) => set((s) => ({ rewrite: { ...s.rewrite, mode } })),
   setLanguage: (language) => set((s) => ({ rewrite: { ...s.rewrite, language } })),
   setScope: (scope) => set({ scope }),
+  setUseSearch: (useSearch) => set({ useSearch }),
   setDraft: (draft) => set((s) => ({ chat: { ...s.chat, draft } })),
   setRewriteResult: (result) => set((s) => ({ rewrite: { ...s.rewrite, result } })),
   dismissNotice: () => { try { localStorage.setItem("ai-notice", "1"); } catch { /* ignore */ } set({ noticeDismissed: true }); },
@@ -129,6 +133,22 @@ async function runTask(task: AiRequest["task"], client: AiClient) {
       const p = idx + 1;
       document = document.filter((d) => d.page >= p - 1 && d.page <= p + 1);
     }
+    let retrieved = false;
+    const q = task === "ask" ? get().chat.draft.trim() : "";
+    if (task === "ask" && get().useSearch && scope === "all") {
+      let passages: { page: number; text: string }[] | null | "indexing" = null;
+      try {
+        const { retrievePassages } = await import("./search");
+        passages = q ? await retrievePassages(q) : null;
+      } catch (e) { console.warn("Retrieval failed; sending the whole document", e); }
+      if (stale()) return;
+      if (passages === "indexing") { setTask({ status: "error", error: "Still indexing these documents; try again when indexing finishes." }); return; }
+      if (passages && passages.length > 0) { document = passages; retrieved = true; }
+      else if (passages && passages.length === 0 && document.reduce((n, d) => n + d.text.length, 0) > MAX_DOC_CHARS) {
+        set((s) => ({ chat: { ...s.chat, passages: null } }));
+        setTask({ status: "error", error: "Nothing in the open documents matched the question" }); return;
+      }
+    }
     if (scope === "selected" && document.length === 0) { setTask({ status: "error", error: get().errorMessage("no_selection") }); return; }
     if (document.reduce((n, d) => n + d.text.length, 0) > MAX_DOC_CHARS) {
       setTask({ status: "error", error: get().errorMessage("document_too_large") });
@@ -138,11 +158,11 @@ async function runTask(task: AiRequest["task"], client: AiClient) {
 
     const body: AiRequest = { task, document };
     if (task === "ask") {
-      const q = get().chat.draft.trim();
       if (!q) return;
       body.question = q;
+      if (retrieved) body.retrieved = true;
       body.history = get().chat.turns.filter((t) => t.text.trim().length > 0).slice(-10).map((t) => ({ ...t, text: t.text.slice(0, 8000) }));
-      set((s) => ({ chat: { ...s.chat, turns: [...s.chat.turns, { role: "user", text: q }, { role: "assistant", text: "" }], draft: "", status: "running", error: null } }));
+      set((s) => ({ chat: { ...s.chat, turns: [...s.chat.turns, { role: "user", text: q }, { role: "assistant", text: "" }], draft: "", status: "running", error: null, passages: retrieved ? document.length : null } }));
     } else if (task === "rewrite") {
       const r = get().rewrite;
       if (!r.selection) return;

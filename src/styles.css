@@ -130,3 +130,14 @@ body { background: var(--bg); color: var(--text); font-family: system-ui, sans-s
 .formLayer input[readonly], .formLayer textarea[readonly], .formLayer :disabled { background: rgba(128, 128, 128, 0.25); }
 .formLayer input[type=checkbox], .formLayer input[type=radio] { margin: 0; accent-color: var(--accent); }
 .formLayer .unsupportedField { position: absolute; box-sizing: border-box; border: 1px dashed rgba(0,0,0,0.3); background: rgba(128,128,128,0.15); pointer-events: auto; }
+.panel-tabs button { font-weight: 600; }
+.search-status { list-style: none; margin: 0; padding: 0; font-size: 12px; opacity: 0.75; display: flex; flex-direction: column; gap: 2px; }
+.search-results { flex: 1; overflow: auto; display: flex; flex-direction: column; gap: 8px; }
+.search-hit { background: var(--bg); border-radius: 8px; padding: 8px 10px; cursor: pointer; }
+.search-hit:hover { outline: 1px solid var(--accent); }
+.search-hit-head { display: flex; justify-content: space-between; align-items: center; font-size: 12px; opacity: 0.8; margin-bottom: 4px; }
+.search-hit-head button { font-size: 11px; }
+.search-snippet { font-size: 13px; }
+.textLayer span.search-flash { background: rgba(255, 220, 0, 0.55); transition: background 0.3s; }
+.library { display: flex; flex-direction: column; gap: 8px; border: 1px solid var(--border); border-radius: 8px; padding: 10px; }
+.library-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 13px; }
