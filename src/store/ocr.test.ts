@@ -54,8 +54,8 @@ describe("useOcrStore", () => {
   it("uses a cached page without running the engine", async () => {
     let runs = 0;
     configureOcrDeps({ tesseract: () => ({ ...engine(["x"]), recognize: async () => { runs++; return linesToOcrPage(["x"], { widthPt: 1, heightPt: 1 }); } }) });
+    await store.put(`h${n}`, 0, linesToOcrPage(["cached"], { widthPt: 300, heightPt: 400 }));
     const id = await openScan(1);
-    await store.put(`h${n - 1}`, 0, linesToOcrPage(["cached"], { widthPt: 300, heightPt: 400 }));
     await useOcrStore.getState().scanSource(id); await flush();
     expect(runs).toBe(0);
     expect(useOcrStore.getState().pages[pageKey(id, 0)]).toMatchObject({ state: "done", engine: "claude" });
@@ -114,8 +114,56 @@ describe("useOcrStore", () => {
   it("clearAll empties the store and page states", async () => {
     const id = await openScan(1);
     await useOcrStore.getState().scanSource(id); await flush();
+    useOcrStore.getState().setEnabled(false); // clearAll re-scans open sources; with auto OCR off nothing is re-recognized
     await useOcrStore.getState().clearAll();
     expect(useOcrStore.getState().pages).toEqual({});
     expect(await store.get(`h${n - 1}`, 0)).toBeUndefined();
+  });
+  it("a run that resolves after its source closed leaves no page state or scanned key", async () => {
+    let finish!: () => void;
+    configureOcrDeps({ tesseract: () => ({ ...engine(["x"]), recognize: () => new Promise((res) => { finish = () => res({ ...linesToOcrPage(["late"], { widthPt: 300, heightPt: 400 }), engine: "tesseract", confidence: 0.9 }); }) }) });
+    const id = await openScan(1);
+    void useOcrStore.getState().scanSource(id); await flush();
+    expect(useOcrStore.getState().scannedPageEntries().length).toBe(1);
+    useDocumentStore.setState({ sources: new Map(), pages: [] }); await flush();
+    finish(); await flush();
+    expect(Object.keys(useOcrStore.getState().pages).filter((k) => k.startsWith(id))).toEqual([]);
+    useDocumentStore.setState({ ...useDocumentStore.getState(), pages: [{ id: "pg-x", sourceId: id, sourcePageIndex: 0, rotation: 0 as const }] });
+    expect(useOcrStore.getState().scannedPageEntries()).toEqual([]);
+    useDocumentStore.setState({ pages: [] });
+  });
+  it("clearAll re-scans open sources so the page is recognized again", async () => {
+    let runs = 0;
+    configureOcrDeps({ tesseract: () => ({ ...engine(["again"]), recognize: async () => { runs++; return { ...linesToOcrPage(["again"], { widthPt: 300, heightPt: 400 }), engine: "tesseract", confidence: 0.9 }; } }) });
+    const id = await openScan(1);
+    await useOcrStore.getState().scanSource(id); await flush();
+    expect(runs).toBe(1);
+    await useOcrStore.getState().clearAll(); await flush();
+    expect(runs).toBe(2);
+    expect(useOcrStore.getState().pages[pageKey(id, 0)]).toMatchObject({ state: "done", engine: "tesseract" });
+    expect((await store.get(`h${n - 1}`, 0))?.lines[0].text).toBe("again");
+    expect(useOcrStore.getState().scannedPageEntries()).toEqual([`pg-${n - 1}-0`]);
+  });
+  it("deep OCR on an unscanned explicit page checks native text first", async () => {
+    configureOcrDeps({ hasText: async () => true });
+    const id = await openScan(1);
+    await useOcrStore.getState().scanSource(id); await flush();
+    await useOcrStore.getState().deepOcr([`pg-${n - 1}-0`]); await flush();
+    expect(useOcrStore.getState().pages[pageKey(id, 0)]).toBeUndefined();
+    configureOcrDeps({ hasText: async () => false });
+    useOcrStore.getState().cancelAll();
+    await useOcrStore.getState().deepOcr([`pg-${n - 1}-0`]); await flush();
+    expect(useOcrStore.getState().pages[pageKey(id, 0)]).toMatchObject({ state: "done", engine: "claude" });
+  });
+  it("drops a late Tesseract result when the page already holds a Deep OCR result", async () => {
+    let finish!: () => void;
+    configureOcrDeps({ tesseract: () => ({ ...engine(["x"]), recognize: () => new Promise((res) => { finish = () => res({ ...linesToOcrPage(["late tess"], { widthPt: 300, heightPt: 400 }), engine: "tesseract", confidence: 0.9 }); }) }) });
+    const id = await openScan(1);
+    void useOcrStore.getState().scanSource(id); await flush();
+    await useOcrStore.getState().deepOcr([`pg-${n - 1}-0`]); await flush();
+    expect(useOcrStore.getState().pages[pageKey(id, 0)]).toMatchObject({ state: "done", engine: "claude" });
+    finish(); await flush();
+    expect(useOcrStore.getState().pages[pageKey(id, 0)]).toMatchObject({ state: "done", engine: "claude" });
+    expect((await store.get(`h${n - 1}`, 0))?.lines[0].text).toBe("deep text");
   });
 });
