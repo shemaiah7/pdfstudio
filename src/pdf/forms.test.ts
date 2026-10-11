@@ -202,7 +202,7 @@ describe("final fixes: export robustness", () => {
   it("buildDocument warns with the names of fields that could not be saved", async () => {
     const s = await modified((f) => f.getTextField("name").setMaxLength(8), "m3");
     const warnings: string[] = [];
-    const out = await buildDocument(new Map([["m3", s]]), [{ id: "p0", sourceId: "m3", sourcePageIndex: 0, rotation: 0 }], [], [], new Map([["m3", new Map([["name", "0123456789"], ["agree", true]])]]), (m) => warnings.push(m));
+    const out = await buildDocument(new Map([["m3", s]]), [{ id: "p0", sourceId: "m3", sourcePageIndex: 0, rotation: 0 }], [], [], new Map([["m3", new Map<string, string | boolean | string[]>([["name", "0123456789"], ["agree", true]])]]), (m) => warnings.push(m));
     expect(warnings).toEqual(["Could not save fields: name"]);
     expect((await PDFDocument.load(out)).getForm().getCheckBox("agree").isChecked()).toBe(true);
   });
