@@ -1,0 +1,1 @@
+export const OCR = `Transcribe all text on this page image exactly as written, line by line, top to bottom, left to right. Preserve table rows as single lines with cells separated by " | ". Transcribe handwriting as faithfully as possible; write [illegible] for words you cannot read. Output only the transcription, one line per text line, no commentary.`;

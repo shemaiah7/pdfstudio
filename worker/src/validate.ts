@@ -46,3 +46,17 @@ export function validateAiBody(input: unknown): Validation {
   if (total > MAX_DOC_CHARS) return { ok: false, status: 413, error: "document_too_large", maxChars: MAX_DOC_CHARS };
   return { ok: true, body: parsed.data };
 }
+
+export const OCR_MAX_PAGES = 20;
+export const OCR_MAX_IMAGE_CHARS = 5_400_000;
+const ocrSchema = z.object({
+  task: z.literal("ocr"),
+  pages: z.array(z.object({ page: z.number().int().positive(), image: z.string().min(1) })).min(1).max(OCR_MAX_PAGES),
+});
+export type OcrBody = z.infer<typeof ocrSchema>;
+export function validateOcrBody(input: unknown): { ok: true; body: OcrBody } | { ok: false; status: 400 | 413; error: string } {
+  const parsed = ocrSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, status: 400, error: "invalid_body" };
+  if (parsed.data.pages.some((p) => p.image.length > OCR_MAX_IMAGE_CHARS)) return { ok: false, status: 413, error: "image_too_large" };
+  return { ok: true, body: parsed.data };
+}

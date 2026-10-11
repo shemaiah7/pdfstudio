@@ -18,7 +18,7 @@ async function readState(kv: KVNamespace, key: string): Promise<QuotaState> {
   return (await kv.get<QuotaState>(key, "json")) ?? { requests: 0, tokens: 0 };
 }
 
-export async function checkQuota(kv: KVNamespace, vid: string, now: number = Date.now() / 1000, estimateTokens = 0): Promise<QuotaCheck> {
+export async function checkQuota(kv: KVNamespace, vid: string, now: number = Date.now() / 1000, estimateTokens = 0, burstLimit = BURST_REQUESTS): Promise<QuotaCheck> {
   const day = utcDay(now);
   const resetAt = nextUtcMidnight(now);
   const minute = Math.floor(now / 60);
@@ -29,7 +29,7 @@ export async function checkQuota(kv: KVNamespace, vid: string, now: number = Dat
 
   const burstKey = `b:${vid}:${minute}`;
   const burst = Number((await kv.get(burstKey)) ?? "0");
-  if (burst >= BURST_REQUESTS) return { ok: false, reason: "too_fast", resetAt: (minute + 1) * 60 };
+  if (burst >= burstLimit) return { ok: false, reason: "too_fast", resetAt: (minute + 1) * 60 };
   try {
     await kv.put(burstKey, String(burst + 1), { expirationTtl: 120 });
   } catch {

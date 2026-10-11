@@ -2,12 +2,14 @@ import type { Env } from "./env";
 import { corsHeaders, json, resolveOrigin } from "./cors";
 import { sessionHandler } from "./handlers/session";
 import { aiHandler } from "./handlers/ai";
+import { ocrHandler } from "./handlers/ocr";
 
 export type Handler = (request: Request, env: Env, ctx: ExecutionContext) => Promise<Response>;
 
 const routes: Record<string, Handler> = {
   "/session": (r, env) => sessionHandler(r, env),
   "/ai": (r, env, ctx) => aiHandler(r, env, ctx),
+  "/ocr": (r, env, ctx) => ocrHandler(r, env, ctx),
 };
 
 export default {
