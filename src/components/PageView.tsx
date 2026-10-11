@@ -55,7 +55,7 @@ export default function PageView({ scale }: Props) {
   }, []);
 
   /** Resolves the block (or existing edit) under a pointer position; null when there is nothing editable. */
-  const resolveBlock = async (entry: PageEntry, source: SourceFile, pageEl: HTMLElement, clientX: number, clientY: number): Promise<OpenBlock | { empty: true } | { narrow: true } | null> => {
+  const resolveBlock = async (entry: PageEntry, source: SourceFile, pageEl: HTMLElement, clientX: number, clientY: number, sample = false): Promise<OpenBlock | { empty: true } | { narrow: true } | null> => {
     const meta = heights[entry.id];
     if (!meta) return null;
     const pt = pointAt(pageEl, clientX, clientY, scale, meta.heightPt);
@@ -79,7 +79,7 @@ export default function PageView({ scale }: Props) {
       while (c < line.text.length && line.x + measure(line.text.slice(0, c + 1), block.fontSize) < pt.x) c++;
       caretOffset += c;
     }
-    const canvas = pageEl.querySelector("canvas");
+    const canvas = sample ? pageEl.querySelector("canvas") : null;
     const colors = canvas ? sampleBlockColors(canvas, block.box, scale, meta.heightPt) : { background: WHITE, text: [0, 0, 0] as [number, number, number] };
     return { entry, source, block, font, colors, blockKey: blockKeyOf(source.id, entry.sourcePageIndex, block), caretOffset };
   };
@@ -89,7 +89,7 @@ export default function PageView({ scale }: Props) {
     const { setMessage } = useToolsStore.getState();
     if ((meta.pageRotate + entry.rotation) % 360 !== 0) { setMessage("Rotate the page back to its original orientation to edit text."); return; }
     const pageEl = e.currentTarget, cx = e.clientX, cy = e.clientY;
-    const r = await resolveBlock(entry, source, pageEl, cx, cy);
+    const r = await resolveBlock(entry, source, pageEl, cx, cy, true);
     if (!r) return;
     if ("empty" in r) setMessage("No text here.");
     else if ("narrow" in r) setMessage("Block too narrow to edit.");

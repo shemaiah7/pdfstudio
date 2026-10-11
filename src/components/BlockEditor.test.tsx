@@ -3,7 +3,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { render, screen, fireEvent, waitFor, cleanup } from "@testing-library/react";
 import BlockEditor from "./BlockEditor";
 import { useDocumentStore } from "../store/document";
-import type { OpenBlock } from "../edit/pageBlocks";
+import { blockFromEdit, type OpenBlock } from "../edit/pageBlocks";
 
 vi.mock("../pdf/metrics", () => ({ measureFor: async () => (t: string, s: number) => t.length * s * 0.5 }));
 
@@ -54,9 +54,23 @@ describe("BlockEditor", () => {
     render(<BlockEditor open={open({ existing: useDocumentStore.getState().edits[0], font: "times" })} scale={1} heightPt={400} onClose={vi.fn()} />);
     const box = await screen.findByTestId("block-editor");
     expect(box.textContent).toBe("Old");
+    const stored = { x: 10, y: 90, width: 120, height: 36 };
+    expect(blockFromEdit({ ...useDocumentStore.getState().edits[0], region: stored }).box).toEqual(stored);
     box.textContent = "New"; fireEvent.input(box); fireEvent.keyDown(box, { key: "Enter" });
     await waitFor(() => expect(useDocumentStore.getState().edits[0].text).toBe("New"));
     expect(useDocumentStore.getState().edits).toHaveLength(1);
+  });
+  it("covers the whole original region when a 3-line block shrinks to one line", async () => {
+    const tall = { ...block, box: { x: 10, y: 100, width: 100, height: 36 }, text: "a\nb\nc" };
+    render(<BlockEditor open={open({ block: tall })} scale={1} heightPt={400} onClose={vi.fn()} />);
+    const box = await screen.findByTestId("block-editor");
+    box.textContent = "one"; fireEvent.input(box); fireEvent.keyDown(box, { key: "Enter" });
+    await waitFor(() => expect(useDocumentStore.getState().edits).toHaveLength(1));
+    const e = useDocumentStore.getState().edits[0];
+    expect(e.region).toEqual(tall.box);
+    expect(Math.min(...e.boxes.map((b) => b.y))).toBeCloseTo(100);
+    expect(Math.max(...e.boxes.map((b) => b.y + b.height))).toBeGreaterThanOrEqual(134);
+    expect(blockFromEdit(e).box).toEqual(tall.box);
   });
   it("warns about characters outside WinAnsi", async () => {
     render(<BlockEditor open={open()} scale={1} heightPt={400} onClose={vi.fn()} />);

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { useDocumentStore } from "../store/document";
 import * as pdfjs from "pdfjs-dist";
@@ -43,11 +43,11 @@ export default function TextLayer({ source, entry, scale }: Props) {
   const heightPtRef = useRef(0);
   const ocrState = useOcrStore((s) => s.pages[pageKey(source.id, entry.sourcePageIndex)]);
   const editsRef = useRef(pageEdits);
-  const applyHidden = () => {
+  const applyHidden = useCallback(() => {
     const el = ref.current;
     if (el && heightPtRef.current) hideCoveredSpans(el, editsRef.current.flatMap((e) => e.boxes), scale, heightPtRef.current);
-  };
-  useEffect(() => { editsRef.current = pageEdits; applyHidden(); }, [pageEdits]); // eslint-disable-line react-hooks/exhaustive-deps -- applyHidden reads refs
+  }, [scale]);
+  useEffect(() => { editsRef.current = pageEdits; applyHidden(); }, [pageEdits, applyHidden]);
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
@@ -77,6 +77,6 @@ export default function TextLayer({ source, entry, scale }: Props) {
       applyHidden();
     })().catch((err) => console.error("text layer failed", err));
     return () => { cancelled = true; layer?.cancel(); };
-  }, [source, entry.sourcePageIndex, entry.rotation, scale, ocrState?.state, ocrState?.engine]);
+  }, [source, entry.sourcePageIndex, entry.rotation, scale, ocrState?.state, ocrState?.engine, applyHidden]);
   return <div ref={ref} className="textLayer" />;
 }

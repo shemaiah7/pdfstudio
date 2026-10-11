@@ -24,5 +24,6 @@ export async function pageBlocks(source: SourceFile, pageIndex: number): Promise
 }
 export function blockFromEdit(edit: Edit): TextBlock {
   const region = edit.boxes.reduce((r, b) => ({ x: Math.min(r.x, b.x), y: Math.min(r.y, b.y), right: Math.max(r.right, b.x + b.width), top: Math.max(r.top, b.y + b.height) }), { x: Infinity, y: Infinity, right: -Infinity, top: -Infinity });
-  return { lines: [], box: { x: region.x, y: region.y, width: region.right - region.x, height: region.top - region.y }, lineHeight: edit.lineHeight ?? edit.fontSize * 1.2, fontSize: edit.fontSize, fontName: edit.font, text: edit.text, firstLineIndex: -1 };
+  const bounds = { x: region.x, y: region.y, width: region.right - region.x, height: region.top - region.y };
+  return { lines: [], box: edit.region ?? bounds, lineHeight: edit.lineHeight ?? edit.fontSize * 1.2, fontSize: edit.fontSize, fontName: edit.font, text: edit.text, firstLineIndex: -1 };
 }

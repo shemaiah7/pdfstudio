@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { layoutBlock } from "./layout";
+import { layoutBlock, coverBoxes } from "./layout";
 const measure = (t: string, s: number) => t.length * s * 0.5;
 
 describe("layoutBlock", () => {
@@ -20,5 +20,21 @@ describe("layoutBlock", () => {
     expect(l.lines).toHaveLength(4);
     expect(l.overflowLines).toBe(1);
     expect(l.height).toBeCloseTo(48);
+  });
+});
+
+describe("coverBoxes", () => {
+  const region = { x: 10, y: 100, width: 100, height: 36 };
+  it("covers the whole region when the text shrinks", () => {
+    const boxes = coverBoxes(layoutBlock("one", region, 10, 12, measure), region);
+    expect(boxes).toHaveLength(2);
+    expect(Math.min(...boxes.map((b) => b.y))).toBeCloseTo(100);
+    expect(Math.max(...boxes.map((b) => b.y + b.height))).toBeGreaterThanOrEqual(136 - 2);
+    const sorted = [...boxes].sort((a, b) => a.y - b.y);
+    expect(sorted[0].y + sorted[0].height).toBeGreaterThanOrEqual(sorted[1].y - 1e-9);
+  });
+  it("returns only the layout boxes when the text fills or exceeds the region", () => {
+    const l = layoutBlock("a\nb\nc\nd", region, 10, 12, measure);
+    expect(coverBoxes(l, region)).toEqual(l.boxes);
   });
 });

@@ -4,7 +4,7 @@ import { applyEditToOcr } from "../store/ocr";
 import { measureFor } from "../pdf/metrics";
 import { FONT_CSS } from "../pdf/fonts";
 import { toWinAnsi } from "../pdf/winansi";
-import { layoutBlock } from "../edit/layout";
+import { layoutBlock, coverBoxes } from "../edit/layout";
 import type { Measure } from "../pdf/layout";
 import type { OpenBlock } from "../edit/pageBlocks";
 
@@ -39,7 +39,7 @@ export default function BlockEditor({ open, scale, heightPt, onClose }: { open: 
     if (clean === original || clean.trim() === "") { onClose(); return; }
     const l = layoutBlock(clean, block.box, block.fontSize, block.lineHeight, measure);
     const source = block.fontName === "ocr" || open.existing?.source === "ocr" ? "ocr" : "native";
-    const edit = { pageEntryId: open.entry.id, boxes: l.boxes, text: clean, fontSize: block.fontSize, font, color: colors.text, background: colors.background, lineHeight: block.lineHeight, source, blockKey: open.blockKey } as const;
+    const edit = { pageEntryId: open.entry.id, boxes: coverBoxes(l, block.box), region: block.box, text: clean, fontSize: block.fontSize, font, color: colors.text, background: colors.background, lineHeight: block.lineHeight, source, blockKey: open.blockKey } as const;
     const id = useDocumentStore.getState().addEdit(edit);
     if (source === "ocr") await applyEditToOcr(open.entry.sourceId, open.entry.sourcePageIndex, { ...edit, id }, measure);
     onClose();
