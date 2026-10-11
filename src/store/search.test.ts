@@ -60,6 +60,14 @@ describe("search store", () => {
     const passages = await retrievePassages("warfarin", 12);
     expect(passages).toEqual([{ page: 1, text: "hello warfarin" }]);
   });
+  it("retrievePassages clamps passage text to 4000 characters", async () => {
+    await useSearchStore.getState().enable();
+    await vi.waitFor(() => expect(useSearchStore.getState().docs.h1?.status).toBe("indexed"));
+    docs[0].chunks[0].text = "x".repeat(5000);
+    await useSearchStore.getState().refreshIndex();
+    const passages = await retrievePassages("warfarin", 12);
+    expect(passages?.[0].text).toHaveLength(4000);
+  });
   it("retrievePassages returns null when the model is not ready", async () => {
     expect(await retrievePassages("x", 12)).toBeNull();
   });

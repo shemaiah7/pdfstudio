@@ -191,4 +191,27 @@ describe("ask with retrieval", () => {
     expect(bodies[0].retrieved).toBeUndefined();
     expect(useAiStore.getState().chat.passages).toBeNull();
   });
+  it("falls back to the whole document when retrieval rejects", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.doMock("./search", () => ({ retrievePassages: async () => { throw new Error("embed failed"); } }));
+    const { useAiStore } = await import("./ai");
+    const bodies: { retrieved?: boolean }[] = [];
+    useAiStore.setState({ client: fakeClient((b) => bodies.push(b)), useSearch: true, scope: "all", chat: { turns: [], draft: "why?", status: "idle", error: null, passages: null } });
+    await useAiStore.getState().run("ask");
+    expect(bodies[0].retrieved).toBeUndefined();
+    expect(useAiStore.getState().chat.status).toBe("done");
+    expect(warn).toHaveBeenCalledTimes(1);
+    warn.mockRestore();
+  });
+  it("skips retrieval when scope is selected", async () => {
+    const retrieve = vi.fn(async () => [{ page: 2, text: "x" }]);
+    vi.doMock("./search", () => ({ retrievePassages: retrieve }));
+    const { useAiStore } = await import("./ai");
+    const bodies: { retrieved?: boolean }[] = [];
+    useAiStore.setState({ client: fakeClient((b) => bodies.push(b)), useSearch: true, scope: "selected", chat: { turns: [], draft: "why?", status: "idle", error: null, passages: null } });
+    await useAiStore.getState().run("ask");
+    expect(retrieve).not.toHaveBeenCalled();
+    expect(bodies[0].retrieved).toBeUndefined();
+    useAiStore.setState({ scope: "all" });
+  });
 });

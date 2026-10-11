@@ -227,9 +227,9 @@ export async function retrievePassages(question: string, limit = ASK_PASSAGES): 
     const sid = Object.entries(s.hashBySource).find(([id, hash]) => hash === h.hash && doc.sources.has(id))?.[0];
     const idx = doc.pages.findIndex((p) => p.sourceId === sid && p.sourcePageIndex === h.page);
     const chunk = index.find((d) => d.hash === h.hash)?.chunks[h.chunkIndex];
-    if (idx >= 0 && chunk) out.push({ page: idx + 1, text: chunk.text });
+    if (idx >= 0 && chunk) out.push({ page: idx + 1, text: chunk.text.slice(0, 4000) });
   }
-  return out;
+  return out.slice(0, limit);
 }
 
 useDocumentStore.subscribe((s, prev) => {

@@ -134,13 +134,17 @@ async function runTask(task: AiRequest["task"], client: AiClient) {
       document = document.filter((d) => d.page >= p - 1 && d.page <= p + 1);
     }
     let retrieved = false;
-    if (task === "ask" && get().useSearch) {
-      const { retrievePassages } = await import("./search");
-      const q0 = get().chat.draft.trim();
-      const passages = q0 ? await retrievePassages(q0) : null;
+    const q = task === "ask" ? get().chat.draft.trim() : "";
+    if (task === "ask" && get().useSearch && scope === "all") {
+      let passages: { page: number; text: string }[] | null = null;
+      try {
+        const { retrievePassages } = await import("./search");
+        passages = q ? await retrievePassages(q) : null;
+      } catch (e) { console.warn("Retrieval failed; sending the whole document", e); }
       if (stale()) return;
       if (passages && passages.length > 0) { document = passages; retrieved = true; }
       else if (passages && passages.length === 0 && document.reduce((n, d) => n + d.text.length, 0) > MAX_DOC_CHARS) {
+        set((s) => ({ chat: { ...s.chat, passages: null } }));
         setTask({ status: "error", error: "Nothing in the open documents matched the question" }); return;
       }
     }
@@ -153,7 +157,6 @@ async function runTask(task: AiRequest["task"], client: AiClient) {
 
     const body: AiRequest = { task, document };
     if (task === "ask") {
-      const q = get().chat.draft.trim();
       if (!q) return;
       body.question = q;
       if (retrieved) body.retrieved = true;
