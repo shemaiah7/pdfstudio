@@ -1,4 +1,5 @@
 import "fake-indexeddb/auto";
+import { openDB } from "idb";
 import { describe, it, expect, beforeEach } from "vitest";
 import { createLibrary, openLibraryDb, sha256, type LibraryRecord } from "./library";
 import { DIMS, MODEL_TAG } from "./constants";
@@ -99,5 +100,23 @@ describe("library", () => {
     const list = await lib.list();
     expect(list.find((r) => r.hash === "bad")?.stale).toBe(true);
     expect(list.find((r) => r.hash === "ok")?.stale).toBe(false);
+  });
+  it("upgrades a v1 database that only has the documents store", async () => {
+    const name = `v1-${Math.random()}`;
+    const old = await openDB(name, 1, { upgrade: (d) => { d.createObjectStore("documents", { keyPath: "hash" }); } });
+    old.close();
+    const l = createLibrary(name);
+    await l.put(rec("a"));
+    expect((await l.list()).map((r) => r.hash)).toEqual(["a"]);
+    expect(l.persistent).toBe(true);
+  });
+  it("clear resets lastWriteFailed", async () => {
+    const name = `cl-${Math.random()}`;
+    const flags = { failPut: true, getAllStores: [] as string[] };
+    const l = createLibrary(name, proxied(name, flags));
+    await l.put(rec("b"));
+    expect(l.lastWriteFailed).toBe(true);
+    await l.clear();
+    expect(l.lastWriteFailed).toBe(false);
   });
 });

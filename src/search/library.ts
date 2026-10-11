@@ -15,10 +15,11 @@ const SUMMARIES = "summaries";
 type StoredSummary = Omit<LibrarySummary, "stale"> & { vectorLength: number };
 
 export function openLibraryDb(dbName: string): Promise<IDBPDatabase> {
-  return openDB(dbName, 1, {
+  return openDB(dbName, 2, {
     upgrade(d) {
-      d.createObjectStore(STORE, { keyPath: "hash" });
-      d.createObjectStore(SUMMARIES, { keyPath: "hash" });
+      for (const name of [STORE, SUMMARIES]) {
+        if (!d.objectStoreNames.contains(name)) d.createObjectStore(name, { keyPath: "hash" });
+      }
     },
   });
 }
@@ -107,6 +108,7 @@ export function createLibrary(dbName = "pdfstudio-search", open?: Opener) {
       try {
         const tx = d.transaction([STORE, SUMMARIES], "readwrite");
         await Promise.all([tx.objectStore(STORE).clear(), tx.objectStore(SUMMARIES).clear(), tx.done]);
+        state.lastWriteFailed = false;
       } catch { state.lastWriteFailed = true; }
     },
     async estimateUsage(): Promise<number | null> {
