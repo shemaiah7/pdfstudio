@@ -7,7 +7,7 @@ export interface OcrJob { sourceId: string; pageIndex: number; engine: OcrEngine
 export interface OcrQueueEvents { onState(job: OcrJob, state: OcrJobState, extra?: { page?: OcrPage; error?: string }): void }
 export const OCR_TIMEOUT_MS = 60_000;
 
-interface Entry { job: OcrJob; controller: AbortController; running: boolean }
+interface Entry { job: OcrJob; controller: AbortController; running: boolean; cancelled: boolean; timedOut: boolean; timer?: ReturnType<typeof setTimeout> }
 const keyOf = (j: OcrJob) => `${j.sourceId}:${j.pageIndex}:${j.engine}`;
 
 export function createOcrQueue(run: (job: OcrJob, signal: AbortSignal) => Promise<OcrPage>, events: OcrQueueEvents, opts: { timeoutMs?: number; isEmpty?: (p: OcrPage) => boolean } = {}) {
@@ -16,27 +16,37 @@ export function createOcrQueue(run: (job: OcrJob, signal: AbortSignal) => Promis
   const lanes = new Map<OcrEngineName, Entry[]>();
   const keys = new Set<string>();
 
+  const remove = (engine: OcrEngineName, e: Entry) => {
+    const l = lanes.get(engine);
+    const i = l ? l.indexOf(e) : -1;
+    if (l && i >= 0) l.splice(i, 1);
+    keys.delete(keyOf(e.job));
+  };
+
   const pump = (engine: OcrEngineName) => {
     const lane = lanes.get(engine) ?? [];
     const head = lane[0];
     if (!head || head.running) return;
     head.running = true;
     events.onState(head.job, "running");
-    const timer = setTimeout(() => head.controller.abort(new Error("timeout")), timeoutMs);
-    run(head.job, head.controller.signal).then(
-      (page) => { if (!head.controller.signal.aborted) events.onState(head.job, isEmpty(page) ? "empty" : "done", { page }); },
-      (err) => {
-        const reason = head.controller.signal.reason;
-        if (head.controller.signal.aborted && !(reason instanceof Error && reason.message === "timeout")) return; // cancelled: no state
-        events.onState(head.job, "failed", { error: reason instanceof Error && reason.message === "timeout" ? "timeout" : err instanceof Error ? err.message : String(err) });
-      },
-    ).finally(() => {
-      clearTimeout(timer);
-      const l = lanes.get(engine) ?? [];
-      if (l[0] === head) l.shift();
-      keys.delete(keyOf(head.job));
-      pump(engine);
+    const signal = head.controller.signal;
+    // Rejects on abort so a run that ignores the signal cannot wedge the lane or defeat the timeout.
+    const aborted = new Promise<never>((_, rej) => {
+      signal.addEventListener("abort", () => rej(signal.reason), { once: true });
     });
+    head.timer = setTimeout(() => { head.timedOut = true; head.controller.abort(new Error("timeout")); }, timeoutMs);
+    let attempt: Promise<OcrPage>;
+    try { attempt = run(head.job, signal); } catch (err) { attempt = Promise.reject(err); }
+    const finish = (state: OcrJobState, extra?: { page?: OcrPage; error?: string }) => {
+      clearTimeout(head.timer);
+      if (head.cancelled) return; // cancelSource already removed it and advanced the lane
+      remove(engine, head); // before emitting, so a handler may re-enqueue the same job
+      try { events.onState(head.job, state, extra); } finally { pump(engine); }
+    };
+    Promise.race([attempt, aborted]).then(
+      (page) => finish(isEmpty(page) ? "empty" : "done", { page }),
+      (err) => finish("failed", { error: head.timedOut ? "timeout" : err instanceof Error ? err.message : String(err) }),
+    );
   };
 
   return {
@@ -46,7 +56,7 @@ export function createOcrQueue(run: (job: OcrJob, signal: AbortSignal) => Promis
       keys.add(k);
       const lane = lanes.get(job.engine) ?? [];
       lanes.set(job.engine, lane);
-      lane.push({ job, controller: new AbortController(), running: false });
+      lane.push({ job, controller: new AbortController(), running: false, cancelled: false, timedOut: false });
       events.onState(job, "queued");
       queueMicrotask(() => pump(job.engine));
     },
@@ -54,8 +64,12 @@ export function createOcrQueue(run: (job: OcrJob, signal: AbortSignal) => Promis
       for (const [engine, lane] of lanes) {
         for (const e of [...lane]) {
           if (e.job.sourceId !== sourceId) continue;
-          if (e.running) e.controller.abort(new Error("cancelled"));
-          else { lane.splice(lane.indexOf(e), 1); keys.delete(keyOf(e.job)); }
+          if (e.running) {
+            e.cancelled = true;
+            clearTimeout(e.timer);
+            e.controller.abort(new Error("cancelled"));
+          }
+          remove(engine, e);
         }
         pump(engine);
       }

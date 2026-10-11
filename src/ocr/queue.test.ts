@@ -65,4 +65,68 @@ describe("createOcrQueue", () => {
     await tick(); await tick();
     expect(runs).toBe(1);
   });
+  it("times out a run that ignores the signal, then runs the next job", async () => {
+    vi.useFakeTimers();
+    try {
+      const states: [number, OcrJobState, string | undefined][] = [];
+      const q = createOcrQueue((j) => (j.pageIndex === 0 ? new Promise(() => {}) : Promise.resolve(page("ok"))), { onState: (j, s, e) => states.push([j.pageIndex, s, e?.error]) }, { timeoutMs: 1000 });
+      q.enqueue(job(0)); q.enqueue(job(1));
+      await vi.advanceTimersByTimeAsync(1100);
+      expect(states).toContainEqual([0, "failed", "timeout"]);
+      expect(states).toContainEqual([1, "done", undefined]);
+      expect(q.pending).toBe(0);
+    } finally { vi.useRealTimers(); }
+  });
+  it("reports timeout even when the run resolves late after the abort", async () => {
+    vi.useFakeTimers();
+    try {
+      const d = deferred<ReturnType<typeof page>>();
+      const states: [OcrJobState, string | undefined][] = [];
+      const q = createOcrQueue(() => d.promise, { onState: (_j, s, e) => states.push([s, e?.error]) }, { timeoutMs: 1000 });
+      q.enqueue(job(0));
+      await vi.advanceTimersByTimeAsync(1100);
+      d.resolve(page("late")); await vi.advanceTimersByTimeAsync(10);
+      expect(states.filter(([s]) => s !== "queued" && s !== "running")).toEqual([["failed", "timeout"]]);
+    } finally { vi.useRealTimers(); }
+  });
+  it("allows immediate re-enqueue after cancelSource and ignores the late settle", async () => {
+    const ds = [deferred<ReturnType<typeof page>>(), deferred<ReturnType<typeof page>>()];
+    let runs = 0;
+    const states: OcrJobState[] = [];
+    const q = createOcrQueue(() => ds[runs++].promise, { onState: (_j, s) => states.push(s) });
+    q.enqueue(job(0));
+    await tick();
+    q.cancelSource("s1");
+    q.enqueue(job(0));
+    await tick();
+    expect(runs).toBe(2);
+    ds[0].resolve(page("late")); await tick(); await tick();
+    expect(states).toEqual(["queued", "running", "queued", "running"]);
+    expect(q.pending).toBe(1);
+    ds[1].resolve(page("x")); await tick(); await tick();
+    expect(states.at(-1)).toBe("done");
+    expect(q.pending).toBe(0);
+  });
+  it("lets an onState(failed) handler re-enqueue the same job", async () => {
+    let runs = 0;
+    const states: OcrJobState[] = [];
+    const q = createOcrQueue(async () => { if (runs++ === 0) throw new Error("boom"); return page("x"); }, {
+      onState: (j, s) => { states.push(s); if (s === "failed") q.enqueue(j); },
+    });
+    q.enqueue(job(0));
+    await tick(); await tick(); await tick();
+    expect(runs).toBe(2);
+    expect(states.at(-1)).toBe("done");
+  });
+  it("emits nothing when a cancelled run resolves late", async () => {
+    const d = deferred<ReturnType<typeof page>>();
+    const states: OcrJobState[] = [];
+    const q = createOcrQueue(() => d.promise, { onState: (_j, s) => states.push(s) });
+    q.enqueue(job(0));
+    await tick();
+    q.cancelSource("s1");
+    d.resolve(page("late")); await tick(); await tick();
+    expect(states).toEqual(["queued", "running"]);
+    expect(q.pending).toBe(0);
+  });
 });
