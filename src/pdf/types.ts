@@ -17,3 +17,4 @@ export type Annotation = HighlightAnn | NoteAnn | InkAnn | ShapeAnn | FreeTextAn
 export type FormValue = string | boolean | string[];
 export type FormValues = Map<SourceId, Map<string, FormValue>>;
 export type NewAnnotation = Annotation extends infer A ? (A extends unknown ? Omit<A, "id"> : never) : never;
+export type AnnotationPatch = Annotation extends infer A ? (A extends unknown ? Partial<Omit<A, "id" | "kind" | "pageEntryId">> : never) : never;

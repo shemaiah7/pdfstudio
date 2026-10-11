@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { countPages, addRotation } from "../pdf/pageOps";
-import type { Annotation, Edit, FormValue, FormValues, NewAnnotation, PageEntry, SourceFile, SourceId } from "../pdf/types";
+import type { Annotation, AnnotationPatch, Edit, FormValue, FormValues, NewAnnotation, PageEntry, SourceFile, SourceId } from "../pdf/types";
 
 export const SIZE_WARNING_BYTES = 100 * 1024 * 1024;
 
@@ -35,7 +35,7 @@ export interface DocumentState {
   addEdit(e: Omit<Edit, "id">): string;
   removeEdit(id: string): void;
   addAnnotation(a: NewAnnotation): string;
-  updateAnnotation(id: string, patch: Partial<Annotation>): void;
+  updateAnnotation(id: string, patch: AnnotationPatch): void;
   removeAnnotation(id: string): void;
   setFormValue(sourceId: SourceId, field: string, value: FormValue): void;
   clearForm(sourceId: SourceId): void;
@@ -51,6 +51,9 @@ export interface DocumentState {
   canRedo(): boolean;
   reset(): void;
 }
+
+const keepSelection = (id: string | null, annotations: Annotation[]) =>
+  id && annotations.some((a) => a.id === id) ? id : null;
 
 let counter = 0;
 const nextId = (prefix: string) => `${prefix}-${++counter}`;
@@ -74,12 +77,14 @@ function serializeFormValues(m: FormValues | null): string {
 }
 
 function sameFormValues(a: FormValues | null, b: FormValues): boolean {
+  if (a === b) return true;
   return a !== null && serializeFormValues(a) === serializeFormValues(b);
 }
 
 function sameAnnotations(a: Annotation[] | null, b: Annotation[]): boolean {
+  if (a === b) return true;
   if (!a || a.length !== b.length) return false;
-  return a.every((x, i) => x.id === b[i].id) && JSON.stringify(a) === JSON.stringify(b);
+  return a.every((x, i) => x === b[i] || (x.id === b[i].id && JSON.stringify(x) === JSON.stringify(b[i])));
 }
 
 async function loadSources(
@@ -201,10 +206,12 @@ export const useDocumentStore = create<DocumentState>((set, get) => {
     },
 
     updateAnnotation(id, patch) {
+      if (!get().annotations.some((a) => a.id === id)) return;
       commit({ annotations: get().annotations.map((a) => (a.id === id ? ({ ...a, ...patch, id } as Annotation) : a)) });
     },
 
     removeAnnotation(id) {
+      if (!get().annotations.some((a) => a.id === id)) return;
       commit({ annotations: get().annotations.filter((a) => a.id !== id) });
       if (get().selectedAnnotationId === id) set({ selectedAnnotationId: null });
     },
@@ -229,7 +236,7 @@ export const useDocumentStore = create<DocumentState>((set, get) => {
       set((s) => {
         if (s.past.length === 0) return {};
         const previous = s.past[s.past.length - 1];
-        return { ...previous, past: s.past.slice(0, -1), future: [snap(s), ...s.future] };
+        return { ...previous, selectedAnnotationId: keepSelection(s.selectedAnnotationId, previous.annotations), past: s.past.slice(0, -1), future: [snap(s), ...s.future] };
       });
     },
 
@@ -237,7 +244,7 @@ export const useDocumentStore = create<DocumentState>((set, get) => {
       set((s) => {
         if (s.future.length === 0) return {};
         const [next, ...rest] = s.future;
-        return { ...next, past: [...s.past, snap(s)], future: rest };
+        return { ...next, selectedAnnotationId: keepSelection(s.selectedAnnotationId, next.annotations), past: [...s.past, snap(s)], future: rest };
       });
     },
 

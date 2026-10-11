@@ -235,3 +235,45 @@ describe("form values", () => {
     expect(s().formValues.get(src)?.get("name")).toBe("Alice");
   });
 });
+
+describe("annotation store hardening", () => {
+  beforeEach(async () => { await s().openFiles([three()]); });
+  const mk = () => ({ kind: "note" as const, pageEntryId: s().pages[0].id, color: [0, 0, 0] as [number, number, number], x: 1, y: 2, text: "t" });
+
+  it("updateAnnotation/removeAnnotation on an unknown id do not add history", () => {
+    s().updateAnnotation("nope", { color: [1, 0, 0] });
+    expect(s().canUndo()).toBe(false);
+    s().addAnnotation(mk());
+    const n = s().past.length;
+    s().removeAnnotation("nope");
+    s().updateAnnotation("nope", { color: [1, 0, 0] });
+    expect(s().past.length).toBe(n);
+  });
+
+  it("undo clears a selection that no longer exists", () => {
+    const id = s().addAnnotation(mk());
+    s().selectAnnotation(id);
+    s().undo();
+    expect(s().selectedAnnotationId).toBeNull();
+  });
+
+  it("redo clears a selection not among restored annotations", () => {
+    const id = s().addAnnotation(mk());
+    s().undo();
+    s().selectAnnotation(id);
+    s().redo();
+    expect(s().selectedAnnotationId).toBe(id);
+    s().selectAnnotation("ghost");
+    s().undo();
+    expect(s().selectedAnnotationId).toBeNull();
+  });
+
+  it("isDirty skips JSON work when references are equal", () => {
+    s().addAnnotation(mk());
+    s().markClean();
+    const spy = vi.spyOn(JSON, "stringify");
+    expect(s().isDirty()).toBe(false);
+    expect(spy).not.toHaveBeenCalled();
+    spy.mockRestore();
+  });
+});
