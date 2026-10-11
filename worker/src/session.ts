@@ -35,7 +35,15 @@ export async function verifySession(token: string, secret: string, now: number =
   const parts = token.split(".");
   if (parts.length !== 2) return null;
   const [p, sig] = parts;
-  if ((await hmac(p, secret)) !== sig) return null;
+  let sigBytes: Uint8Array<ArrayBuffer>;
+  try {
+    sigBytes = Uint8Array.from(fromB64url(sig), (c) => c.charCodeAt(0));
+  } catch {
+    return null;
+  }
+  if (sigBytes.length !== 32) return null;
+  const key = await crypto.subtle.importKey("raw", enc.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["verify"]);
+  if (!(await crypto.subtle.verify("HMAC", key, sigBytes, enc.encode(p)))) return null;
   try {
     const payload = JSON.parse(fromB64url(p)) as SessionPayload;
     if (typeof payload.vid !== "string" || typeof payload.exp !== "number") return null;

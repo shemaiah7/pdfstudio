@@ -67,6 +67,23 @@ describe("quota", () => {
     expect(await env.QUOTA.get("q:v9:2026-10-10", "json")).toEqual({ requests: 1, tokens: 0 });
   });
 
+  it("charges the token estimate at admission", async () => {
+    const r = await checkQuota(env.QUOTA, "v10", T0, 1234);
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.charged).toEqual({ requests: 1, tokens: 1234 });
+    expect(await env.QUOTA.get("q:v10:2026-10-10", "json")).toEqual({ requests: 1, tokens: 1234 });
+  });
+
+  it("recordTokens retries the write once after a failure", async () => {
+    let calls = 0;
+    const kv = {
+      get: async () => ({ requests: 1, tokens: 5 }),
+      put: async () => { if (calls++ === 0) throw new Error("KV PUT failed: 429"); },
+    } as unknown as KVNamespace;
+    expect(await recordTokens(kv, "v11", "2026-10-10", 10)).toEqual({ requests: 1, tokens: 15 });
+    expect(calls).toBe(2);
+  });
+
   it("recordTokens returns the computed state when the write fails", async () => {
     const kv = { get: async () => ({ requests: 2, tokens: 30 }), put: async () => { throw new Error("KV PUT failed: 429"); } } as unknown as KVNamespace;
     expect(await recordTokens(kv, "v8", "2026-10-10", 10)).toEqual({ requests: 2, tokens: 40 });

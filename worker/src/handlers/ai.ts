@@ -14,14 +14,20 @@ export async function aiHandler(request: Request, env: Env, ctx: ExecutionContex
   if (!session) return json({ error: "unauthorized" }, 401, env);
 
   const declared = Number(request.headers.get("content-length") ?? "0");
-  if (declared > 1_000_000) return json({ error: "document_too_large", maxChars: 600000 }, 413, env);
+  if (declared > 2_500_000) return json({ error: "document_too_large", maxChars: 600000 }, 413, env);
 
   let raw: unknown;
   try { raw = await request.json(); } catch { return json({ error: "invalid_body" }, 400, env); }
   const v = validateAiBody(raw);
   if (!v.ok) return json({ error: v.error, ...(v.maxChars ? { maxChars: v.maxChars } : {}) }, v.status, env);
 
-  const quota = await checkQuota(env.QUOTA, session.vid);
+  const b = v.body;
+  const chars =
+    b.document.reduce((n, p) => n + p.text.length, 0) +
+    (b.task === "rewrite" ? b.selection.length : 0) +
+    (b.task === "ask" ? b.question.length : 0);
+  const estimate = Math.ceil(chars / 3.5);
+  const quota = await checkQuota(env.QUOTA, session.vid, Date.now() / 1000, estimate);
   if (!quota.ok) return json({ error: quota.reason, resetAt: quota.resetAt }, 429, env);
 
   let result;
@@ -36,8 +42,12 @@ export async function aiHandler(request: Request, env: Env, ctx: ExecutionContex
   const { day, resetAt } = quota;
   const vid = session.vid;
   let recorded: Promise<QuotaState> | undefined;
+  // Admission already charged `estimate`; only write the (rare) excess, and skip the write otherwise.
   const record = (u: { inputTokens: number; outputTokens: number }) =>
-    (recorded ??= recordTokens(env.QUOTA, vid, day, u.inputTokens + u.outputTokens));
+    (recorded ??= (async () => {
+      const delta = Math.max(0, u.inputTokens + u.outputTokens - estimate);
+      return delta === 0 ? quota.charged : recordTokens(env.QUOTA, vid, day, delta);
+    })());
   let finished!: () => void;
   ctx.waitUntil(new Promise<void>((resolve) => { finished = resolve; }));
 

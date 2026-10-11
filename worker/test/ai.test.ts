@@ -41,7 +41,7 @@ describe("POST /ai", () => {
   });
 
   it("413 when content-length exceeds the raw body cap", async () => {
-    const { res, text } = await post(doc, await token(), fakeStream(["x"]), { "content-length": "1000001" });
+    const { res, text } = await post(doc, await token(), fakeStream(["x"]), { "content-length": "2500001" });
     expect(res.status).toBe(413);
     expect(JSON.parse(text)).toEqual({ error: "document_too_large", maxChars: 600000 });
   });
@@ -99,6 +99,39 @@ describe("POST /ai", () => {
     const { res, text } = await post(doc, await token(), mid);
     expect(res.status).toBe(200);
     expect(text).toContain('event: error\ndata: {"error":"busy"}');
+  });
+
+  it("emits error: busy when a mid-stream SSE error is overloaded_error", async () => {
+    const mid: StreamFn = async () => ({
+      events: (async function* () { throw { error: { type: "overloaded_error" } }; yield { type: "text" as const, text: "" }; })(),
+      final: async () => ({ inputTokens: 0, outputTokens: 0, stop: "end_turn" }),
+      usageSoFar: () => ({ inputTokens: 0, outputTokens: 0 }),
+    });
+    const t = await signSession({ vid: "vid-overloaded", exp: Math.floor(Date.now() / 1000) + 3600 }, env.SESSION_SECRET);
+    const { text } = await post(doc, t, mid);
+    expect(text).toContain('event: error\ndata: {"error":"busy"}');
+  });
+
+  it("keeps only the admission estimate when aborted before message_start", async () => {
+    const t = await signSession({ vid: "vid-early", exp: Math.floor(Date.now() / 1000) + 3600 }, env.SESSION_SECRET);
+    const early: StreamFn = async () => ({
+      events: (async function* () { await new Promise(() => {}); yield { type: "text" as const, text: "" }; })(),
+      final: () => new Promise(() => {}),
+      usageSoFar: () => ({ inputTokens: 0, outputTokens: 0 }),
+    });
+    const body = { task: "summarize", document: [{ page: 1, text: "x".repeat(3500) }] };
+    const req = new Request("https://ai.example/ai", {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${t}` },
+      body: JSON.stringify(body),
+    });
+    const ctx = createExecutionContext();
+    const res = await aiHandler(req, env, ctx, early);
+    const reader = res.body!.getReader();
+    await reader.cancel();
+    await waitOnExecutionContext(ctx);
+    const state = await env.QUOTA.get(`q:vid-early:${new Date().toISOString().slice(0, 10)}`, "json");
+    expect(state).toEqual({ requests: 1, tokens: 1000 });
   });
 
   it("charges tokens used so far when the client disconnects mid-stream", async () => {
