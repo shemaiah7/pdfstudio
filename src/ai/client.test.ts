@@ -1,0 +1,58 @@
+// @vitest-environment jsdom
+import { describe, it, expect, vi } from "vitest";
+import { AiClient } from "./client";
+
+function sse(body: string, status = 200, headers: Record<string, string> = {}) {
+  return new Response(body, { status, headers: { "content-type": "text/event-stream", ...headers } });
+}
+function json(body: unknown, status: number) {
+  return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+}
+
+describe("AiClient", () => {
+  it("gets a session once and streams deltas and done", async () => {
+    const fetchFn = vi.fn()
+      .mockResolvedValueOnce(json({ token: "t1", expiresAt: 9e9 }, 200))
+      .mockResolvedValueOnce(sse('event: delta\ndata: {"text":"Hi"}\n\nevent: done\ndata: {"usage":{"input":1,"output":1},"stop":"end_turn","remaining":{"requests":19,"tokens":1},"resetAt":1}\n\n'));
+    const c = new AiClient({ baseUrl: "https://ai.test", getTurnstileToken: async () => "tok", fetchFn });
+    const deltas: string[] = []; let done: unknown = null;
+    await c.runTask({ task: "summarize", document: [{ page: 1, text: "x" }] }, { onDelta: (t) => deltas.push(t), onDone: (d) => (done = d), onError: () => {} }).done;
+    expect(deltas).toEqual(["Hi"]);
+    expect(done).toMatchObject({ stop: "end_turn" });
+    expect(fetchFn).toHaveBeenCalledTimes(2);
+    expect((fetchFn.mock.calls[1][1] as RequestInit).headers).toMatchObject({ authorization: "Bearer t1" });
+  });
+
+  it("re-runs the session once on 401 then retries", async () => {
+    const fetchFn = vi.fn()
+      .mockResolvedValueOnce(json({ token: "old", expiresAt: 9e9 }, 200))
+      .mockResolvedValueOnce(json({ error: "unauthorized" }, 401))
+      .mockResolvedValueOnce(json({ token: "new", expiresAt: 9e9 }, 200))
+      .mockResolvedValueOnce(sse('event: done\ndata: {"usage":{"input":0,"output":0},"stop":"end_turn","remaining":{"requests":1,"tokens":1},"resetAt":1}\n\n'));
+    const c = new AiClient({ baseUrl: "https://ai.test", getTurnstileToken: async () => "tok", fetchFn });
+    let done = false;
+    await c.runTask({ task: "summarize", document: [{ page: 1, text: "x" }] }, { onDelta: () => {}, onDone: () => (done = true), onError: () => {} }).done;
+    expect(done).toBe(true);
+    expect(fetchFn).toHaveBeenCalledTimes(4);
+  });
+
+  it("maps 429 daily_limit to onError with resetAt", async () => {
+    const fetchFn = vi.fn()
+      .mockResolvedValueOnce(json({ token: "t", expiresAt: 9e9 }, 200))
+      .mockResolvedValueOnce(json({ error: "daily_limit", resetAt: 123 }, 429));
+    const c = new AiClient({ baseUrl: "https://ai.test", getTurnstileToken: async () => "tok", fetchFn });
+    const onError = vi.fn();
+    await c.runTask({ task: "summarize", document: [{ page: 1, text: "x" }] }, { onDelta: () => {}, onDone: () => {}, onError }).done;
+    expect(onError).toHaveBeenCalledWith("daily_limit", { resetAt: 123 });
+  });
+
+  it("reports interrupted when the stream ends without done", async () => {
+    const fetchFn = vi.fn()
+      .mockResolvedValueOnce(json({ token: "t", expiresAt: 9e9 }, 200))
+      .mockResolvedValueOnce(sse('event: delta\ndata: {"text":"par"}\n\n'));
+    const c = new AiClient({ baseUrl: "https://ai.test", getTurnstileToken: async () => "tok", fetchFn });
+    const onError = vi.fn();
+    await c.runTask({ task: "summarize", document: [{ page: 1, text: "x" }] }, { onDelta: () => {}, onDone: () => {}, onError }).done;
+    expect(onError).toHaveBeenCalledWith("interrupted", undefined);
+  });
+});
