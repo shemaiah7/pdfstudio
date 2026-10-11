@@ -8,6 +8,7 @@ export interface AiRequest {
   selection?: string;
   mode?: string;
   language?: string;
+  retrieved?: boolean;
 }
 export interface DoneData { usage: { input: number; output: number }; stop: string; remaining: { requests: number; tokens: number }; resetAt: number }
 export interface Handlers { onDelta(text: string): void; onDone(d: DoneData): void; onError(code: string, extra?: Record<string, unknown>): void }

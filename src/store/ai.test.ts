@@ -163,3 +163,32 @@ describe("setSelection reset", () => {
     expect(st.getState().rewrite.status).toBe("idle");
   });
 });
+
+const fakeClient = (onBody: (b: never) => void) => ({
+  runTask: (b: never, h: { onDone(d: unknown): void }) => {
+    onBody(b);
+    h.onDone({ usage: { input: 1, output: 1 }, stop: "end_turn", remaining: { requests: 1, tokens: 1 }, resetAt: 0 });
+    return { abort() {}, done: Promise.resolve() };
+  },
+}) as never;
+
+describe("ask with retrieval", () => {
+  it("sends retrieved passages with retrieved:true and records the count", async () => {
+    vi.doMock("./search", () => ({ retrievePassages: async () => [{ page: 2, text: "warfarin held" }], useSearchStore: { getState: () => ({ model: { status: "ready" } }) } }));
+    const { useAiStore } = await import("./ai");
+    const bodies: unknown[] = [];
+    useAiStore.setState({ client: fakeClient((b) => bodies.push(b)), useSearch: true, chat: { turns: [], draft: "why?", status: "idle", error: null, passages: null } });
+    await useAiStore.getState().run("ask");
+    expect(bodies[0]).toMatchObject({ task: "ask", retrieved: true, document: [{ page: 2, text: "warfarin held" }] });
+    expect(useAiStore.getState().chat.passages).toBe(1);
+  });
+  it("falls back to the whole document when nothing matches and the document is small", async () => {
+    vi.doMock("./search", () => ({ retrievePassages: async () => [], useSearchStore: { getState: () => ({ model: { status: "ready" } }) } }));
+    const { useAiStore } = await import("./ai");
+    const bodies: { retrieved?: boolean }[] = [];
+    useAiStore.setState({ client: fakeClient((b) => bodies.push(b)), useSearch: true, chat: { turns: [], draft: "why?", status: "idle", error: null, passages: null } });
+    await useAiStore.getState().run("ask");
+    expect(bodies[0].retrieved).toBeUndefined();
+    expect(useAiStore.getState().chat.passages).toBeNull();
+  });
+});
