@@ -74,6 +74,8 @@ export function createLibrary(dbName = "pdfstudio-search", open?: Opener) {
       }
       memory.set(record.hash, record);
     },
+    /** Keeps the record for this session only (nothing is written), e.g. an index built from unsaved edits. */
+    putMemory(record: LibraryRecord): void { memory.set(record.hash, record); },
     async get(hash: string): Promise<LibraryRecord | undefined> {
       const mem = memory.get(hash);
       if (mem) return usable(mem);

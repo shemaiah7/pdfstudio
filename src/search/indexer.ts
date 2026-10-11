@@ -52,7 +52,9 @@ export async function indexSource(source: SourceFile, deps: IndexDeps = defaultD
       onProgress?.(i / EMBED_BATCH + 1, Math.ceil(chunks.length / EMBED_BATCH), "embed");
     }
     if (signal?.aborted) return { status: "cancelled", hash };
-    await deps.lib.put({ hash, name: source.name, size: source.bytes.byteLength, pageCount: source.pageCount, addedAt: Date.now(), modelId: deps.lib.modelTag, bytes: chunks.length === 0 ? new Blob([]) : new Blob([source.bytes as BlobPart]), chunks, vectors, ocrVersion: current, editsStamp: stamp });
+    const record = { hash, name: source.name, size: source.bytes.byteLength, pageCount: source.pageCount, addedAt: Date.now(), modelId: deps.lib.modelTag, bytes: chunks.length === 0 ? new Blob([]) : new Blob([source.bytes as BlobPart]), chunks, vectors, ocrVersion: current, editsStamp: stamp };
+    // Edits are not saved with the file, so an index built from them must not outlive the session (or be shown for the closed document later).
+    if (stamp !== 0) deps.lib.putMemory(record); else await deps.lib.put(record);
     return { status: chunks.length === 0 ? "no-text" : "indexed", hash, chunks: chunks.length };
   } catch (err) {
     if (err instanceof Error && (err.message === "cancelled" || err.message === "disposed")) return { status: "cancelled", hash };

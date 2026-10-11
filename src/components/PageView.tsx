@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useShallow } from "zustand/react/shallow";
 import { useDocumentStore } from "../store/document";
 import PageCanvas from "./PageCanvas";
 import TextLayer from "./TextLayer";
@@ -23,6 +24,23 @@ function PageForm({ source, sourceId, sourcePageIndex, meta }: { source: SourceF
   return fields && fields.length > 0 ? <FormLayer sourceId={sourceId} sourcePageIndex={sourcePageIndex} fields={fields} meta={meta} /> : null;
 }
 
+/** Subscribes to just this page's edits, so editing one page does not re-render the others. */
+function PageEditLayer({ pageEntryId, ...rest }: { pageEntryId: string } & Omit<React.ComponentProps<typeof EditOverlay>, "edits">) {
+  const edits = useDocumentStore(useShallow((s) => s.edits.filter((e) => e.pageEntryId === pageEntryId)));
+  return <EditOverlay edits={edits} {...rest} />;
+}
+
+export const sameBox = (a: Box | null, b: Box | null) => a === b || (!!a && !!b && a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height);
+/** The hover outline keeps its own state, so moving the pointer re-renders only this page's outline, and only when the block changes. */
+export function BlockHint({ pageId, scale, heightPt, register }: { pageId: string; scale: number; heightPt: number; register(pageId: string, set: ((b: Box | null) => void) | null): void }) {
+  const [box, setBox] = useState<Box | null>(null);
+  useEffect(() => {
+    register(pageId, (next) => setBox((prev) => (sameBox(prev, next) ? prev : next)));
+    return () => register(pageId, null);
+  }, [pageId, register]);
+  return box ? <div className="block-hint-outline" style={{ left: box.x * scale, top: (heightPt - box.y - box.height) * scale, width: box.width * scale, height: box.height * scale }} /> : null;
+}
+
 interface Props { scale: number }
 type PageMetaPt = { widthPt: number; heightPt: number; pageRotate: number };
 const contains = (b: Box, x: number, y: number) => x >= b.x && x <= b.x + b.width && y >= b.y && y <= b.y + b.height;
@@ -39,17 +57,25 @@ export default function PageView({ scale }: Props) {
   const sources = useDocumentStore((s) => s.sources);
   const selection = useDocumentStore((s) => s.selection);
   const select = useDocumentStore((s) => s.select);
-  const edits = useDocumentStore((s) => s.edits);
   const annotations = useDocumentStore((s) => s.annotations);
   const selectAnnotation = useDocumentStore((s) => s.selectAnnotation);
   const tool = useToolsStore((s) => s.tool);
   const [open, setOpen] = useState<OpenBlock | null>(null);
   const [selectedEditId, setSelectedEditId] = useState<string | null>(null);
+  const selectedExists = useDocumentStore((s) => !!selectedEditId && s.edits.some((e) => e.id === selectedEditId));
   useEffect(() => {
-    if (selectedEditId && (tool !== "edit" || !edits.some((e) => e.id === selectedEditId))) setSelectedEditId(null);
-  }, [tool, edits, selectedEditId]);
-  const [hint, setHint] = useState<{ pageId: string; box: Box } | null>(null);
+    if (selectedEditId && (tool !== "edit" || !selectedExists)) setSelectedEditId(null);
+  }, [tool, selectedExists, selectedEditId]);
   const hoverFrame = useRef(0);
+  const hintSetters = useRef(new Map<string, (b: Box | null) => void>());
+  const hintPage = useRef<string | null>(null);
+  const registerHint = useCallback((id: string, set: ((b: Box | null) => void) | null) => { if (set) hintSetters.current.set(id, set); else hintSetters.current.delete(id); }, []);
+  /** Shows the outline on one page (or clears it); each page's outline updates itself only when the box changes. */
+  const setHint = (pageId: string | null, box: Box | null) => {
+    if (hintPage.current && hintPage.current !== pageId) hintSetters.current.get(hintPage.current)?.(null);
+    hintPage.current = box ? pageId : null;
+    if (pageId) hintSetters.current.get(pageId)?.(box);
+  };
   const [heights, setHeights] = useState<Record<string, PageMetaPt>>({});
   const onMeta = useCallback((id: string, m: PageMetaPt) => {
     setHeights((h) => {
@@ -96,18 +122,18 @@ export default function PageView({ scale }: Props) {
     const pageEl = e.currentTarget, cx = e.clientX, cy = e.clientY;
     const r = await resolveBlock(entry, source, pageEl, cx, cy, true);
     if (!r) return;
-    if ("block" in r && r.existing && r.existing.id !== selectedEditId) { setMessage(null); setHint(null); setSelectedEditId(r.existing.id); return; } // first click selects, handles reopen
+    if ("block" in r && r.existing && r.existing.id !== selectedEditId) { setMessage(null); setHint(null, null); setSelectedEditId(r.existing.id); return; } // first click selects, handles reopen
     setSelectedEditId(null);
     if ("empty" in r) setMessage("No text here.");
     else if ("narrow" in r) setMessage("Block too narrow to edit.");
-    else { setMessage(null); setHint(null); setOpen(r); }
+    else { setMessage(null); setHint(null, null); setOpen(r); }
   };
   const onEditHover = (e: React.MouseEvent<HTMLElement>, entry: PageEntry, source: SourceFile) => {
     if (open || (heights[entry.id] && (heights[entry.id].pageRotate + entry.rotation) % 360 !== 0)) return;
     const pageEl = e.currentTarget, cx = e.clientX, cy = e.clientY;
     cancelAnimationFrame(hoverFrame.current);
     hoverFrame.current = requestAnimationFrame(() => {
-      void resolveBlock(entry, source, pageEl, cx, cy).then((r) => setHint(r && "block" in r ? { pageId: entry.id, box: r.block.box } : null)).catch(() => setHint(null));
+      void resolveBlock(entry, source, pageEl, cx, cy).then((r) => (r && "block" in r ? setHint(entry.id, r.block.box) : setHint(null, null))).catch(() => setHint(null, null));
     });
   };
 
@@ -120,7 +146,7 @@ export default function PageView({ scale }: Props) {
             className={`page ${selection.has(entry.id) ? "selected" : ""} ${tool === "edit" ? "tool-edit" : ""}`}
             data-page-entry={entry.id} data-scale={scale} data-rotation={entry.rotation}
             onMouseMove={tool === "edit" ? (e) => onEditHover(e, entry, source) : undefined}
-            onMouseLeave={tool === "edit" ? () => { cancelAnimationFrame(hoverFrame.current); setHint(null); } : undefined}
+            onMouseLeave={tool === "edit" ? () => { cancelAnimationFrame(hoverFrame.current); setHint(null, null); } : undefined}
             onClick={(e) => {
               if ((e.target as Element).closest(".annotationOverlay, .notePopover, .block-editor-wrap, .edit-handles")) return;
               if (useToolsStore.getState().tool === "edit") { void onEditClick(e, entry, source); return; }
@@ -130,10 +156,10 @@ export default function PageView({ scale }: Props) {
             }}>
             <PageCanvas source={source} entry={entry} scale={scale} lazy onMeta={(m) => onMeta(entry.id, m)} />
             <TextLayer source={source} entry={entry} scale={scale} />
-            {heights[entry.id] ? <EditOverlay edits={edits.filter((e) => e.pageEntryId === entry.id)} scale={scale} pageHeightPt={heights[entry.id].heightPt} pageWidthPt={heights[entry.id].widthPt} rotation={(heights[entry.id].pageRotate + entry.rotation) % 360} selectedEditId={tool === "edit" && !open ? selectedEditId : null} onReopen={(ed) => { setSelectedEditId(null); setHint(null); setOpen(openFromEdit(entry, source, ed)); }} /> : null}
+            {heights[entry.id] ? <PageEditLayer pageEntryId={entry.id} scale={scale} pageHeightPt={heights[entry.id].heightPt} pageWidthPt={heights[entry.id].widthPt} rotation={(heights[entry.id].pageRotate + entry.rotation) % 360} selectedEditId={tool === "edit" && !open ? selectedEditId : null} onReopen={(ed) => { setSelectedEditId(null); setHint(null, null); setOpen(openFromEdit(entry, source, ed)); }} /> : null}
             {heights[entry.id] ? <PageForm sourceId={source.id} source={source} sourcePageIndex={entry.sourcePageIndex} meta={{ widthPt: heights[entry.id].widthPt, heightPt: heights[entry.id].heightPt, scale, rotation: ((heights[entry.id].pageRotate + entry.rotation) % 360) as 0 | 90 | 180 | 270 }} /> : null}
             {heights[entry.id] ? <AnnotationOverlay pageEntryId={entry.id} annotations={annotations.filter((a) => a.pageEntryId === entry.id)} meta={{ widthPt: heights[entry.id].widthPt, heightPt: heights[entry.id].heightPt, scale, rotation: ((heights[entry.id].pageRotate + entry.rotation) % 360) as 0 | 90 | 180 | 270 }} pageEl={() => document.getElementById(`page-${entry.id}`)} /> : null}
-            {tool === "edit" && hint && hint.pageId === entry.id && heights[entry.id] ? <div className="block-hint-outline" style={{ left: hint.box.x * scale, top: (heights[entry.id].heightPt - hint.box.y - hint.box.height) * scale, width: hint.box.width * scale, height: hint.box.height * scale }} /> : null}
+            {tool === "edit" && heights[entry.id] ? <BlockHint pageId={entry.id} scale={scale} heightPt={heights[entry.id].heightPt} register={registerHint} /> : null}
             {open && open.entry.id === entry.id && heights[entry.id] ? <BlockEditor key={open.blockKey} open={open} scale={scale} heightPt={heights[entry.id].heightPt} onClose={() => setOpen((o) => (o === open ? null : o))} /> : null}
             <div className="page-label">{i + 1}</div>
             <OcrBadge sourceId={source.id} pageIndex={entry.sourcePageIndex} />
