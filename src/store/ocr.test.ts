@@ -3,7 +3,7 @@ import "fake-indexeddb/auto";
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { useDocumentStore } from "./document";
 import { useAiStore } from "./ai";
-import { useOcrStore, configureOcrDeps, pageKey, applyQuota } from "./ocr";
+import { useOcrStore, configureOcrDeps, pageKey, applyQuota, applyEditToOcr } from "./ocr";
 import { createClaudeEngine } from "../ocr/claudeEngine";
 import { createOcrStore } from "../ocr/store";
 import { linesToOcrPage } from "../ocr/layout";
@@ -262,4 +262,20 @@ describe("useOcrStore", () => {
     await new Promise((r) => setTimeout(r, 80)); await flush();
     expect(useOcrStore.getState().pages[pageKey(id, 0)]).toEqual({ state: "done", engine: "tesseract" });
   });
+});
+
+it("applyEditToOcr replaces only the words inside the edit boxes and keeps the engine", async () => {
+  const id = await openScan(1);
+  await flush(); // let the auto-scan settle so it cannot overwrite the seeded page
+  const hash = `h${n - 1}`;
+  const page = { ...linesToOcrPage(["alpha beta", "gamma delta"], { widthPt: 300, heightPt: 400 }), engine: "claude" as const };
+  await store.put(hash, 0, page);
+  const line1 = page.lines[0].box;
+  const edit = { id: "e", pageEntryId: `pg-${n - 1}-0`, boxes: [line1], text: "ALPHA BETA", fontSize: line1.height, font: "helvetica" as const, color: [0, 0, 0] as [number, number, number], background: [1, 1, 1] as [number, number, number], lineHeight: line1.height, source: "ocr" as const };
+  await applyEditToOcr(id, 0, edit, (t, s) => t.length * s * 0.5);
+  const after = await store.get(hash, 0);
+  expect(after?.engine).toBe("claude");
+  expect(after?.lines.map((l) => l.text)).toEqual(["ALPHA BETA", "gamma delta"]);
+  expect(after?.lines[0].words.map((w) => w.text)).toEqual(["ALPHA", "BETA"]);
+  expect(after!.at).toBeGreaterThan(page.at);
 });

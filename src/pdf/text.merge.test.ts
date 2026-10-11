@@ -2,7 +2,8 @@ import "fake-indexeddb/auto";
 import { describe, it, expect, beforeEach, beforeAll } from "vitest";
 import { useDocumentStore } from "../store/document";
 import { loadFixture } from "../test/loadFixture";
-import { extractPageText, clearTextCache, invalidatePageText, setOcrLookup } from "./text";
+import { extractPageText, clearTextCache, invalidatePageText, setOcrLookup, editsStamp } from "./text";
+import { layoutBlock } from "../edit/layout";
 import { ocrStore } from "../ocr/store";
 import { linesToOcrPage } from "../ocr/layout";
 import { sha256 } from "./hash";
@@ -45,5 +46,26 @@ describe("extractPageText OCR merge", () => {
     setOcrLookup(async () => { throw new Error("idb broke"); });
     try { expect(await extractPageText(src, 0)).toEqual({ text: "", items: [] }); }
     finally { setOcrLookup(); }
+  });
+});
+
+describe("edits overlay in extractPageText", () => {
+  it("replaces covered items with the edit's lines and bumps the stamp", async () => {
+    await useDocumentStore.getState().openFiles([{ name: "three.pdf", bytes: loadFixture("three") }]);
+    const st = useDocumentStore.getState();
+    const src = [...st.sources.values()][0];
+    const before = await extractPageText(src, 0);
+    expect(before.text).toBe("three:0");
+    const item = before.items[0];
+    const box = { x: item.x, y: item.y - item.fontSize * 0.25, width: item.width + 2, height: item.fontSize * 1.2 };
+    const lay = layoutBlock("nine:9", box, item.fontSize, item.fontSize * 1.2, (t, s) => t.length * s * 0.5);
+    const t0 = Date.now();
+    st.addEdit({ pageEntryId: st.pages[0].id, boxes: lay.boxes, text: "nine:9", fontSize: item.fontSize, font: "helvetica", color: [0, 0, 0], background: [1, 1, 1], lineHeight: item.fontSize * 1.2, source: "native", blockKey: "k" });
+    const after = await extractPageText(src, 0);
+    expect(after.text).toBe("nine:9");
+    expect(after.items.map((i) => i.str)).toEqual(["nine:9"]);
+    expect(editsStamp(src.id)).toBeGreaterThanOrEqual(t0);
+    useDocumentStore.getState().undo();
+    expect((await extractPageText(src, 0)).text).toBe("three:0");
   });
 });

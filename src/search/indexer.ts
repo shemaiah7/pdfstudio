@@ -1,5 +1,5 @@
 import type { SourceFile } from "../pdf/types";
-import { extractPageText } from "../pdf/text";
+import { extractPageText, editsStamp } from "../pdf/text";
 import { chunkPage, type Chunk } from "./chunker";
 import { DIMS, EMBED_BATCH } from "./constants";
 import { library, sha256, type Library } from "./library";
@@ -22,7 +22,7 @@ export function defaultDeps(): IndexDeps {
     embed: (texts, kind, tag) => getEmbedClient().embed(texts, kind, tag),
     lib: library,
     extract: async (source, page) => (await extractPageText(source, page)).text,
-    ocrVersion: async (source) => { if (!source.hash) return 0; const pages = await ocrStore.getAll(source.hash); let v = 0; for (const p of pages.values()) v = Math.max(v, p.at); return v; },
+    ocrVersion: async (source) => { if (!source.hash) return editsStamp(source.id); const pages = await ocrStore.getAll(source.hash); let v = 0; for (const p of pages.values()) v = Math.max(v, p.at); return Math.max(v, editsStamp(source.id)); },
   };
 }
 

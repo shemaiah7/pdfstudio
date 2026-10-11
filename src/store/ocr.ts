@@ -2,14 +2,16 @@
 import { create } from "zustand";
 import { useDocumentStore } from "./document";
 import { useAiStore } from "./ai";
-import type { SourceFile, SourceId } from "../pdf/types";
+import type { SourceFile, SourceId, Edit } from "../pdf/types";
+import { regionOf, type Measure } from "../pdf/layout";
+import { layoutBlock } from "../edit/layout";
 import { extractPageText, invalidatePageText } from "../pdf/text";
 import { createOcrQueue, type OcrJobState } from "../ocr/queue";
 import { ocrStore as defaultOcrStore, type OcrStore } from "../ocr/store";
 import { getTesseractEngine } from "../ocr/tesseractEngine";
 import { createClaudeEngine } from "../ocr/claudeEngine";
 import { rasterizePage, CLAUDE_MAX_EDGE, TESSERACT_MAX_EDGE } from "../ocr/raster";
-import type { OcrEngine, OcrEngineName } from "../ocr/types";
+import type { OcrEngine, OcrEngineName, OcrLine, OcrWord } from "../ocr/types";
 
 export const AUTO_KEY = "pdfstudio.ocr.auto";
 export const pageKey = (sourceId: string, pageIndex: number) => `${sourceId}:${pageIndex}`;
@@ -298,3 +300,25 @@ useDocumentStore.subscribe((s, prev) => {
 const syncAiStatus = () => useAiStore.setState({ ocrTextStatus: useOcrStore.getState().textStatus() });
 useOcrStore.subscribe((s, prev) => { if (s.pages !== prev.pages) syncAiStatus(); });
 useDocumentStore.subscribe((s, prev) => { if (s.pages !== prev.pages) syncAiStatus(); });
+
+type OcrBox = OcrWord["box"];
+
+export async function applyEditToOcr(sourceId: string, pageIndex: number, edit: Edit, measure: Measure): Promise<void> {
+  const source = useDocumentStore.getState().sources.get(sourceId);
+  if (!source?.hash) return;
+  const page = await deps.store.get(source.hash, pageIndex);
+  if (!page) return;
+  const covered = (b: OcrBox) => edit.boxes.some((eb) => { const cx = b.x + b.width / 2, cy = b.y + b.height / 2; return cx >= eb.x && cx <= eb.x + eb.width && cy >= eb.y && cy <= eb.y + eb.height; });
+  const kept = page.lines.map((l) => ({ ...l, words: l.words.filter((w) => !covered(w.box)) })).filter((l) => l.words.length > 0).map((l) => ({ ...l, text: l.words.map((w) => w.text).join(" ") }));
+  const region = regionOf(edit.boxes);
+  const lay = layoutBlock(edit.text, region, edit.fontSize, edit.lineHeight ?? edit.fontSize * 1.2, measure);
+  const newLines: OcrLine[] = lay.lines.map((l) => {
+    let x = l.x;
+    const words: OcrWord[] = l.text.split(/\s+/).filter(Boolean).map((t) => { const w = measure(t, edit.fontSize); const word = { text: t, box: { x, y: l.baseline - edit.fontSize * 0.25, width: w, height: edit.fontSize * 1.2 }, confidence: 1 }; x += w + measure(" ", edit.fontSize); return word; });
+    return { text: l.text, box: { x: l.x, y: l.baseline - edit.fontSize * 0.25, width: l.width, height: edit.fontSize * 1.2 }, words };
+  });
+  const lines = [...kept, ...newLines].sort((a, b) => b.box.y - a.box.y);
+  await deps.store.put(source.hash, pageIndex, { ...page, lines, at: Math.max(Date.now(), page.at + 1) });
+  invalidatePageText(sourceId, pageIndex);
+  useOcrStore.setState((s) => ({ pages: { ...s.pages } })); // nudge subscribers (search re-index)
+}
