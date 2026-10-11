@@ -85,3 +85,16 @@ it("re-indexes when the OCR version is newer than the cached record", async () =
   expect(embedCalls).toHaveLength(2);
   expect((await lib.get(await sha256(source.bytes)))?.ocrVersion).toBe(5);
 });
+
+it("re-indexes when the edits stamp changes (stale edited records are not served after a reload)", async () => {
+  const lib = createLibrary(`idx-edits-${Date.now()}`);
+  let stamp = 5;
+  const deps = { lib, extract: async () => "alpha beta gamma delta", embed: async (texts: string[]) => new Float32Array(texts.length * DIMS).fill(0.1), editsStamp: () => stamp };
+  const source = { id: "s", name: "s.pdf", bytes: new Uint8Array([4, 5, 6]), pageCount: 1 };
+  expect((await indexSource(source, deps)).status).toBe("indexed");
+  expect((await indexSource(source, deps)).status).toBe("cached");
+  expect((await lib.get(await sha256(source.bytes)))?.editsStamp).toBe(5);
+  stamp = 0; // simulated reload: edits are not persisted
+  expect((await indexSource(source, deps)).status).toBe("indexed");
+  expect((await lib.get(await sha256(source.bytes)))?.editsStamp).toBe(0);
+});
