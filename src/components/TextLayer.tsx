@@ -11,6 +11,7 @@ export default function TextLayer({ source, entry, scale }: Props) {
     const el = ref.current;
     if (!el) return;
     let cancelled = false;
+    let layer: InstanceType<typeof pdfjs.TextLayer> | null = null;
     el.replaceChildren();
     (async () => {
       const page = await getPage(source, entry.sourcePageIndex);
@@ -19,11 +20,12 @@ export default function TextLayer({ source, entry, scale }: Props) {
       el.style.setProperty("--scale-factor", String(scale));
       el.style.width = `${Math.floor(viewport.width)}px`;
       el.style.height = `${Math.floor(viewport.height)}px`;
-      const layer = new pdfjs.TextLayer({ textContentSource: await page.getTextContent(), container: el, viewport });
+      const textContentSource = await page.getTextContent();
       if (cancelled) return;
+      layer = new pdfjs.TextLayer({ textContentSource, container: el, viewport });
       await layer.render();
     })().catch((err) => console.error("text layer failed", err));
-    return () => { cancelled = true; };
+    return () => { cancelled = true; layer?.cancel(); };
   }, [source, entry.sourcePageIndex, entry.rotation, scale]);
   return <div ref={ref} className="textLayer" />;
 }

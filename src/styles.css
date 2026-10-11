@@ -59,3 +59,5 @@ body { background: var(--bg); color: var(--text); font-family: system-ui, sans-s
 .page { user-select: text; }
 .page .textLayer { position: absolute; inset: 0; overflow: hidden; line-height: 1; }
 .page .textLayer ::selection { background: rgba(37, 99, 235, 0.35); }
+.page .textLayer { --user-unit: 1; --total-scale-factor: calc(var(--scale-factor) * var(--user-unit)); --scale-round-x: 1px; --scale-round-y: 1px; }
+.page-label { user-select: none; }

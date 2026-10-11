@@ -42,6 +42,7 @@ export function captureSelection(): PageSelection | null {
   if (!text) return null;
   const scale = Number(pageEl.dataset.scale);
   const heightPt = Number(pageEl.dataset.heightPt);
+  if (!Number.isFinite(scale) || !Number.isFinite(heightPt)) return null;
   const rects = mergeLineRects(Array.from(range.getClientRects()));
   if (rects.length === 0) return null;
   const boxes = rectsToBoxes(rects, pageEl.getBoundingClientRect(), scale, heightPt);
