@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
-import { checkQuota, recordUsage, nextUtcMidnight, DAILY_REQUESTS, DAILY_TOKENS, BURST_REQUESTS } from "../src/quota";
+import { checkQuota, recordTokens, nextUtcMidnight, DAILY_REQUESTS, DAILY_TOKENS, BURST_REQUESTS } from "../src/quota";
 
 const T0 = Date.UTC(2026, 9, 10, 12, 0, 0) / 1000;
 
@@ -16,13 +16,13 @@ describe("quota", () => {
   });
 
   it("blocks the 21st request of the day", async () => {
-    for (let i = 0; i < DAILY_REQUESTS; i++) await recordUsage(env.QUOTA, "v2", "2026-10-10", 10);
+    await env.QUOTA.put("q:v2:2026-10-10", JSON.stringify({ requests: DAILY_REQUESTS, tokens: 10 }));
     const r = await checkQuota(env.QUOTA, "v2", T0);
     expect(r).toMatchObject({ ok: false, reason: "daily_limit", resetAt: nextUtcMidnight(T0) });
   });
 
   it("blocks when tokens are exhausted", async () => {
-    await recordUsage(env.QUOTA, "v3", "2026-10-10", DAILY_TOKENS);
+    await recordTokens(env.QUOTA, "v3", "2026-10-10", DAILY_TOKENS);
     const r = await checkQuota(env.QUOTA, "v3", T0);
     expect(r).toMatchObject({ ok: false, reason: "daily_limit" });
   });
@@ -36,11 +36,11 @@ describe("quota", () => {
 
   it("charges usage to the day the request started and resets after midnight", async () => {
     const late = Date.UTC(2026, 9, 10, 23, 59, 50) / 1000;
-    for (let i = 0; i < DAILY_REQUESTS - 1; i++) await recordUsage(env.QUOTA, "v5", "2026-10-10", 1);
+    await env.QUOTA.put("q:v5:2026-10-10", JSON.stringify({ requests: DAILY_REQUESTS - 1, tokens: 1 }));
     const check = await checkQuota(env.QUOTA, "v5", late);
     expect(check.ok).toBe(true);
     // request finishes after midnight but is charged to check.day
-    if (check.ok) await recordUsage(env.QUOTA, "v5", check.day, 500);
+    if (check.ok) await recordTokens(env.QUOTA, "v5", check.day, 500);
     const blockedSameDay = await checkQuota(env.QUOTA, "v5", late + 5);
     expect(blockedSameDay).toMatchObject({ ok: false, reason: "daily_limit" });
     const nextDay = await checkQuota(env.QUOTA, "v5", late + 20);
@@ -49,7 +49,7 @@ describe("quota", () => {
   });
 
   it("does not burn burst slots when daily-limited", async () => {
-    for (let i = 0; i < DAILY_REQUESTS; i++) await recordUsage(env.QUOTA, "v6", "2026-10-10", 1);
+    await env.QUOTA.put("q:v6:2026-10-10", JSON.stringify({ requests: DAILY_REQUESTS, tokens: 1 }));
     for (let i = 0; i < BURST_REQUESTS + 2; i++) {
       expect(await checkQuota(env.QUOTA, "v6", T0)).toMatchObject({ ok: false, reason: "daily_limit" });
     }
@@ -62,9 +62,14 @@ describe("quota", () => {
     expect(r).toEqual({ ok: false, reason: "too_fast", resetAt: (Math.floor(T0 / 60) + 1) * 60 });
   });
 
-  it("recordUsage returns the computed state when the write fails", async () => {
+  it("charges the request at admission", async () => {
+    await checkQuota(env.QUOTA, "v9", T0);
+    expect(await env.QUOTA.get("q:v9:2026-10-10", "json")).toEqual({ requests: 1, tokens: 0 });
+  });
+
+  it("recordTokens returns the computed state when the write fails", async () => {
     const kv = { get: async () => ({ requests: 2, tokens: 30 }), put: async () => { throw new Error("KV PUT failed: 429"); } } as unknown as KVNamespace;
-    expect(await recordUsage(kv, "v8", "2026-10-10", 10)).toEqual({ requests: 3, tokens: 40 });
+    expect(await recordTokens(kv, "v8", "2026-10-10", 10)).toEqual({ requests: 2, tokens: 40 });
   });
 
   it("nextUtcMidnight", () => {

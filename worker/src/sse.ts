@@ -3,20 +3,34 @@ import { corsHeaders } from "./cors";
 
 export type Send = (event: string, data: unknown) => void;
 
-export function sseResponse(env: Env, run: (send: Send) => Promise<void>): Response {
+export function sseResponse(env: Env, run: (send: Send, signal: AbortSignal) => Promise<void>): Response {
   const encoder = new TextEncoder();
+  const abort = new AbortController();
+  let closed = false;
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
       const send: Send = (event, data) => {
-        controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
+        if (closed) return;
+        try {
+          controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
+        } catch {
+          closed = true; // consumer went away
+        }
       };
       try {
-        await run(send);
+        await run(send, abort.signal);
       } catch {
         send("error", { error: "upstream" });
       } finally {
-        controller.close();
+        if (!closed) {
+          closed = true;
+          try { controller.close(); } catch { /* already closed */ }
+        }
       }
+    },
+    cancel() {
+      closed = true;
+      abort.abort();
     },
   });
   return new Response(stream, {

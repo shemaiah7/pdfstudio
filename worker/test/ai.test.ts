@@ -3,13 +3,14 @@ import { env, createExecutionContext, waitOnExecutionContext } from "cloudflare:
 import { aiHandler } from "../src/handlers/ai";
 import type { StreamFn } from "../src/claude";
 import { signSession } from "../src/session";
-import { recordUsage, DAILY_REQUESTS } from "../src/quota";
+import { DAILY_REQUESTS } from "../src/quota";
 
 const fakeStream =
   (chunks: string[], stop = "end_turn", usage = { inputTokens: 1000, outputTokens: 50 }): StreamFn =>
   async () => ({
     events: (async function* () { for (const c of chunks) yield { type: "text" as const, text: c }; })(),
     final: async () => ({ ...usage, stop }),
+    usageSoFar: () => usage,
   });
 
 async function post(body: unknown, token?: string, stream: StreamFn = fakeStream(["Hel", "lo"]), extraHeaders: Record<string, string> = {}) {
@@ -60,7 +61,7 @@ describe("POST /ai", () => {
   it("429 when the daily quota is used up", async () => {
     const t = await signSession({ vid: "vid-full", exp: Math.floor(Date.now() / 1000) + 3600 }, env.SESSION_SECRET);
     const day = new Date().toISOString().slice(0, 10);
-    for (let i = 0; i < DAILY_REQUESTS; i++) await recordUsage(env.QUOTA, "vid-full", day, 1);
+    await env.QUOTA.put(`q:vid-full:${day}`, JSON.stringify({ requests: DAILY_REQUESTS, tokens: 1 }));
     const { res, text } = await post(doc, t);
     expect(res.status).toBe(429);
     expect(JSON.parse(text)).toMatchObject({ error: "daily_limit" });
@@ -82,9 +83,44 @@ describe("POST /ai", () => {
     const failing: StreamFn = async () => ({
       events: (async function* () { yield { type: "text" as const, text: "a" }; throw new Error("boom"); })(),
       final: async () => ({ inputTokens: 0, outputTokens: 0, stop: "end_turn" }),
+      usageSoFar: () => ({ inputTokens: 0, outputTokens: 0 }),
     });
     const { text } = await post(doc, await token(), failing);
     expect(text).toContain('event: delta\ndata: {"text":"a"}');
     expect(text).toContain('event: error\ndata: {"error":"upstream"}');
+  });
+
+  it("emits error: busy when the upstream throws 529 mid-stream", async () => {
+    const mid: StreamFn = async () => ({
+      events: (async function* () { throw Object.assign(new Error("overloaded"), { status: 529 }); yield { type: "text" as const, text: "" }; })(),
+      final: async () => ({ inputTokens: 0, outputTokens: 0, stop: "end_turn" }),
+      usageSoFar: () => ({ inputTokens: 0, outputTokens: 0 }),
+    });
+    const { res, text } = await post(doc, await token(), mid);
+    expect(res.status).toBe(200);
+    expect(text).toContain('event: error\ndata: {"error":"busy"}');
+  });
+
+  it("charges tokens used so far when the client disconnects mid-stream", async () => {
+    const t = await signSession({ vid: "vid-cancel", exp: Math.floor(Date.now() / 1000) + 3600 }, env.SESSION_SECRET);
+    const hang: StreamFn = async () => ({
+      events: (async function* () { yield { type: "text" as const, text: "partial" }; await new Promise(() => {}); })(),
+      final: () => new Promise(() => {}),
+      usageSoFar: () => ({ inputTokens: 500, outputTokens: 10 }),
+    });
+    const req = new Request("https://ai.example/ai", {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${t}` },
+      body: JSON.stringify(doc),
+    });
+    const ctx = createExecutionContext();
+    const res = await aiHandler(req, env, ctx, hang);
+    const reader = res.body!.getReader();
+    const first = await reader.read();
+    expect(new TextDecoder().decode(first.value)).toContain("partial");
+    await reader.cancel();
+    await waitOnExecutionContext(ctx);
+    const state = await env.QUOTA.get(`q:vid-cancel:${new Date().toISOString().slice(0, 10)}`, "json");
+    expect(state).toEqual({ requests: 1, tokens: 510 });
   });
 });

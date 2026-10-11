@@ -36,6 +36,12 @@ export async function checkQuota(kv: KVNamespace, vid: string, now: number = Dat
     // KV limits same-key writes (~1/s); treat a failed write as "too fast" so the client retries.
     return { ok: false, reason: "too_fast", resetAt: (minute + 1) * 60 };
   }
+  // Charge the request at admission so a client that disconnects mid-stream is still counted.
+  try {
+    await kv.put(`q:${vid}:${day}`, JSON.stringify({ requests: state.requests + 1, tokens: state.tokens }), { expirationTtl: 2 * 86400 });
+  } catch {
+    // fail open on accounting
+  }
   return {
     ok: true,
     day,
@@ -44,10 +50,10 @@ export async function checkQuota(kv: KVNamespace, vid: string, now: number = Dat
   };
 }
 
-export async function recordUsage(kv: KVNamespace, vid: string, day: string, tokens: number): Promise<QuotaState> {
+export async function recordTokens(kv: KVNamespace, vid: string, day: string, tokens: number): Promise<QuotaState> {
   const key = `q:${vid}:${day}`;
   const state = await readState(kv, key);
-  const next = { requests: state.requests + 1, tokens: state.tokens + Math.max(0, tokens) };
+  const next = { requests: state.requests, tokens: state.tokens + Math.max(0, tokens) };
   try {
     await kv.put(key, JSON.stringify(next), { expirationTtl: 2 * 86400 });
   } catch {

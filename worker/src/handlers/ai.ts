@@ -3,7 +3,7 @@ import { json } from "../cors";
 import { verifySession } from "../session";
 import { validateAiBody } from "../validate";
 import { buildRequest } from "../request";
-import { checkQuota, recordUsage, DAILY_REQUESTS, DAILY_TOKENS } from "../quota";
+import { checkQuota, recordTokens, DAILY_REQUESTS, DAILY_TOKENS, type QuotaState } from "../quota";
 import { streamWithSdk, mapError, type StreamFn } from "../claude";
 import { sseResponse } from "../sse";
 
@@ -34,23 +34,53 @@ export async function aiHandler(request: Request, env: Env, ctx: ExecutionContex
   }
 
   const { day, resetAt } = quota;
-  return sseResponse(env, async (send) => {
+  const vid = session.vid;
+  let recorded: Promise<QuotaState> | undefined;
+  const record = (u: { inputTokens: number; outputTokens: number }) =>
+    (recorded ??= recordTokens(env.QUOTA, vid, day, u.inputTokens + u.outputTokens));
+  let finished!: () => void;
+  ctx.waitUntil(new Promise<void>((resolve) => { finished = resolve; }));
+
+  return sseResponse(env, async (send, signal) => {
+    const aborted = new Promise<"aborted">((resolve) => signal.addEventListener("abort", () => resolve("aborted"), { once: true }));
     try {
-      for await (const e of result.events) send("delta", { text: e.text });
-    } catch {
-      send("error", { error: "upstream" });
-      return;
+      const it = result.events[Symbol.asyncIterator]();
+      try {
+        for (;;) {
+          const next = it.next();
+          next.catch(() => {});
+          const r = await Promise.race([next, aborted]);
+          if (r === "aborted") {
+            result.abort?.();
+            void Promise.resolve(it.return?.()).catch(() => {});
+            console.log(JSON.stringify({ task: v.body.task, vid, status: "client_disconnected" }));
+            return;
+          }
+          if (r.done) break;
+          send("delta", { text: r.value.text });
+        }
+      } catch (err) {
+        const kind = mapError(err);
+        console.log(JSON.stringify({ task: v.body.task, vid, status: "error", kind }));
+        send("error", { error: kind });
+        return;
+      }
+      const f = await result.final();
+      const state = await record(f);
+      console.log(JSON.stringify({ task: v.body.task, vid, status: f.stop, tokens: f.inputTokens + f.outputTokens }));
+      if (f.stop === "refusal") { send("error", { error: "refused" }); return; }
+      send("done", {
+        usage: { input: f.inputTokens, output: f.outputTokens },
+        stop: f.stop,
+        remaining: { requests: Math.max(0, DAILY_REQUESTS - state.requests), tokens: Math.max(0, DAILY_TOKENS - state.tokens) },
+        resetAt,
+      });
+    } finally {
+      // Runs on every exit path (completion, error, client disconnect): charge whatever was consumed.
+      const p = record(result.usageSoFar()).catch(() => undefined);
+      ctx.waitUntil(p);
+      await p;
+      finished();
     }
-    const f = await result.final();
-    const tokens = f.inputTokens + f.outputTokens;
-    const state = await recordUsage(env.QUOTA, session.vid, day, tokens);
-    console.log(JSON.stringify({ task: v.body.task, vid: session.vid, status: f.stop, tokens }));
-    if (f.stop === "refusal") { send("error", { error: "refused" }); return; }
-    send("done", {
-      usage: { input: f.inputTokens, output: f.outputTokens },
-      stop: f.stop,
-      remaining: { requests: Math.max(0, DAILY_REQUESTS - state.requests), tokens: Math.max(0, DAILY_TOKENS - state.tokens) },
-      resetAt,
-    });
   });
 }
