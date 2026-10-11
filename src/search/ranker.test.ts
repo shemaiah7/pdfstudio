@@ -47,8 +47,15 @@ describe("rank", () => {
     const b = doc("b", [unit(1)], ["b0"]);
     const q = new Float32Array(DIMS); q[0] = 0.9; q[1] = 0.5;
     const hits = rank(q, [a, b], []);
-    expect(hits.slice(0, 4).map((h) => h.hash)).toEqual(["a", "a", "a", "b"]);
-    expect(hits.length).toBe(9);
+    expect(hits.map((h) => h.hash)).toEqual(["a", "a", "a", "b", "a", "a", "a", "a", "a"]);
+  });
+  it("does not throw or emit NaN hits when vectors are shorter than chunks", () => {
+    const short: RankDoc = { hash: "s", chunks: [{ page: 0, start: 0, end: 2, text: "p" }, { page: 1, start: 0, end: 2, text: "q" }], vectors: unit(0) };
+    let hits: ReturnType<typeof rank> = [];
+    expect(() => { hits = rank(unit(0), [short], []); }).not.toThrow();
+    expect(hits).toHaveLength(1);
+    expect(hits[0].chunkIndex).toBe(0);
+    expect(Number.isNaN(hits[0].score)).toBe(false);
   });
   it("excludes the originating chunk and honours limit", () => {
     const d = doc("h", [unit(0), unit(0), unit(0)], ["x", "y", "z"]);

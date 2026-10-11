@@ -45,12 +45,15 @@ export function rank(query: Float32Array, docs: RankDoc[], terms: string[], opts
       let boost = 0;
       for (const t of terms) if (lower.includes(t)) boost = Math.min(BOOST_CAP, boost + BOOST);
       const score = dot(query, d.vectors, i) + boost;
-      if (score < THRESHOLD) continue;
+      if (!(score >= THRESHOLD)) continue; // also drops NaN (short or stale vectors)
       all.push({ hash: d.hash, page: chunk.page, chunkIndex: i, score, snippet: snippet(chunk.text, terms) });
     }
   }
   all.sort((a, b) => b.score - a.score);
-  // Diversity: at most 3 per document among the first 10 results.
+  // Diversity: at most 3 hits per document among the first 10 results. Hits over that cap
+  // are not dropped: they go to `tail`, which is appended after the head. So when fewer than
+  // 10 diverse hits exist, over-cap hits backfill the list, but other documents still rank first.
+  // Intended behaviour (ruling): no valid hit is dropped.
   const head: Hit[] = [], tail: Hit[] = [], perDoc = new Map<string, number>();
   for (const h of all) {
     const n = perDoc.get(h.hash) ?? 0;
