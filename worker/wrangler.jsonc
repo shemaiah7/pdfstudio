@@ -7,6 +7,6 @@
   "kv_namespaces": [{ "binding": "QUOTA", "id": "placeholder-replace-before-deploy" }],
   "vars": {
     "ALLOWED_ORIGIN": "http://localhost:5173",
-    "TURNSTILE_HOSTNAMES": "localhost"
+    "TURNSTILE_HOSTNAMES": "localhost,example.com"
   }
 }

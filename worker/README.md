@@ -12,7 +12,7 @@ Proxy between the PDF Studio app and the Claude API.
 ## Deploy (first time)
 1. `npx wrangler kv namespace create QUOTA` and paste the id into `wrangler.jsonc`.
 2. `npx wrangler secret put ANTHROPIC_API_KEY`, `TURNSTILE_SECRET`, `SESSION_SECRET`.
-3. Set `ALLOWED_ORIGIN` and `TURNSTILE_HOSTNAMES` in `wrangler.jsonc` to the app's production origin/hostname.
+3. Set `ALLOWED_ORIGIN` and `TURNSTILE_HOSTNAMES` in `wrangler.jsonc` to the app's production origin/hostname. (In dev the list includes `example.com`, which is the hostname Turnstile's test keys report.)
 4. `npm run deploy`.
 
 ## Protocol
