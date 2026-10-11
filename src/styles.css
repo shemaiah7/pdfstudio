@@ -94,3 +94,13 @@ body { background: var(--bg); color: var(--text); font-family: system-ui, sans-s
 .palette button.active { background: var(--accent); color: white; border-color: transparent; }
 .palette .swatch { width: 20px; height: 20px; padding: 0; border-radius: 50%; }
 .palette .swatch.active { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.annotationOverlay { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
+.annotationOverlay svg { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; }
+.annotationOverlay .hit { cursor: move; }
+.annotationOverlay .handle { fill: white; stroke: var(--accent); cursor: nwse-resize; }
+.annotationOverlay .freetext { position: absolute; outline: 1px dashed transparent; white-space: pre-wrap; line-height: 1.2; font-family: Helvetica, Arial, sans-serif; padding: 2px; box-sizing: border-box; }
+.annotationOverlay .freetext:focus, .annotationOverlay .freetext.selected { outline-color: var(--accent); }
+.notePopover { position: absolute; z-index: 5; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 8px; width: 220px; box-shadow: 0 4px 16px rgba(0,0,0,.3); }
+.notePopover textarea { width: 100%; box-sizing: border-box; font: inherit; min-height: 70px; }
+.notePopoverActions { display: flex; gap: 6px; justify-content: flex-end; margin-top: 6px; }

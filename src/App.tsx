@@ -23,12 +23,17 @@ export default function App() {
   const [dragging, setDragging] = useState(false);
 
   useEffect(() => {
+    const isEditing = () => {
+      const el = document.activeElement as HTMLElement | null;
+      return !!el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable);
+    };
     const onKey = (e: KeyboardEvent) => {
       const st = useDocumentStore.getState();
       const mod = e.metaKey || e.ctrlKey;
       if (mod && e.key === "z" && !e.shiftKey) { e.preventDefault(); st.undo(); }
       else if (mod && (e.key === "y" || (e.key === "z" && e.shiftKey))) { e.preventDefault(); st.redo(); }
-      else if ((e.key === "Delete" || e.key === "Backspace") && st.selection.size) { e.preventDefault(); st.remove([...st.selection]); }
+      else if ((e.key === "Delete" || e.key === "Backspace") && st.selectedAnnotationId && !isEditing()) { e.preventDefault(); st.removeAnnotation(st.selectedAnnotationId); }
+      else if ((e.key === "Delete" || e.key === "Backspace") && st.selection.size && !isEditing()) { e.preventDefault(); st.remove([...st.selection]); }
     };
     const onUnload = (e: BeforeUnloadEvent) => {
       if (useDocumentStore.getState().isDirty()) { e.preventDefault(); e.returnValue = ""; }
