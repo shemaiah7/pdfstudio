@@ -9,17 +9,20 @@ export function sampleColors(image: ImageData, rect: PixelRect, ring = 3): { bac
   const x1 = Math.min(W, Math.ceil(rect.x + rect.width)), y1 = Math.min(H, Math.ceil(rect.y + rect.height));
   if (x1 <= x0 || y1 <= y0) return { background: WHITE, text: BLACK };
   const counts = new Map<number, number>();
+  const sums = new Map<number, [number, number, number]>();
   const px = (x: number, y: number) => { const i = (y * W + x) * 4; return [data[i], data[i + 1], data[i + 2]] as const; };
   for (let y = Math.max(0, y0 - ring); y < Math.min(H, y1 + ring); y++) for (let x = Math.max(0, x0 - ring); x < Math.min(W, x1 + ring); x++) {
     if (x >= x0 && x < x1 && y >= y0 && y < y1) continue;
     const [r, g, b] = px(x, y);
     const key = (Math.floor(r / Q) << 8) | (Math.floor(g / Q) << 4) | Math.floor(b / Q);
     counts.set(key, (counts.get(key) ?? 0) + 1);
+    const s = sums.get(key) ?? [0, 0, 0]; s[0] += r; s[1] += g; s[2] += b; sums.set(key, s);
   }
   let background = WHITE;
   if (counts.size) {
     const [key] = [...counts.entries()].sort((a, b) => b[1] - a[1])[0];
-    background = [((key >> 8) & 15) * Q + Q / 2, ((key >> 4) & 15) * Q + Q / 2, (key & 15) * Q + Q / 2].map((v) => Math.min(255, v) / 255) as RGB;
+    const n = counts.get(key)!, s = sums.get(key)!;
+    background = [s[0] / n / 255, s[1] / n / 255, s[2] / n / 255];
   }
   const inside: [number, number, number, number][] = [];
   for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) { const [r, g, b] = px(x, y); inside.push([r + g + b, r, g, b]); }

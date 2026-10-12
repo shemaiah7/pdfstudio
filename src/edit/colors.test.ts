@@ -12,9 +12,18 @@ describe("sampleColors", () => {
     // cream page, block at 10..40 x 10..20 with navy glyph pixels on a cream background
     const img = image(60, 40, (x, y) => (x >= 12 && x <= 38 && y >= 12 && y <= 18 && (x + y) % 3 === 0 ? [20, 30, 90] : [250, 245, 230]));
     const { background, text } = sampleColors(img, { x: 10, y: 10, width: 30, height: 10 });
-    expect(background.map((c) => Math.round(c * 255))).toEqual([250, 245, 230].map((v) => Math.floor(v / 16) * 16 + 8).map((v) => Math.min(255, v)));
+    expect(background.map((c) => Math.round(c * 255))).toEqual([250, 245, 230]);
     expect(text[2]).toBeGreaterThan(text[0]);
     expect(text[0] * 255).toBeLessThan(60);
+  });
+  it("returns exact white for a white page", () => {
+    const img = image(60, 40, () => [255, 255, 255]);
+    expect(sampleColors(img, { x: 10, y: 10, width: 30, height: 10 }).background).toEqual([1, 1, 1]);
+  });
+  it("returns the mean of the dominant bucket, not its centre", () => {
+    const img = image(60, 40, (x, y) => (x >= 8 && x < 10 && y >= 8 && y < 12 ? [20, 30, 90] : [250, 245, 230]));
+    const { background } = sampleColors(img, { x: 10, y: 10, width: 30, height: 10 });
+    [250, 245, 230].forEach((v, i) => expect(Math.abs(background[i] - v / 255)).toBeLessThanOrEqual(1 / 255));
   });
   it("falls back to white/black when the rect is outside the image", () => {
     const img = image(10, 10, () => [255, 255, 255]);
