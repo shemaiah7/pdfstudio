@@ -168,3 +168,11 @@ body { background: var(--bg); color: var(--text); font-family: system-ui, sans-s
 .voice-captions { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 6px; background: var(--bg); border-radius: 8px; padding: 10px; }
 .voice-captions .caption { margin: 0; }
 .voice-captions .caption.you { opacity: 0.8; }
+
+.line-editor { position: absolute; inset: 0; z-index: 30; pointer-events: none; }
+.line-field-wrap { position: absolute; pointer-events: auto; }
+.line-field { outline: 1px solid #2563eb; white-space: pre; overflow: visible; min-width: 1em; }
+.line-field.overflow { outline-color: var(--danger); }
+.line-overflow { position: absolute; left: 0; top: 100%; font-size: 11px; color: var(--danger); white-space: nowrap; }
+.line-editor-bar { position: absolute; pointer-events: auto; display: flex; gap: 6px; font-size: 12px; background: var(--bg, white); border: 1px solid var(--border, #ccc); border-radius: 4px; padding: 2px 6px; }
+.drag-box { position: absolute; border: 1px dashed #2563eb; background: rgba(37, 99, 235, 0.08); pointer-events: none; }
