@@ -1,13 +1,13 @@
 import type { PageEntry, SourceFile, Edit, EditFont, RGB } from "../pdf/types";
-import { extractPageText, editsStamp } from "../pdf/text";
+import { extractPageText, editsStamp, type TextItemBox } from "../pdf/text";
 import { getPage } from "../pdf/render";
 import { sourceReleasers } from "../store/document";
 import { useOcrStore, pageKey } from "../store/ocr";
-import { linesFrom, blocksFrom, type TextBlock } from "./blocks";
+import { linesFrom, blocksFrom, type TextBlock, type TextLine } from "./blocks";
 
 export interface OpenBlock { entry: PageEntry; source: SourceFile; block: TextBlock; font: EditFont; colors: { background: RGB; text: RGB }; blockKey: string; existing?: Edit; caretOffset: number }
 
-type PageBlocks = { blocks: TextBlock[]; styles: Record<string, { fontFamily?: string }>; page: Awaited<ReturnType<typeof getPage>> };
+type PageBlocks = { blocks: TextBlock[]; lines: TextLine[]; items: TextItemBox[]; styles: Record<string, { fontFamily?: string }>; page: Awaited<ReturnType<typeof getPage>> };
 /** One entry per page: replaced when the edits stamp or OCR state in the key changes, dropped when empty or failed. */
 const cache = new Map<string, { key: string; p: Promise<PageBlocks> }>();
 const pageKeyOf = (source: SourceFile, pageIndex: number) => `${source.id}:${pageIndex}`;
@@ -30,7 +30,8 @@ export async function pageBlocks(source: SourceFile, pageIndex: number): Promise
       const pdfPage = await getPage(source, pageIndex);
       const { items } = await extractPageText(source, pageIndex);
       const styles = (await pdfPage.getTextContent()).styles as Record<string, { fontFamily?: string }>;
-      const result = { blocks: blocksFrom(linesFrom(items)), styles, page: pdfPage };
+      const lines = linesFrom(items);
+      const result = { blocks: blocksFrom(lines), lines, items, styles, page: pdfPage };
       if (!result.blocks.length && cache.get(page) === entry) cache.delete(page); // an empty list may only mean OCR has not finished
       return result;
     })();

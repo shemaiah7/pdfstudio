@@ -1,5 +1,6 @@
-import type { SourceFile, Box, Edit } from "./types";
-import { placeEdit } from "../edit/layout";
+import type { SourceFile, Box, Edit, EditFont } from "./types";
+import { placePieces } from "../edit/layout";
+import type { Measure } from "./layout";
 import { measureFor } from "./metrics";
 import { normalizeFont } from "./fonts";
 import { getPage } from "./render";
@@ -79,17 +80,17 @@ export function coveredBy(i: TextItemBox, boxes: Box[]): boolean {
   return boxes.some((b) => i.x < b.x + b.width && b.x < i.x + i.width && b.y < bandTop && bandBottom < b.y + b.height);
 }
 
-async function applyEdits(items: TextItemBox[], edits: Edit[]): Promise<TextItemBox[]> {
+export async function applyEdits(items: TextItemBox[], edits: Edit[]): Promise<TextItemBox[]> {
   if (!edits.length) return items;
-  const placed = await Promise.all(edits.map(async (e) => {
-    const font = normalizeFont(e.font);
-    const measure = await measureFor(font);
-    return { e, font, measure, ...placeEdit(e, measure) };
-  }));
+  const faces = new Set<EditFont>();
+  for (const e of edits) { if (e.kind === "line") for (const r of e.runs ?? []) faces.add(r.font); else faces.add(normalizeFont(e.font)); }
+  const measures = new Map<EditFont, Measure>();
+  await Promise.all([...faces].map(async (f) => measures.set(f, await measureFor(f))));
+  const placed = edits.map((e) => placePieces(e, (f) => measures.get(f)!));
   const covers = placed.flatMap((p) => p.boxes);
   let out = items.filter((i) => !coveredBy(i, covers));
-  for (const { font, measure, lines, fontSize } of placed) {
-    out = out.concat(lines.map((l) => ({ str: l.text, x: l.x, y: l.baseline, width: measure(l.text, fontSize), height: fontSize, fontSize, fontName: font })));
+  for (const { pieces } of placed) {
+    out = out.concat(pieces.map((p) => ({ str: p.text, x: p.x, y: p.baseline, width: p.width, height: p.fontSize, fontSize: p.fontSize, fontName: p.font })));
   }
   return out;
 }

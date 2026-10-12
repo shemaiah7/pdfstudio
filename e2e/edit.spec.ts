@@ -23,9 +23,6 @@ async function savedText(page: import("@playwright/test").Page): Promise<string>
   return tc.items.map((i) => ("str" in i ? i.str : "")).join(" ");
 }
 
-const selectAll = (editor: import("@playwright/test").Locator) =>
-  editor.evaluate((el) => { const r = document.createRange(); r.selectNodeContents(el); const s = getSelection()!; s.removeAllRanges(); s.addRange(r); });
-
 test("edit a typed line in place and download", async ({ page }) => {
   await page.goto("/");
   await page.setInputFiles('input[type="file"]', fixture("three"));
@@ -34,11 +31,10 @@ test("edit a typed line in place and download", async ({ page }) => {
   const span = page.locator(".page").first().locator(".textLayer span", { hasText: "three:0" });
   const b = await span.boundingBox();
   await page.mouse.click(b!.x + 5, b!.y + b!.height / 2);
-  const editor = page.getByTestId("block-editor");
-  await expect(editor).toHaveText("three:0");
-  await selectAll(editor);
-  await editor.type("three:9");
-  await editor.press("Enter");
+  const field = page.getByTestId("line-field").first();
+  await expect(field).toHaveText("three:0");
+  await field.locator("[data-run]").first().evaluate((el) => { el.textContent = "three:9"; el.dispatchEvent(new Event("input", { bubbles: true })); });
+  await field.press("Enter");
   await expect(page.locator(".edit-line").first()).toHaveText("three:9");
   const text = await savedText(page);
   expect(text).toContain("three:9");
@@ -61,17 +57,10 @@ test.describe("scan", () => {
     const span = page.locator(".page .textLayer span", { hasText: /hypertension/i }).first();
     const b = await span.boundingBox();
     await page.mouse.click(b!.x + 5, b!.y + b!.height / 2);
-    const editor = page.getByTestId("block-editor");
-    await expect(editor).toContainText(/hypertension/i);
-    // Select just the word: the block is multi-line and typing "\n" would press Enter (apply).
-    await editor.evaluate((el) => {
-      const node = el.firstChild!;
-      const i = node.textContent!.search(/hypertension/i);
-      const r = document.createRange(); r.setStart(node, i); r.setEnd(node, i + "hypertension".length);
-      const s = getSelection()!; s.removeAllRanges(); s.addRange(r);
-    });
-    await editor.type("hypotension");
-    await editor.press("Enter");
+    const field = page.getByTestId("line-field").first();
+    await expect(field).toContainText(/hypertension/i);
+    await field.locator("[data-run]").first().evaluate((el) => { el.textContent = (el.textContent ?? "").replace(/hypertension/i, "hypotension"); el.dispatchEvent(new Event("input", { bubbles: true })); });
+    await field.press("Enter");
     await expect(page.locator(".edit-line", { hasText: "hypotension" })).toBeVisible();
     const text = await savedText(page);
     expect(text).toMatch(/hypotension/i);

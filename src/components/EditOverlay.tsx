@@ -1,7 +1,7 @@
 import { useMemo } from "react";
-import type { Edit } from "../pdf/types";
+import type { Edit, EditFont } from "../pdf/types";
 import { FONT_CSS, normalizeFont } from "../pdf/fonts";
-import { placeEdit } from "../edit/layout";
+import { placePieces } from "../edit/layout";
 import { usePdfMeasure } from "./usePdfMeasure";
 import EditHandles from "./EditHandles";
 
@@ -27,20 +27,21 @@ export function overlayTransform(rotation: number, W: number, H: number): string
 export default function EditOverlay({ edits, scale, pageHeightPt, pageWidthPt, rotation, selectedEditId, onReopen }: { edits: Edit[]; scale: number; pageHeightPt: number; pageWidthPt: number; rotation: number; selectedEditId?: string | null; onReopen?: (e: Edit) => void }) {
   const W = pageWidthPt * scale, H = pageHeightPt * scale;
   // Canvas measurer until the pdf-lib metrics (shared with export) are ready.
-  const pdfMeasure = usePdfMeasure(edits.map((e) => normalizeFont(e.font)));
-  const laid = useMemo(
-    () => edits.map((e) => ({ e, ...placeEdit(e, pdfMeasure[normalizeFont(e.font)] ?? measureCss(e.font)) })),
-    [edits, pdfMeasure],
-  );
+  const faces = useMemo(() => [...new Set(edits.flatMap((e) => (e.kind === "line" ? (e.runs ?? []).map((r) => r.font) : [normalizeFont(e.font)])))], [edits]);
+  const pdfMeasure = usePdfMeasure(faces);
+  const laid = useMemo(() => {
+    const measures = (f: EditFont) => pdfMeasure[f] ?? measureCss(f);
+    return edits.map((e) => ({ e, ...placePieces(e, measures) }));
+  }, [edits, pdfMeasure]);
   return (
     <div className="editOverlay" style={{ width: W, height: H, inset: "auto", left: 0, top: 0, transformOrigin: "0 0", transform: overlayTransform(rotation, W, H) }}>
-      {laid.map(({ e, lines, boxes, fontSize }) => (
+      {laid.map(({ e, pieces, boxes }) => (
         <div key={e.id} className="edit" data-edit-id={e.id}>
           {boxes.map((b, i) => (
             <div key={i} className="edit-box" style={{ left: b.x * scale, top: (pageHeightPt - b.y - b.height) * scale, width: b.width * scale, height: b.height * scale, background: `rgb(${(e.background ?? [1, 1, 1]).map((c) => c * 255).join(",")})` }} />
           ))}
-          {lines.map((l, i) => (
-            <div key={i} className="edit-line" style={{ left: l.x * scale, top: (pageHeightPt - l.baseline - fontSize) * scale, font: FONT_CSS[normalizeFont(e.font)].replace("1px", `${fontSize * scale}px`), color: `rgb(${e.color.map((c) => c * 255).join(",")})` }}>{l.text}</div>
+          {pieces.map((p, i) => (
+            <div key={i} className="edit-line" data-run style={{ left: p.x * scale, top: (pageHeightPt - p.baseline - p.fontSize) * scale, font: FONT_CSS[p.font].replace("1px", `${p.fontSize * scale}px`), color: `rgb(${p.color.map((c) => c * 255).join(",")})` }}>{p.text}</div>
           ))}
         </div>
       ))}

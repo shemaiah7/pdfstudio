@@ -72,4 +72,24 @@ async function makeScan() {
   writeFileSync(join(outDir, "scan.pdf"), await doc.save());
 }
 await makeScan();
+async function makeColumns() {
+  const doc = await PDFDocument.create();
+  const bold = await doc.embedFont(StandardFonts.HelveticaBold);
+  const reg = await doc.embedFont(StandardFonts.Helvetica);
+  const page = doc.addPage([600, 400]);
+  const rows = [["Assigned Caregiver", "Rylee Lyons", "Respiration", "16"], ["Prior Caregiver", "Rylee Lyons", "Temperature", "97.8"], ["Ambulance Called", "No", "Pulse", "78"]];
+  rows.forEach((r, i) => {
+    const y = 340 - i * 18;
+    page.drawText(r[0], { x: 30, y, size: 11, font: bold });
+    page.drawText(r[1], { x: 180, y, size: 11, font: reg });
+    page.drawText(r[2], { x: 380, y, size: 11, font: bold });
+    page.drawText(r[3], { x: 500, y, size: 11, font: reg });
+  });
+  // A row whose bold label and regular value are close enough to share one line (mixed runs).
+  const sy = 340 - 3 * 18;
+  page.drawText("Status:", { x: 30, y: sy, size: 11, font: bold });
+  page.drawText("Open", { x: 30 + bold.widthOfTextAtSize("Status:", 11) + 4, y: sy, size: 11, font: reg });
+  writeFileSync(join(outDir, "columns.pdf"), await doc.save());
+}
+await makeColumns();
 console.log("fixtures written to", outDir);

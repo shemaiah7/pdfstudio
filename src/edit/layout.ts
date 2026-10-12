@@ -1,4 +1,5 @@
-import type { Box, Edit } from "../pdf/types";
+import type { Box, Edit, EditFont, RGB } from "../pdf/types";
+import { normalizeFont } from "../pdf/fonts";
 import { layoutInBoxes, regionOf, wrapWords, type Measure, type PlacedLine } from "../pdf/layout";
 export interface BlockLayout { lines: PlacedLine[]; boxes: Box[]; height: number; overflowLines: number }
 
@@ -43,4 +44,37 @@ export function placeEdit(edit: EditGeometry, measure: Measure): { lines: Placed
   }
   const { lines, fontSize } = layoutInBoxes(edit.text, edit.boxes, edit.fontSize, measure, { keepOverflow: true });
   return { lines, boxes: edit.boxes, fontSize };
+}
+
+export interface Piece { text: string; x: number; baseline: number; width: number; font: EditFont; fontSize: number; color: RGB }
+export type Measures = (font: EditFont) => Measure;
+
+export function lineFrame(edit: Pick<Edit, "frame" | "region" | "boxes">): Box {
+  return edit.frame ?? edit.region ?? regionOf(edit.boxes);
+}
+
+/**
+ * The one layout for every edit kind. Line edits: runs left to right from (x, baseline), shifted by the frame's offset
+ * from the region when moved; covers are the original region plus the frame when moved. Legacy block edits: the
+ * existing `placeEdit` layout, one piece per line in the block's font.
+ */
+export function placePieces(edit: Edit, measures: Measures): { pieces: Piece[]; boxes: Box[] } {
+  if (edit.kind === "line") {
+    const region = edit.region ?? regionOf(edit.boxes);
+    const frame = edit.frame ?? region;
+    const dx = frame.x - region.x, dy = frame.y - region.y;
+    let x = (edit.x ?? region.x) + dx;
+    const baseline = (edit.baseline ?? region.y + region.height * 0.25 / 1.2) + dy;
+    const pieces: Piece[] = [];
+    for (const r of edit.runs ?? []) {
+      if (!r.text) continue;
+      const width = measures(r.font)(r.text, r.fontSize);
+      pieces.push({ text: r.text, x, baseline, width, font: r.font, fontSize: r.fontSize, color: r.color });
+      x += width;
+    }
+    return { pieces, boxes: edit.frame ? [region, frame] : [region] };
+  }
+  const font = normalizeFont(edit.font);
+  const { lines, boxes, fontSize } = placeEdit(edit, measures(font));
+  return { pieces: lines.map((l) => ({ text: l.text, x: l.x, baseline: l.baseline, width: measures(font)(l.text, fontSize), font, fontSize, color: edit.color })), boxes };
 }

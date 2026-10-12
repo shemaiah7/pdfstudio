@@ -412,3 +412,14 @@ body { background: var(--bg); color: var(--text); font: var(--text-body); }
   .panel-tabs button.active, .scope-toggle label.checked, .sigTabs button.active { background: var(--color-ink-raised); }
   .palette, .float-bar { box-shadow: var(--shadow-bar), 0 0 0 1px var(--color-line); }
 }
+
+/* ---- Line editing (Quiet Desk tokens) ---- */
+.line-editor { position: absolute; inset: 0; z-index: 30; pointer-events: none; }
+.line-field-wrap { position: absolute; pointer-events: auto; }
+.line-field { outline: 1px solid var(--color-accent); border-radius: 3px; white-space: pre; overflow: visible; min-width: 1em; caret-color: var(--color-accent); }
+.line-field.overflow { outline-color: var(--danger); }
+.line-overflow { position: absolute; left: 0; top: 100%; font-size: 12px; color: var(--danger); white-space: nowrap; }
+.line-editor-bar { position: absolute; pointer-events: auto; z-index: 31; }
+.drag-box { position: absolute; border: 1px dashed var(--color-accent); background: var(--color-accent-soft); opacity: 0.8; pointer-events: none; }
+.edit-target-layer { position: absolute; inset: 0; cursor: text; touch-action: none; }
+.page.tool-edit .edit-line { pointer-events: none; }

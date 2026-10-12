@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { linesFromItems, hasAnyText } from "./text";
+import { linesFromItems, hasAnyText, applyEdits, type TextItemBox } from "./text";
+import type { Edit } from "./types";
 
 const item = (str: string, x: number, y: number, w = 10) => ({ str, transform: [10, 0, 0, 10, x, y], width: w, height: 10 });
 
@@ -26,5 +27,24 @@ describe("hasAnyText", () => {
   it("is false for whitespace-only pages", () => {
     expect(hasAnyText([{ text: " \n" }, { text: "" }])).toBe(false);
     expect(hasAnyText([{ text: "x" }])).toBe(true);
+  });
+});
+
+describe("applyEdits with line edits", () => {
+  it("replaces the covered items with one item per run, carrying each run's face", async () => {
+    const items: TextItemBox[] = [
+      { str: "Assigned Caregiver", x: 20, y: 700, width: 90, height: 10, fontSize: 10, fontName: "g_bold" },
+      { str: "Rylee Lyons", x: 130, y: 700, width: 60, height: 10, fontSize: 10, fontName: "g_reg" },
+      { str: "Other line", x: 20, y: 686, width: 60, height: 10, fontSize: 10, fontName: "g_reg" },
+    ];
+    const edit: Edit = { id: "e", pageEntryId: "p", kind: "line", x: 130, baseline: 700, region: { x: 130, y: 697.5, width: 60, height: 12 }, boxes: [{ x: 130, y: 697.5, width: 60, height: 12 }], runs: [{ text: "Jamie Lee", font: "helvetica", fontSize: 10, color: [0, 0, 0] }], text: "Jamie Lee", fontSize: 10, font: "helvetica", color: [0, 0, 0] };
+    const out = await applyEdits(items, [edit]);
+    expect(out.map((i) => i.str)).toEqual(["Assigned Caregiver", "Other line", "Jamie Lee"]);
+    expect(out[2]).toMatchObject({ x: 130, y: 700, fontName: "helvetica", fontSize: 10 });
+  });
+  it("an emptied line edit removes the covered text and adds nothing", async () => {
+    const items: TextItemBox[] = [{ str: "gone", x: 20, y: 700, width: 30, height: 10, fontSize: 10, fontName: "g" }];
+    const edit: Edit = { id: "e", pageEntryId: "p", kind: "line", x: 20, baseline: 700, region: { x: 20, y: 697.5, width: 30, height: 12 }, boxes: [{ x: 20, y: 697.5, width: 30, height: 12 }], runs: [], text: "", fontSize: 10, font: "helvetica", color: [0, 0, 0] };
+    expect(await applyEdits(items, [edit])).toEqual([]);
   });
 });

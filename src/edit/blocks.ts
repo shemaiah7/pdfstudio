@@ -1,28 +1,85 @@
 import type { Box } from "../pdf/types";
 import type { TextItemBox } from "../pdf/text";
 
-export interface TextLine { text: string; x: number; baseline: number; width: number; fontSize: number; fontName: string; items: TextItemBox[] }
+export interface TextRun { items: TextItemBox[]; text: string; fontName: string; fontSize: number; x: number; width: number }
+export interface TextLine { text: string; x: number; baseline: number; width: number; fontSize: number; fontName: string; items: TextItemBox[]; runs: TextRun[]; box: Box }
 export interface TextBlock { lines: TextLine[]; box: Box; lineHeight: number; fontSize: number; fontName: string; text: string; firstLineIndex: number }
 
+const COLUMN_GAP = 1.2;   // em
+const SIZE_TOL = 0.02;
+
+/** Builds the line text once; runs slice it, so runs.map(text).join("") === line text. A space at a run boundary belongs to the preceding run. */
+function runsOf(items: TextItemBox[]): TextRun[] {
+  const groups: TextItemBox[][] = [];
+  const starts: number[] = [];
+  let buf = "", cursor = -Infinity;
+  for (const p of items) {
+    let str = p.str.replace(/\s+/g, " ");
+    const g = groups[groups.length - 1];
+    const newRun = !g || g[0].fontName !== p.fontName || Math.abs(g[0].fontSize - p.fontSize) > g[0].fontSize * SIZE_TOL;
+    if (buf.endsWith(" ") && str.startsWith(" ")) str = str.slice(1);
+    else if (buf && !buf.endsWith(" ") && (str.startsWith(" ") ? newRun : p.x - cursor > p.fontSize * 0.15)) { buf += " "; if (str.startsWith(" ")) str = str.slice(1); }
+    if (newRun) { groups.push([p]); starts.push(buf.length); } else g.push(p);
+    buf += str; cursor = p.x + p.width;
+  }
+  const lead = buf.length - buf.trimStart().length;
+  const full = buf.trim();
+  const out: TextRun[] = [];
+  groups.forEach((r, i) => {
+    const from = Math.max(0, starts[i] - lead);
+    const to = i + 1 < groups.length ? Math.max(0, starts[i + 1] - lead) : full.length;
+    const text = full.slice(Math.min(from, full.length), Math.min(to, full.length));
+    if (!text) return;
+    out.push({ items: r, text, fontName: r[0].fontName, fontSize: r[0].fontSize, x: r[0].x, width: Math.max(...r.map((i) => i.x + i.width)) - r[0].x });
+  });
+  return out;
+}
+
+export function lineBox(line: Pick<TextLine, "x" | "baseline" | "width" | "fontSize">): Box {
+  return { x: line.x, y: line.baseline - line.fontSize * 0.25, width: line.width, height: line.fontSize * 1.2 };
+}
+
+function lineOf(g: TextItemBox[]): TextLine {
+  const x = Math.min(...g.map((i) => i.x));
+  const right = Math.max(...g.map((i) => i.x + i.width));
+  const runs = runsOf(g);
+  const partial = { text: runs.map((r) => r.text).join(""), x, baseline: Math.min(...g.map((i) => i.y)), width: right - x, fontSize: g[0].fontSize, fontName: g[0].fontName, items: g, runs };
+  return { ...partial, box: lineBox(partial) };
+}
+
 export function linesFrom(items: TextItemBox[]): TextLine[] {
-  const placed = items.filter((i) => i.str.length > 0).sort((a, b) => b.y - a.y || a.x - b.x);
+  // pdf.js emits whitespace-only items that span the gap between separately drawn strings; they would hide column gaps. runsOf re-inserts spaces from real gaps.
+  const placed = items.filter((i) => i.str.trim().length > 0).sort((a, b) => b.y - a.y || a.x - b.x);
   const groups: TextItemBox[][] = [];
   for (const p of placed) {
     const g = groups[groups.length - 1];
     if (g && Math.abs(g[0].y - p.y) <= g[0].fontSize * 0.5) g.push(p); else groups.push([p]);
   }
-  return groups.map((g) => {
+  const out: TextLine[] = [];
+  for (const g of groups) {
     g.sort((a, b) => a.x - b.x);
-    let text = "", cursor = -Infinity;
+    let seg: TextItemBox[] = [];
     for (const p of g) {
-      const gap = p.x - cursor;
-      if (text && gap > p.fontSize * 0.15 && !text.endsWith(" ") && !p.str.startsWith(" ")) text += " ";
-      text += p.str; cursor = p.x + p.width;
+      const prev = seg[seg.length - 1];
+      if (prev && p.x - (prev.x + prev.width) > COLUMN_GAP * prev.fontSize) { out.push(lineOf(seg)); seg = []; }
+      seg.push(p);
     }
-    const x = Math.min(...g.map((i) => i.x));
-    const right = Math.max(...g.map((i) => i.x + i.width));
-    return { text: text.replace(/\s+/g, " ").trim(), x, baseline: Math.min(...g.map((i) => i.y)), width: right - x, fontSize: g[0].fontSize, fontName: g[0].fontName, items: g };
+    if (seg.length) out.push(lineOf(seg));
+  }
+  return out;
+}
+
+export function linesInBox(lines: TextLine[], box: Box): TextLine[] {
+  return lines.filter((l) => {
+    const b = l.box;
+    const vy = Math.min(b.y + b.height, box.y + box.height) - Math.max(b.y, box.y);
+    const vx = Math.min(b.x + b.width, box.x + box.width) - Math.max(b.x, box.x);
+    return vy >= b.height / 2 && vx >= Math.min(l.fontSize * 0.5, l.box.width);
   });
+}
+
+export function lineAt(lines: TextLine[], x: number, y: number, tol = 2): TextLine | undefined {
+  return lines.find((l) => x >= l.box.x - tol && x <= l.box.x + l.box.width + tol && y >= l.box.y - tol && y <= l.box.y + l.box.height + tol);
 }
 
 function joins(a: TextLine, b: TextLine): boolean {
