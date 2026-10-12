@@ -16,6 +16,7 @@ test("recognizes a scanned page, makes it selectable, and summarizes it", async 
   await expect(page.getByTestId("ocr-badge").first()).toHaveText("Text recognized", { timeout: 120_000 });
   await expect(page.locator(".page .textLayer span").first()).toBeVisible();
   await expect(page.locator(".page .textLayer")).toContainText(/hypertension/i);
+  await page.getByTestId("panel-tab-ai").click();
   await page.getByTestId("ai-tab-summarize").click();
   await page.getByTestId("ai-run").click();
   await expect(page.getByText("Summary of the scan.")).toBeVisible({ timeout: 30_000 });

@@ -28,6 +28,7 @@ export default function DropZone({ onFiles, empty, forceOver = false }: Props) {
           <input ref={input} type="file" accept="application/pdf" multiple hidden
             onChange={(e) => { onFiles(Array.from(e.target.files ?? [])); e.target.value = ""; }} />
           <p className="muted">Files never leave your browser.</p>
+          <p className="muted" data-testid="voice-hint">Open a document, then talk to it: ask questions by voice and hear answers cited to the page.</p>
         </div>
       )}
     </div>

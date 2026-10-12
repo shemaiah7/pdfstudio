@@ -4,6 +4,7 @@ import { render, screen, fireEvent, cleanup } from "@testing-library/react";
 import RightPanel from "./RightPanel";
 import { useSearchStore } from "../../store/search";
 import { useLiveStore } from "../../store/live";
+import { useAiStore } from "../../store/ai";
 
 vi.mock("../../ai/turnstile", () => ({ getTurnstileToken: async () => "tok" }));
 vi.mock("../../search/embedClient", () => ({ getEmbedClient: () => ({ load: async () => "wasm", embed: async () => new Float32Array(256), cancel() {}, dispose() {} }) }));
@@ -26,8 +27,16 @@ describe("RightPanel", () => {
   it("has a Voice tab that shows the voice panel", () => {
     useSearchStore.setState({ init: async () => {} } as never);
     render(<RightPanel />);
+    fireEvent.click(screen.getByTestId("panel-tab-ai"));
     fireEvent.click(screen.getByTestId("panel-tab-voice"));
     expect(screen.getByTestId("voice-start")).toBeTruthy();
+  });
+  it("shows the Voice tab first and creates the AI client", () => {
+    useSearchStore.setState({ init: async () => {} } as never);
+    useAiStore.setState({ client: null });
+    render(<RightPanel />);
+    expect(screen.getByTestId("voice-start")).toBeTruthy();
+    expect(useAiStore.getState().client).not.toBeNull();
   });
   it("shows an open-mic indicator on the Voice tab only while connecting or live", () => {
     useSearchStore.setState({ init: async () => {} } as never);

@@ -1,8 +1,7 @@
 import { useEffect, useState } from "react";
 import { useAiStore } from "../../store/ai";
 import { useDocumentStore } from "../../store/document";
-import { AiClient } from "../../ai/client";
-import { getTurnstileToken } from "../../ai/turnstile";
+import { useAiClient } from "./useAiClient";
 import SummarizeTab from "./SummarizeTab";
 import AskTab from "./AskTab";
 import ExtractTab from "./ExtractTab";
@@ -14,20 +13,12 @@ type Tab = "summarize" | "ask" | "rewrite" | "extract";
 
 export default function AiPanel() {
   const [tab, setTab] = useState<Tab>("summarize");
-  const { client, setClient, noticeDismissed, dismissNotice, remaining, limitedUntil, resetForNewDocument } = useAiStore();
+  const { noticeDismissed, dismissNotice, remaining, limitedUntil, resetForNewDocument } = useAiStore();
   const ocrEnabled = useOcrStore((s) => s.enabled);
   const setOcrEnabled = useOcrStore((s) => s.setEnabled);
   const sourcesKey = useDocumentStore((s) => [...s.sources.keys()].join(","));
 
-  // Localhost / Turnstile test-key fallbacks are for development only; production must be configured.
-  const baseUrl = import.meta.env.VITE_AI_URL || (import.meta.env.DEV ? "http://localhost:8787" : "");
-  const siteKey = import.meta.env.VITE_TURNSTILE_SITE_KEY || (import.meta.env.DEV ? "1x00000000000000000000AA" : "");
-  const configured = !!baseUrl && !!siteKey;
-
-  useEffect(() => {
-    if (client || !configured) return;
-    setClient(new AiClient({ baseUrl, getTurnstileToken: () => getTurnstileToken(siteKey) }));
-  }, [client, setClient, configured, baseUrl, siteKey]);
+  const configured = useAiClient();
 
   useEffect(() => { resetForNewDocument(); }, [sourcesKey, resetForNewDocument]);
 

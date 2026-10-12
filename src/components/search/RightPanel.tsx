@@ -4,9 +4,11 @@ import AiPanel from "../ai/AiPanel";
 import SearchTab from "./SearchTab";
 import VoiceTab from "../live/VoiceTab";
 import { useLiveStore } from "../../store/live";
+import { useAiClient } from "../ai/useAiClient";
 
 export default function RightPanel() {
-  const [tab, setTab] = useState<"ai" | "search" | "voice">("ai");
+  const [tab, setTab] = useState<"ai" | "search" | "voice">("voice");
+  useAiClient();
   const init = useSearchStore((st) => st.init);
   const liveStatus = useLiveStore((s) => s.status);
   useEffect(() => { void init(); }, [init]);
