@@ -5,6 +5,7 @@ import { regionOf } from "../pdf/layout";
 import { placeEdit } from "../edit/layout";
 import { measureFor } from "../pdf/metrics";
 import { useDocumentStore } from "../store/document";
+import { Icon } from "./icons";
 
 const FAMILIES: { key: "helvetica" | "times" | "courier"; label: string }[] = [{ key: "helvetica", label: "Helvetica" }, { key: "times", label: "Times" }, { key: "courier", label: "Courier" }];
 
@@ -77,8 +78,8 @@ export default function EditHandles({ edit, scale, heightPt, onReopen }: { edit:
   return (
     <div className="edit-handles" style={style} data-edit-handles={edit.id}>
       <div className="edit-body" data-testid="edit-body" style={{ inset: 0 }} onClick={(e) => { e.stopPropagation(); onReopen(edit); }} />
-      <div className="edit-handles-bar" onClick={(e) => e.stopPropagation()}>
-        <span className="edit-drag" data-testid="edit-drag" title="Drag to move" onPointerDown={start("drag")} onPointerMove={move} onPointerUp={end} onPointerCancel={cancel} onLostPointerCapture={cancel}>⠿</span>
+      <div className="edit-handles-bar float-bar" onClick={(e) => e.stopPropagation()}>
+        <span className="edit-drag" data-testid="edit-drag" title="Drag to move" onPointerDown={start("drag")} onPointerMove={move} onPointerUp={end} onPointerCancel={cancel} onLostPointerCapture={cancel}><Icon name="grip" size={18} /></span>
         <select data-testid="edit-font" value={font} onChange={(e) => void changeFont(e.target.value as EditFont)}>
           {FAMILIES.map((f) => (
             <optgroup key={f.key} label={f.label}>
@@ -86,7 +87,7 @@ export default function EditHandles({ edit, scale, heightPt, onReopen }: { edit:
             </optgroup>
           ))}
         </select>
-        <button type="button" data-testid="edit-delete" onClick={() => useDocumentStore.getState().removeEdit(edit.id)}>Delete</button>
+        <button type="button" className="fb-btn danger" data-testid="edit-delete" onClick={() => useDocumentStore.getState().removeEdit(edit.id)}><Icon name="delete" size={15} />Delete</button>
       </div>
       <div className="edit-width" data-testid="edit-width" title="Drag to change width" onPointerDown={start("width")} onPointerMove={move} onPointerUp={end} onPointerCancel={cancel} onLostPointerCapture={cancel} />
     </div>

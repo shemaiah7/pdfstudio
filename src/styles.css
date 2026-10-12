@@ -140,29 +140,11 @@ body { background: var(--bg); color: var(--text); font: var(--text-body); }
 .annotationOverlay { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
 .annotationOverlay svg { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; }
 .annotationOverlay .hit { cursor: move; }
-.annotationOverlay .handle { fill: white; stroke: var(--accent); cursor: nwse-resize; }
-.annotationOverlay .freetext { position: absolute; outline: 1px dashed transparent; white-space: pre-wrap; line-height: 1.2; font-family: Helvetica, Arial, sans-serif; padding: 2px; box-sizing: border-box; }
-.annotationOverlay .freetext:focus, .annotationOverlay .freetext.selected { outline-color: var(--accent); }
-.notePopover { position: absolute; z-index: 5; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 8px; width: 220px; box-shadow: 0 4px 16px rgba(0,0,0,.3); }
-.notePopover textarea { width: 100%; box-sizing: border-box; font: inherit; min-height: 70px; }
-.notePopoverActions { display: flex; gap: 6px; justify-content: flex-end; margin-top: 6px; }
 
 /* Signature dialog. Script fonts use system cursive families (no vendored webfonts). */
-.sigBackdrop { position: fixed; inset: 0; background: rgba(0,0,0,.4); display: flex; align-items: center; justify-content: center; z-index: 20; }
-.sigDialog { background: var(--panel); color: var(--text); border: 1px solid var(--border); border-radius: 10px; padding: 14px; width: 440px; max-width: 95vw; box-shadow: 0 8px 32px rgba(0,0,0,.4); display: flex; flex-direction: column; gap: 10px; }
-.sigTabs { display: flex; gap: 6px; }
-.sigDialog button { padding: 4px 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--text); cursor: pointer; font-size: 13px; }
-.sigDialog button.active, .sigDialog button.primary { background: var(--accent); color: white; border-color: transparent; }
-.sigCanvas { border: 1px solid var(--border); background: #fff; width: 400px; max-width: 100%; touch-action: none; cursor: crosshair; display: block; margin-bottom: 6px; }
-.sigDialog input[data-testid="sig-name"] { width: 100%; box-sizing: border-box; padding: 6px; font: inherit; }
-.sigFonts { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
-.sigFonts button { font-size: 24px; text-align: left; background: #fff; color: #000; }
 .sigFont0 { font-family: "Brush Script MT", "Snell Roundhand", cursive; }
 .sigFont1 { font-family: "Apple Chancery", "URW Chancery L", cursive; }
 .sigFont2 { font-family: "Savoye LET", "Lucida Handwriting", cursive; }
-.sigFonts button.active { outline: 2px solid var(--accent); }
-.sigError { color: #c0392b; font-size: 13px; }
-.sigActions { display: flex; gap: 6px; align-items: center; }
 
 /* Form filling layer */
 .formLayer { position: absolute; left: 0; top: 0; transform-origin: 0 0; pointer-events: none; }
@@ -199,16 +181,7 @@ body { background: var(--bg); color: var(--text); font: var(--text-body); }
 .deep-ocr-menu button:disabled { opacity: 0.4; cursor: default; }
 .page.tool-edit .textLayer { pointer-events: none; }
 .page.tool-edit { cursor: text; }
-.block-hint-outline { position: absolute; border: 1px dashed #2563eb; pointer-events: none; }
-.block-editor-wrap { position: absolute; z-index: 30; }
-.block-editor { outline: 1px solid #2563eb; white-space: pre-wrap; overflow: hidden; padding: 0; margin: 0; }
-.block-editor-bar { position: absolute; left: 0; top: 100%; margin-top: 4px; display: flex; gap: 6px; align-items: center; font-size: 12px; background: var(--bg, white); border: 1px solid var(--border, #ccc); border-radius: 4px; padding: 2px 6px; white-space: nowrap; }
-.block-warn { color: #a33; }
-.edit-handles-bar { position: absolute; bottom: 100%; left: 0; margin-bottom: 4px; display: flex; gap: 6px; align-items: center; font-size: 12px; background: var(--bg, white); border: 1px solid var(--border, #ccc); border-radius: 4px; padding: 2px 6px; pointer-events: auto; white-space: nowrap; }
 .edit-body { position: absolute; pointer-events: auto; cursor: text; }
-.edit-drag { cursor: move; }
-.edit-width { position: absolute; right: -4px; top: 0; width: 8px; height: 100%; cursor: ew-resize; pointer-events: auto; }
-.edit-handles { outline: 1px dashed var(--accent, #2563eb); }
 
 .palette .toolmessage { position: absolute; bottom: calc(100% + 8px); left: 50%; transform: translateX(-50%); white-space: nowrap; padding: 6px 10px; font-size: 12px; color: var(--color-ink); background: var(--color-surface); box-shadow: var(--shadow-2); border-radius: 8px; }
 
@@ -341,3 +314,95 @@ body { background: var(--bg); color: var(--text); font: var(--text-body); }
 .voice-disclosure { display: flex; gap: 8px; align-items: flex-start; margin-top: auto; padding: 12px 20px; background: var(--color-chrome); border-top: 1px solid var(--color-line-soft); color: var(--color-ink-2); font-size: 12px; line-height: 1.5; }
 .voice-disclosure svg { flex: none; margin-top: 2px; color: var(--color-ok); }
 @media (max-width: 700px) { .rightpanel { display: none; } }
+
+/* ---- Shared floating bar (dark pill) ---- */
+.float-bar { display: flex; align-items: center; gap: 2px; padding: 4px; background: var(--color-ink); color: #D6D4CE; border-radius: 11px; box-shadow: var(--shadow-bar); font-size: 12px; white-space: nowrap; }
+.fb-btn { height: 32px; padding: 0 12px; display: inline-flex; align-items: center; gap: 6px; border: 0; border-radius: 7px; background: transparent; color: #D6D4CE; font: inherit; font-size: 12px; font-weight: 500; cursor: pointer; }
+.fb-btn:hover { background: var(--color-ink-raised); }
+.fb-btn.primary { background: #fff; color: var(--color-ink); font-weight: 600; }
+.fb-btn.primary:hover { background: #F2F1EE; }
+.fb-btn.danger { color: #F4A08F; }
+.fb-sep { width: 1px; height: 20px; margin: 0 4px; background: #3A3935; }
+.float-bar :focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
+
+/* ---- Text editing ---- */
+.block-hint-outline { position: absolute; border: 1.5px dashed var(--color-accent); border-radius: 4px; pointer-events: none; }
+.block-editor-wrap { position: absolute; z-index: 30; }
+.block-editor { outline: none; border-radius: 3px; caret-color: var(--color-accent); box-shadow: 0 0 0 2px var(--color-accent), 0 0 0 6px var(--color-accent-soft); white-space: pre-wrap; overflow: hidden; padding: 0; margin: 0; }
+.block-editor-wrap.overflowing .block-editor { box-shadow: 0 0 0 2px #D97706, 0 0 0 6px var(--color-warning-soft); }
+.block-editor-bar { position: absolute; left: 0; top: 100%; margin-top: 14px; flex-direction: column; align-items: flex-start; gap: 4px; }
+.block-editor-bar .fb-row { display: flex; align-items: center; gap: 2px; }
+.block-hint { display: inline-flex; align-items: center; gap: 7px; padding: 0 10px 0 8px; font-weight: 500; }
+.block-hint::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: #34C27A; }
+.block-hint.ok { color: #B9E6CB; }
+.block-hint.over { color: #FCD58A; }
+.block-hint.over::before { background: #F59E0B; }
+.block-warn { padding: 2px 10px 6px; font-size: 12px; color: #C9C6BF; }
+.edit-handles { outline: 1.5px solid var(--color-accent); border-radius: 3px; }
+.edit-handles-bar { position: absolute; bottom: 100%; left: 0; margin-bottom: 8px; pointer-events: auto; }
+.edit-body { position: absolute; pointer-events: auto; cursor: text; }
+.edit-drag { width: 32px; height: 32px; display: grid; place-items: center; border-radius: 7px; color: #D6D4CE; cursor: move; touch-action: none; }
+.edit-drag:hover { background: var(--color-ink-raised); }
+.edit-handles-bar select { height: 32px; padding: 0 26px 0 10px; border: 0; border-radius: 7px; background: var(--color-ink-raised) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23D6D4CE' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E") no-repeat right 8px center; color: #F2F1EE; font: inherit; font-size: 12px; appearance: none; -webkit-appearance: none; cursor: pointer; }
+.edit-width { position: absolute; right: -4px; top: 50%; width: 8px; height: 24px; margin-top: -12px; border-radius: 4px; background: #fff; box-shadow: 0 0 0 1.5px var(--color-accent); cursor: ew-resize; pointer-events: auto; }
+
+/* ---- Annotation selection ---- */
+.annotationOverlay .handle { fill: white; stroke: var(--color-accent); cursor: nwse-resize; }
+.annotationOverlay .freetext { position: absolute; outline: 1.5px solid transparent; outline-offset: 2px; border-radius: 2px; white-space: pre-wrap; line-height: 1.2; font-family: Helvetica, Arial, sans-serif; padding: 2px; box-sizing: border-box; }
+.annotationOverlay .freetext:focus, .annotationOverlay .freetext.selected { outline-color: var(--color-accent); }
+
+/* ---- Note popover ---- */
+.notePopover { position: absolute; z-index: 5; width: 240px; display: flex; flex-direction: column; gap: 10px; padding: 12px; background: #fff; border-radius: 12px; box-shadow: var(--shadow-2); }
+.notePopoverLabel { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--color-ink-2); }
+.notePopover textarea { width: 100%; box-sizing: border-box; min-height: 84px; padding: 8px 10px; border: 1px solid var(--color-line); border-radius: 8px; resize: none; font: inherit; font-size: 13px; line-height: 1.45; }
+.notePopover textarea:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 0; }
+.notePopoverActions { display: flex; flex-direction: row-reverse; justify-content: space-between; align-items: center; }
+.notePopoverActions button { cursor: pointer; font: inherit; }
+.notePopoverActions button:first-child { height: 32px; padding: 0 16px; border: 0; border-radius: 8px; background: var(--color-ink); color: #fff; font-weight: 600; font-size: 13px; }
+.notePopoverActions button:last-child { border: 0; background: none; padding: 4px 2px; color: var(--color-danger); font-size: 12px; font-weight: 500; }
+.notePopoverActions button:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+
+/* ---- Signature dialog ---- */
+.sigBackdrop { position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center; background: rgb(27 27 26 / 0.45); }
+.sigDialog { width: 520px; max-width: 95vw; max-height: 95vh; overflow: auto; display: flex; flex-direction: column; background: #fff; color: var(--color-ink); border-radius: 18px; box-shadow: var(--shadow-3); }
+.sigDialog :focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+.sigHeader { display: flex; justify-content: space-between; align-items: center; padding: 20px 24px 0; }
+.sigHeader h2 { margin: 0; font-size: 18px; font-weight: 600; }
+.sigClose { width: 36px; height: 36px; display: grid; place-items: center; border: 0; border-radius: 10px; background: transparent; color: var(--color-ink-2); cursor: pointer; margin-right: -8px; }
+.sigClose:hover { background: var(--color-fill-subtle); }
+.sigTabs { display: flex; gap: 2px; padding: 4px; margin: 16px 24px 0; background: var(--color-fill-subtle); border-radius: 11px; }
+.sigTabs button { flex: 1; height: 34px; border: 0; border-radius: 8px; background: transparent; color: var(--color-ink-2); font: inherit; font-size: 13px; cursor: pointer; }
+.sigTabs button.active { background: #fff; box-shadow: var(--shadow-1); color: var(--color-ink); font-weight: 600; }
+.sigBody { display: flex; flex-direction: column; gap: 14px; padding: 18px 24px; }
+.sigDraw { position: relative; }
+.sigCanvas { display: block; width: 100%; height: auto; border: 1px solid var(--color-line); border-radius: 12px; background: var(--color-chrome); touch-action: none; cursor: crosshair; }
+.sigLine { position: absolute; left: 20px; right: 20px; bottom: 28px; border-top: 1.5px dashed #C9C6BF; pointer-events: none; }
+.sigClear { position: absolute; top: 10px; right: 10px; height: 28px; padding: 0 12px; border: 0; border-radius: var(--radius-pill); background: var(--color-fill-subtle); color: var(--color-ink); font: inherit; font-size: 12px; font-weight: 500; cursor: pointer; }
+.sigLabel { display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 500; }
+.sigLabel input { height: 44px; padding: 0 12px; border: 1px solid var(--color-line); border-radius: 10px; font: inherit; font-size: 14px; font-weight: 400; }
+.sigType { display: flex; flex-direction: column; gap: 14px; }
+.sigFonts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.sigFonts button { height: 92px; padding: 0 8px; display: grid; place-items: center; overflow: hidden; border: 1px solid var(--color-line); border-radius: 12px; background: #fff; color: #1B2A6B; font-size: 26px; text-align: center; cursor: pointer; }
+.sigFonts button.active { box-shadow: 0 0 0 2px var(--color-ink); border-color: transparent; }
+.sigFont0 { font-family: "Brush Script MT", "Snell Roundhand", cursive; }
+.sigFont1 { font-family: "Apple Chancery", "URW Chancery L", cursive; }
+.sigFont2 { font-family: "Savoye LET", "Lucida Handwriting", cursive; }
+.sigUpload { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 24px; border: 1.5px dashed #C9C6BF; border-radius: 12px; text-align: center; color: var(--color-ink-2); }
+.sigHelper { font-size: 12px; color: var(--color-ink-2); }
+.sigError { padding: 10px 12px; border: 1px solid var(--color-warning-line); border-radius: 12px; background: var(--color-warning-soft); color: #7A3A06; font-size: 13px; }
+.sigRemember { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 12px; background: var(--color-chrome); border: 1px solid var(--color-line-soft); border-radius: 10px; font-size: 13px; }
+.sigActions { display: flex; align-items: center; gap: 8px; padding: 14px 24px 20px; border-top: 1px solid var(--color-line-soft); }
+.sigSecondary { height: 44px; padding: 0 18px; border: 1px solid var(--color-line); border-radius: 11px; background: #fff; color: var(--color-ink); font: inherit; font-size: 14px; font-weight: 500; cursor: pointer; }
+.sigSecondary.small { height: 40px; padding: 0 14px; }
+.sigSecondary:hover { background: var(--color-fill-subtle); }
+.sigPrimary { height: 44px; padding: 0 20px; border: 0; border-radius: 11px; background: var(--color-ink); color: #fff; font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; }
+
+/* ---- Empty state, phones: drop card before the feature rows ---- */
+@media (max-width: 700px) {
+  .empty-main { flex-direction: column; flex-wrap: nowrap; align-items: stretch; gap: 20px; }
+  .empty-copy { display: contents; }
+  .empty-copy h1 { order: 0; }
+  .empty-lede { order: 0; }
+  .empty-side { order: 1; flex: none; max-width: none; }
+  .empty-features { order: 2; margin-top: 0; }
+}
