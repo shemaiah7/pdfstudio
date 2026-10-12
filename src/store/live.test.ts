@@ -124,14 +124,19 @@ describe("useLiveStore", () => {
     expect(client.reportLiveUsage).toHaveBeenCalledTimes(1);
   });
   it("document change while connecting closes the session once it connects", async () => {
-    configureLiveDeps({ startSession: async (o) => { opts = o; return conv; } });
+    let resolveStart: () => void = () => {};
+    configureLiveDeps({ startSession: (o) => { opts = o; return new Promise((r) => { resolveStart = () => r(conv); }); } });
     const p = useLiveStore.getState().start();
     await flush();
+    expect(client.createLiveSession).toHaveBeenCalledTimes(1);
+    expect(useLiveStore.getState().status).toBe("connecting");
     openDoc("s2"); await flush();
-    opts.onConnect(); await flush();
-    await p; await flush();
+    expect(conv.ended).toBe(false);
+    resolveStart(); queueMicrotask(() => opts.onConnect());
+    await flush(); await p; await flush();
     expect(conv.ended).toBe(true);
     expect(useLiveStore.getState().status).toBe("idle");
+    expect(client.reportLiveUsage).toHaveBeenCalledTimes(1);
   });
   it("agent-initiated close shows Session ended", async () => {
     await useLiveStore.getState().start(); await flush();
