@@ -6,7 +6,7 @@ export default function OcrBadge({ sourceId, pageIndex }: { sourceId: string; pa
   if (!st) return null;
   const label = st.state === "done" && st.engine === "claude" ? "Deep OCR" : LABEL[st.state];
   return (
-    <span className={`ocr-badge ocr-${st.state}`} data-testid="ocr-badge" title={st.error}>
+    <span className={`ocr-badge ocr-${st.state}${st.state === "done" && st.engine === "claude" ? " ocr-deep" : ""}`} data-testid="ocr-badge" title={st.error}>
       {label}{st.state === "failed" && <> · <button onClick={(e) => { e.stopPropagation(); retry(sourceId, pageIndex); }}>Retry</button></>}
     </span>
   );

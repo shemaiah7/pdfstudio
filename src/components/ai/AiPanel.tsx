@@ -8,6 +8,7 @@ import ExtractTab from "./ExtractTab";
 import RewriteTab from "./RewriteTab";
 import { useOcrStore } from "../../store/ocr";
 import ScopeToggle from "./ScopeToggle";
+import { Icon } from "../icons";
 
 type Tab = "summarize" | "ask" | "rewrite" | "extract";
 
@@ -28,17 +29,20 @@ export default function AiPanel() {
   const tabs: Tab[] = ["summarize", "ask", "rewrite", "extract"];
   return (
     <div className="ai-panel">
+      <div className="ai-subtabs" role="tablist" aria-label="AI tools">
+        {tabs.map((t) => <button key={t} role="tab" aria-selected={tab === t} data-testid={`ai-tab-${t}`} className={tab === t ? "active" : ""} onClick={() => setTab(t)}>{t[0].toUpperCase() + t.slice(1)}</button>)}
+      </div>
+      <div className="ai-settings">
+        {tab !== "rewrite" && <ScopeToggle />}
+        <label className="ocr-setting"><input type="checkbox" data-testid="ocr-auto" checked={ocrEnabled} onChange={(e) => setOcrEnabled(e.target.checked)} /> Recognize text automatically</label>
+      </div>
       {!noticeDismissed && (
         <div className="ai-notice" data-testid="ai-notice">
-          Text from this document is sent to Claude to answer. The PDF file itself never leaves your browser.
+          <Icon name="lock" size={14} />
+          <span>Text from this document is sent to Claude to answer. The PDF file itself never leaves your browser.</span>
           <button onClick={dismissNotice}>Got it</button>
         </div>
       )}
-      <label className="ocr-setting"><input type="checkbox" data-testid="ocr-auto" checked={ocrEnabled} onChange={(e) => setOcrEnabled(e.target.checked)} /> Recognize text automatically</label>
-      {tab !== "rewrite" && <ScopeToggle />}
-      <div className="ai-tabs">
-        {tabs.map((t) => <button key={t} data-testid={`ai-tab-${t}`} className={tab === t ? "active" : ""} onClick={() => setTab(t)}>{t[0].toUpperCase() + t.slice(1)}</button>)}
-      </div>
       {tab === "summarize" && <SummarizeTab disabled={limited} />}
       {tab === "ask" && <AskTab disabled={limited} />}
       {tab === "rewrite" && <RewriteTab disabled={limited} />}

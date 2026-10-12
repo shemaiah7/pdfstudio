@@ -1,10 +1,13 @@
 import { useEffect, useState } from "react";
 import { useToolsStore, COLORS, WIDTHS, type Tool } from "../store/tools";
 import { useDocumentStore } from "../store/document";
+import { Icon } from "./icons";
 import SignatureDialog from "./SignatureDialog";
 
-const TOOLS: { id: Tool; label: string }[] = [
-  { id: "select", label: "Select" }, { id: "edit", label: "Edit text" }, { id: "highlight", label: "Highlight" }, { id: "note", label: "Note" }, { id: "ink", label: "Draw" },
+const WIDTH_BAR_PX: Record<string, number> = { thin: 2, medium: 4, thick: 7 };
+
+const TOOLS: { id: Tool; label: string; title?: string }[] = [
+  { id: "select", label: "Select" }, { id: "edit", label: "Edit text", title: "Edit text (E)" }, { id: "highlight", label: "Highlight" }, { id: "note", label: "Note" }, { id: "ink", label: "Draw" },
   { id: "rect", label: "Rectangle" }, { id: "arrow", label: "Arrow" }, { id: "freetext", label: "Text box" }, { id: "sign", label: "Sign" },
 ];
 
@@ -34,14 +37,32 @@ export default function ToolPalette() {
     if (sel && (sel.kind === "ink" || sel.kind === "shape")) updateAnnotation(selectedAnnotationId, { width: w });
   };
   return (
-    <div className="palette">
-      {TOOLS.map((t) => <button key={t.id} data-testid={`tool-${t.id}`} className={tool === t.id ? "active" : ""} onClick={() => chooseTool(t.id)}>{t.label}</button>)}
-      <span className="sep" />
-      {COLORS.map((c) => <button key={c.name} data-testid={`color-${c.name}`} title={c.name} className={`swatch ${c.rgb.every((v, i) => v === color[i]) ? "active" : ""}`} style={{ background: `rgb(${c.rgb.map((v) => Math.round(v * 255)).join(",")})` }} onClick={() => pickColor(c.rgb)} />)}
-      <span className="sep" />
-      {WIDTHS.map((w) => <button key={w.name} data-testid={`width-${w.name}`} className={width === w.value ? "active" : ""} onClick={() => pickWidth(w.value)}>{w.name}</button>)}
+    <>
+      <div className="palette" role="toolbar" aria-label="Tools">
+        {TOOLS.map((t) => (
+          <button key={t.id} type="button" data-testid={`tool-${t.id}`} className={`tool ${tool === t.id ? "active" : ""}`}
+            aria-label={t.label} title={t.title ?? t.label} aria-pressed={tool === t.id} onClick={() => chooseTool(t.id)}>
+            <Icon name={t.id} size={18} />
+          </button>
+        ))}
+        {COLORS.map((c, ci) => {
+          const active = c.rgb.every((v, i) => v === color[i]);
+          return (
+            <button key={c.name} type="button" data-testid={`color-${c.name}`} title={c.name} aria-label={c.name} aria-pressed={active}
+              className={`swatch ${ci === 0 ? "group-start" : ""} ${active ? "active" : ""}`}
+              style={{ "--swatch": c.name === "black" ? "#F2F1EE" : `rgb(${c.rgb.map((v) => Math.round(v * 255)).join(",")})` } as React.CSSProperties}
+              onClick={() => pickColor(c.rgb)} />
+          );
+        })}
+        {WIDTHS.map((w, wi) => (
+          <button key={w.name} type="button" data-testid={`width-${w.name}`} className={`width ${wi === 0 ? "group-start" : ""} ${width === w.value ? "active" : ""}`}
+            aria-label={`${w.name} stroke`} title={w.name} aria-pressed={width === w.value} onClick={() => pickWidth(w.value)}>
+            <span className="width-bar" style={{ height: WIDTH_BAR_PX[w.name] ?? 4 }} />
+          </button>
+        ))}
+        {message ? <span className="toolmessage" data-testid="tool-message" role="status">{message}</span> : null}
+      </div>
       {signing ? <SignatureDialog onConfirm={(png) => { setTool("sign"); setPendingSignature(png); setSigning(false); }} onClose={() => { setSigning(false); if (!useToolsStore.getState().pendingSignature) setTool("select"); }} /> : null}
-      {message ? <span className="toolmessage" data-testid="tool-message" role="status">{message}</span> : null}
-    </div>
+    </>
   );
 }

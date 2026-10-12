@@ -21,6 +21,7 @@ export default function NotePopover({ left, top, text, onDone, onDelete, onClose
   }, []);
   return (
     <div ref={ref} className="notePopover" style={{ left, top }} onClick={(e) => e.stopPropagation()}>
+      <div className="notePopoverLabel" aria-hidden="true">Note</div>
       <textarea autoFocus value={value} onChange={(e) => setValue(e.target.value)} aria-label="Note text" />
       <div className="notePopoverActions">
         <button onClick={() => onDone(value)}>Done</button>

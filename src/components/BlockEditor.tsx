@@ -60,15 +60,18 @@ export default function BlockEditor({ open, scale, heightPt, onClose }: { open: 
   };
   const bad = toWinAnsi(text) !== text;
   return (
-    <div className="block-editor-wrap" style={{ left: block.box.x * scale, top: (heightPt - block.box.y - block.box.height) * scale }}>
+    <div className={`block-editor-wrap${lay.overflowLines > 0 ? " overflowing" : ""}`} style={{ left: block.box.x * scale, top: (heightPt - block.box.y - block.box.height) * scale }}>
       <div ref={ref} data-testid="block-editor" className="block-editor" contentEditable="plaintext-only" suppressContentEditableWarning spellCheck={false}
         style={{ width: block.box.width * scale, height: height * scale, background: rgb(colors.background), color: rgb(colors.text), font: FONT_CSS[font].replace("1px", `${block.fontSize * scale}px`), lineHeight: `${block.lineHeight * scale}px` }}
         onInput={(e) => setText(readText(e.currentTarget))} onKeyDown={onKey} onBlur={() => void apply()} />
-      <div className="block-editor-bar">
-        <span data-testid="block-hint">{lay.overflowLines > 0 ? `Overflows by ${lay.overflowLines} line(s)` : "Fits"}</span>
+      <div className="block-editor-bar float-bar">
+        <div className="fb-row">
+          <span data-testid="block-hint" className={`block-hint ${lay.overflowLines > 0 ? "over" : "ok"}`}>{lay.overflowLines > 0 ? `Overflows by ${lay.overflowLines} line(s)` : "Fits"}</span>
+          <span className="fb-sep" />
+          <button className="fb-btn" onMouseDown={(e) => e.preventDefault()} onClick={cancel}>Cancel</button>
+          <button className="fb-btn primary" onMouseDown={(e) => e.preventDefault()} onClick={() => void apply()}>Done</button>
+        </div>
         {bad && <span className="block-warn">Some characters cannot be saved in this font</span>}
-        <button onMouseDown={(e) => e.preventDefault()} onClick={() => void apply()}>Done</button>
-        <button onMouseDown={(e) => e.preventDefault()} onClick={cancel}>Cancel</button>
       </div>
     </div>
   );

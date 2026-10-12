@@ -1,0 +1,96 @@
+/*
+ * Quiet Desk design tokens (light only).
+ * Source: the PDF Studio Redesign canvas, "Design tokens and components" board.
+ * Each accent has one job: indigo = citations/selection, coral = voice live,
+ * green = private/OK, amber = needs attention.
+ */
+:root {
+  /* Neutrals */
+  --color-desk: #eeedea;        /* app ground behind pages */
+  --color-chrome: #fbfaf8;      /* top bar, page sidebar, panel footers */
+  --color-surface: #ffffff;     /* panels, cards, menus, dialogs */
+  --color-fill-subtle: #f2f1ee; /* segmented tracks, user bubbles, hover */
+  --color-line: #e4e2dd;        /* borders */
+  --color-line-soft: #efede9;
+  --color-ink: #1b1b1a;         /* text, primary button, floating bars */
+  --color-ink-2: #55534e;       /* secondary text */
+  --color-ink-3: #77756f;       /* lightest text allowed on white */
+  --color-ink-raised: #2a2927;  /* controls on dark floating bars */
+  --color-scrim: rgb(27 27 26 / 0.45);
+
+  /* Citation and selection */
+  --color-accent: #3346d3;
+  --color-accent-hover: #2433a8;
+  --color-accent-soft: #eceefc;
+  --color-accent-line: #9aa3e8;
+
+  /* Voice live */
+  --color-live: #e0452b;
+  --color-live-ink: #c2341c;    /* live text and the End button */
+  --color-live-soft: #fdece8;
+
+  /* Status */
+  --color-ok: #1f6b45;          /* privacy notes, success */
+  --color-ok-soft: #e8f3ec;
+  --color-warning: #92400e;
+  --color-warning-soft: #fef3e2;
+  --color-warning-line: #f5d49a;
+  --color-danger: #b42318;
+
+  /* Annotation colours: saved into the PDF, keep distinct */
+  --annot-black: #1b1b1a;
+  --annot-red: #dc2626;
+  --annot-blue: #2563eb;
+  --annot-green: #16a34a;
+  --annot-yellow: #facc15;
+  --annot-purple: #9333ea;
+
+  /* Type: Geist and Geist Mono (OFL), self-hosted via @fontsource-variable */
+  --font-sans: "Geist Variable", "Geist", "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "Geist Mono Variable", "Geist Mono", ui-monospace, Menlo, monospace;
+  --font-page: Georgia, "Times New Roman", serif; /* placeholder page text only */
+
+  --text-display: 700 60px/1.02 var(--font-sans);
+  --text-title: 700 32px/1.15 var(--font-sans);
+  --text-heading: 600 18px/1.3 var(--font-sans);
+  --text-body: 400 14px/1.55 var(--font-sans);
+  --text-small: 500 13px/1.45 var(--font-sans);
+  --text-caption: 400 12px/1.5 var(--font-sans);
+  --text-mono: 500 12px/1.4 var(--font-mono);
+  --tracking-display: -0.035em;
+  --tracking-title: -0.02em;
+  --tracking-label: 0.08em;     /* uppercase mono labels */
+
+  /* Space */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-12: 48px;
+
+  /* Radius */
+  --radius-xs: 7px;   /* buttons inside bars, chips */
+  --radius-sm: 10px;  /* buttons, inputs */
+  --radius-md: 12px;  /* cards, menus, banners */
+  --radius-lg: 16px;  /* panels */
+  --radius-xl: 20px;  /* dialogs, sheets */
+  --radius-pill: 999px;
+
+  /* Elevation */
+  --shadow-1: 0 1px 2px rgb(27 27 26 / 0.12);                                   /* active tab, card */
+  --shadow-2: 0 0 0 1px var(--color-line), 0 12px 28px rgb(27 27 26 / 0.14);    /* menu, popover */
+  --shadow-3: 0 24px 60px rgb(27 27 26 / 0.30);                                 /* dialog */
+  --shadow-bar: 0 10px 30px rgb(27 27 26 / 0.28);                               /* floating dark bars */
+  --shadow-page: 0 1px 2px rgb(27 27 26 / 0.08), 0 12px 32px rgb(27 27 26 / 0.10);
+
+  /* Sizes */
+  --control-h: 40px;
+  --control-h-lg: 48px;
+  --icon-size: 18px;
+  --icon-stroke: 1.75;
+  --sidebar-w: 196px;
+  --panel-w: 400px;
+}

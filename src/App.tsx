@@ -102,10 +102,12 @@ export default function App() {
       {empty ? <DropZone onFiles={handleFiles} empty /> : (
         <>
         <Toolbar scale={scale} setScale={setScale} onFiles={handleFiles} />
-        <ToolPalette />
         <div className="workspace">
           <ThumbnailSidebar />
-          <PageView scale={scale} />
+          <div className="canvas-area">
+            <PageView scale={scale} />
+            <ToolPalette />
+          </div>
           <aside className="rightpanel"><RightPanel /></aside>
           <DropZone onFiles={handleFiles} empty={false} forceOver={dragging} />
         </div>

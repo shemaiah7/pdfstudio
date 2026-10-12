@@ -13,18 +13,19 @@ export default function LibraryPanel() {
   useEffect(() => { void refreshLibrary(); }, [refreshLibrary]);
   return (
     <div className="library">
-      <p className="muted">Documents are stored on this device only{usage !== null ? ` · ${mb(usage)} used` : ""}.{!persistent && " Documents won't be remembered on this device"}</p>
-      {library.length === 0 && <p className="muted">No documents yet.</p>}
+      <div className="library-head"><h3>Library</h3></div>
+      <p className="meta">Documents are stored on this device only{usage !== null ? ` · ${mb(usage)} used` : ""}.{!persistent && " Documents won't be remembered on this device"}</p>
+      {library.length === 0 && <p className="meta">No documents yet.</p>}
       {library.map((r) => (
         <div key={r.hash} className="library-row" data-testid="library-row">
-          <div>
-            <div>{r.name}</div>
-            <div className="muted">{r.pageCount} pages · {mb(r.size)} · {new Date(r.addedAt).toLocaleDateString()} · {r.stale ? "needs re-index" : r.chunkCount === 0 ? "No searchable text" : `${r.chunkCount} passages`}</div>
+          <div className="library-info">
+            <div className="library-name">{r.name}</div>
+            <div className="meta">{r.pageCount} pages · {mb(r.size)} · {new Date(r.addedAt).toLocaleDateString()} · {r.stale ? "needs re-index" : r.chunkCount === 0 ? "No searchable text" : `${r.chunkCount} passages`}</div>
           </div>
-          <button data-testid="library-remove" onClick={() => void removeFromLibrary(r.hash)}>Remove</button>
+          <button className="secondary" data-testid="library-remove" onClick={() => void removeFromLibrary(r.hash)}>Remove</button>
         </div>
       ))}
-      <button data-testid="library-clear" onClick={() => { if (window.confirm("Remove all stored documents, recognized text, the downloaded model and turn off search?")) void clearLibrary(); }}>Clear all</button>
+      <button className="text-danger" data-testid="library-clear" onClick={() => { if (window.confirm("Remove all stored documents, recognized text, the downloaded model and turn off search?")) void clearLibrary(); }}>Clear all</button>
     </div>
   );
 }

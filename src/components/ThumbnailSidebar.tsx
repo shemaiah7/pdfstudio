@@ -35,6 +35,10 @@ export default function ThumbnailSidebar() {
 
   return (
     <aside className="sidebar">
+      <div className="sidebar-head">
+        <span className="sidebar-title">Pages</span>
+        <span className="sidebar-meta">{selection.size > 0 ? `${selection.size} selected` : `${pages.length} page${pages.length === 1 ? "" : "s"}`}</span>
+      </div>
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
         <SortableContext items={pages.map((p) => p.id)} strategy={rectSortingStrategy}>
           {pages.map((entry, i) => (
