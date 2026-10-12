@@ -3,10 +3,11 @@ import { env, createExecutionContext, waitOnExecutionContext } from "cloudflare:
 import { liveHandler, liveUsageHandler, type LiveDeps } from "../src/handlers/live";
 import { ElevenLabsError } from "../src/elevenlabs";
 import { signSession } from "../src/session";
+import { SETTLE_WINDOW_S } from "../src/voiceQuota";
 
 const day = new Date().toISOString().slice(0, 10);
 const token = (vid: string) => signSession({ vid, exp: Math.floor(Date.now() / 1000) + 3600 }, env.SESSION_SECRET);
-const old = () => Date.now() / 1000 - 700;
+const old = () => Date.now() / 1000 - (SETTLE_WINDOW_S + 100);
 const okDeps = (): LiveDeps => ({ createToken: async () => ({ token: "tok", conversationId: "conv_1" }), getDuration: async () => 95 });
 
 async function call(handler: typeof liveHandler, path: string, body: unknown, vid?: string, deps: LiveDeps = okDeps()) {

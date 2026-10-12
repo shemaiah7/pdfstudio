@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
-import { admitVoice, chargeVoice, reconcileVoice, readVoice, ADMISSION_SECONDS } from "../src/voiceQuota";
+import { admitVoice, chargeVoice, reconcileVoice, readVoice, ADMISSION_SECONDS, SETTLE_WINDOW_S } from "../src/voiceQuota";
 
 const day = new Date().toISOString().slice(0, 10);
 let n = 0; const vid = () => `v${++n}`;
@@ -45,12 +45,18 @@ describe("voice quota", () => {
     const v = vid();
     const t = Date.now() / 1000;
     await chargeVoice(env.QUOTA, v, day, "c1", ADMISSION_SECONDS, t);
-    expect(await reconcileVoice(env.QUOTA, v, day, "c1", 0, t + 601, false)).toMatchObject({ seconds: 15, charged: { c1: 15 }, pending: {} });
+    expect(await reconcileVoice(env.QUOTA, v, day, "c1", 0, t + SETTLE_WINDOW_S + 1, false)).toMatchObject({ seconds: 15, charged: { c1: 15 }, pending: {} });
+  });
+  it("keeps deferring an unverified report past the old 600 s window", async () => {
+    const v = vid();
+    const t = Date.now() / 1000;
+    await chargeVoice(env.QUOTA, v, day, "c1", ADMISSION_SECONDS, t);
+    expect(await reconcileVoice(env.QUOTA, v, day, "c1", 0, t + 601, false)).toMatchObject({ seconds: 600, charged: { c1: 600 }, pending: { c1: 0 } });
   });
   it("admitVoice settles a pending report whose window has passed and persists it", async () => {
     const v = vid();
     const now = Date.now() / 1000;
-    await env.QUOTA.put(`v:${v}:${day}`, JSON.stringify({ seconds: 600, charged: { c1: 600 }, admitted: { c1: now - 700 }, pending: { c1: 40 } }));
+    await env.QUOTA.put(`v:${v}:${day}`, JSON.stringify({ seconds: 600, charged: { c1: 600 }, admitted: { c1: now - (SETTLE_WINDOW_S + 100) }, pending: { c1: 40 } }));
     const r = await admitVoice(env.QUOTA, v, 1800, now);
     expect(r.ok).toBe(true);
     expect(await env.QUOTA.get(`v:${v}:${day}`, "json")).toMatchObject({ seconds: 40, charged: { c1: 40 }, pending: {} });
@@ -66,7 +72,7 @@ describe("voice quota", () => {
   it("drops a pending entry for a verified id at admission", async () => {
     const v = vid();
     const now = Date.now() / 1000;
-    await env.QUOTA.put(`v:${v}:${day}`, JSON.stringify({ seconds: 95, charged: { c1: 95 }, admitted: { c1: now - 700 }, pending: { c1: 0 }, verified: { c1: true } }));
+    await env.QUOTA.put(`v:${v}:${day}`, JSON.stringify({ seconds: 95, charged: { c1: 95 }, admitted: { c1: now - (SETTLE_WINDOW_S + 100) }, pending: { c1: 0 }, verified: { c1: true } }));
     const r = await admitVoice(env.QUOTA, v, 1800, now);
     expect(r.ok).toBe(true);
     expect(await env.QUOTA.get(`v:${v}:${day}`, "json")).toMatchObject({ seconds: 95, charged: { c1: 95 }, pending: {} });
@@ -76,7 +82,7 @@ describe("voice quota", () => {
     const now = Date.now() / 1000;
     await env.QUOTA.put(`v:${v}:${day}`, JSON.stringify({ seconds: 1800, charged: { a: 600, b: 600, c: 600 }, admitted: { a: now - 100, b: now - 90, c: now - 80 }, pending: { a: 30 } }));
     const r = await admitVoice(env.QUOTA, v, 2000, now);
-    expect(r).toEqual({ ok: false, resetAt: now - 100 + 600 });
+    expect(r).toEqual({ ok: false, resetAt: now - 100 + SETTLE_WINDOW_S });
   });
   it("returns null for a conversation that was never charged", async () => {
     expect(await reconcileVoice(env.QUOTA, vid(), day, "ghost", 10)).toBeNull();

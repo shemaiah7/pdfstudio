@@ -2,6 +2,8 @@ import { utcDay } from "./session";
 import { nextUtcMidnight } from "./quota";
 
 export const ADMISSION_SECONDS = 600;
+export const TOKEN_TTL_S = 900;
+export const SETTLE_WINDOW_S = TOKEN_TTL_S + ADMISSION_SECONDS; // a minted token may be connected up to TOKEN_TTL_S later and then run for the 600 s server cap
 export const MIN_BILLED_SECONDS = 15;
 const TTL = 2 * 86400;
 
@@ -22,13 +24,13 @@ async function write(kv: KVNamespace, vid: string, day: string, state: Omit<Voic
   return full;
 }
 
-/** Pure: applies client-reported durations whose session window (admission + 600 s) has passed. */
+/** Pure: applies client-reported durations whose session window (admission + SETTLE_WINDOW_S) has passed. */
 export function settlePending(state: VoiceState, now: number): VoiceState {
   const charged = { ...state.charged };
   const pending = { ...state.pending };
   for (const id of Object.keys(pending)) {
     if (state.verified[id]) { delete pending[id]; continue; } // a verified duration is final
-    if (now >= (state.admitted[id] ?? 0) + ADMISSION_SECONDS) {
+    if (now >= (state.admitted[id] ?? 0) + SETTLE_WINDOW_S) {
       charged[id] = floorBilled(pending[id]);
       delete pending[id];
     }
@@ -52,7 +54,7 @@ export async function admitVoice(kv: KVNamespace, vid: string, limit: number, no
     const ids = Object.keys(state.pending).sort((a, b) => (state.admitted[a] ?? 0) - (state.admitted[b] ?? 0));
     for (const id of ids) {
       seconds += floorBilled(state.pending[id]) - (state.charged[id] ?? 0);
-      if (seconds + ADMISSION_SECONDS <= limit) { resetAt = Math.min(midnight, (state.admitted[id] ?? 0) + ADMISSION_SECONDS); break; }
+      if (seconds + ADMISSION_SECONDS <= limit) { resetAt = Math.min(midnight, (state.admitted[id] ?? 0) + SETTLE_WINDOW_S); break; }
     }
     return { ok: false, resetAt };
   }
@@ -73,7 +75,7 @@ export async function reconcileVoice(kv: KVNamespace, vid: string, day: string, 
   const charged = { ...state.charged };
   const flags = { ...state.verified };
   if (verified) flags[conversationId] = true;
-  if (verified || now >= (state.admitted[conversationId] ?? 0) + ADMISSION_SECONDS) {
+  if (verified || now >= (state.admitted[conversationId] ?? 0) + SETTLE_WINDOW_S) {
     charged[conversationId] = floorBilled(actual);
     delete pending[conversationId];
   } else {
