@@ -138,4 +138,18 @@ describe("LineEditor", () => {
     expect(useDocumentStore.getState().edits).toHaveLength(1);
     expect(onClose).toHaveBeenCalled();
   });
+  it("blocks formatting beforeinput but allows plain text", async () => {
+    render(<LineEditor open={openLines()} scale={1} heightPt={800} onClose={() => {}} />);
+    await flush();
+    const field = screen.getAllByTestId("line-field")[0];
+    const fire = (inputType: string) => {
+      const ev = new Event("beforeinput", { cancelable: true, bubbles: true });
+      Object.defineProperty(ev, "inputType", { value: inputType });
+      field.dispatchEvent(ev);
+      return ev.defaultPrevented;
+    };
+    expect(fire("formatBold")).toBe(true);
+    expect(fire("insertFromDrop")).toBe(true);
+    expect(fire("insertText")).toBe(false);
+  });
 });

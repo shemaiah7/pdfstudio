@@ -44,6 +44,17 @@ export default function LineEditor({ open, scale, heightPt, onClose }: { open: O
   }, [open]);
   useEffect(() => { refs.current[0]?.focus(); }, []);
   useEffect(() => {
+    // Native listener: React's synthetic onBeforeInput has no inputType.
+    const handler = (e: Event) => {
+      const ev = e as InputEvent;
+      if (ev.inputType === "insertFromPaste") { ev.preventDefault(); document.execCommand("insertText", false, ev.dataTransfer?.getData("text/plain") ?? ""); }
+      else if (ev.inputType?.startsWith("format") || ev.inputType === "insertFromDrop") ev.preventDefault();
+    };
+    const els = refs.current.filter((el): el is HTMLDivElement => !!el);
+    els.forEach((el) => el.addEventListener("beforeinput", handler));
+    return () => els.forEach((el) => el.removeEventListener("beforeinput", handler));
+  }, [open]);
+  useEffect(() => {
     const onDown = (e: Event) => { if (!(e.target as Element | null)?.closest?.(".line-editor")) applyRef.current(); };
     document.addEventListener("pointerdown", onDown, true);
     return () => document.removeEventListener("pointerdown", onDown, true);
@@ -86,13 +97,7 @@ export default function LineEditor({ open, scale, heightPt, onClose }: { open: O
           <div key={i} className="line-field-wrap" style={{ left: l.line.x * scale, top: (heightPt - l.line.baseline - l.line.fontSize) * scale, width: width * scale }}>
             <div ref={(el) => { refs.current[i] = el; }} data-testid="line-field" data-line-index={i} className={`line-field ${overflow ? "overflow" : ""}`} contentEditable suppressContentEditableWarning spellCheck={false}
               style={{ background: rgb(open.background), lineHeight: 1 }}
-              onInput={() => onInput(i)} onKeyDown={(e) => onKey(e, i)}
-              onBeforeInput={(e) => {
-                // Keep typing inside the caret's run so the new text inherits its style; the browser's default does this for text nodes inside a span.
-                const ev = e.nativeEvent as InputEvent;
-                if (ev.inputType.startsWith("format") || ev.inputType === "insertFromDrop") e.preventDefault();
-                else if (ev.inputType === "insertFromPaste") { e.preventDefault(); document.execCommand("insertText", false, ev.dataTransfer?.getData("text/plain") ?? ""); }
-              }}>
+              onInput={() => onInput(i)} onKeyDown={(e) => onKey(e, i)}>
               {templateFor(l).map((r, k) => <span key={k} data-run={k} style={{ font: FONT_CSS[r.font].replace("1px", `${r.fontSize * scale}px`), color: rgb(r.color) }}>{l.runs.length ? r.text : ""}</span>)}
             </div>
             {overflow && <span className="line-overflow" data-testid="line-overflow">Text wider than the box</span>}
