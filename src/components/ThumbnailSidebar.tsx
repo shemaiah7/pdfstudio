@@ -3,7 +3,7 @@ import { SortableContext, rectSortingStrategy } from "@dnd-kit/sortable";
 import { useDocumentStore } from "../store/document";
 import Thumbnail from "./Thumbnail";
 
-export default function ThumbnailSidebar() {
+export default function ThumbnailSidebar({ open = false, onPick }: { open?: boolean; onPick?: () => void }) {
   const pages = useDocumentStore((s) => s.pages);
   const sources = useDocumentStore((s) => s.sources);
   const selection = useDocumentStore((s) => s.selection);
@@ -29,12 +29,13 @@ export default function ThumbnailSidebar() {
       select([id], "toggle");
     } else {
       select([id], "replace");
+      onPick?.();
     }
     document.getElementById(`page-${id}`)?.scrollIntoView({ block: "start", behavior: "smooth" });
   };
 
   return (
-    <aside className="sidebar">
+    <aside className={`sidebar${open ? " open" : ""}`}>
       <div className="sidebar-head">
         <span className="sidebar-title">Pages</span>
         <span className="sidebar-meta">{selection.size > 0 ? `${selection.size} selected` : `${pages.length} page${pages.length === 1 ? "" : "s"}`}</span>

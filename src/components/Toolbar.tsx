@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useDocumentStore } from "../store/document";
 import { buildDocument } from "../pdf/pageOps";
 import { rasterizeWithPdfJs } from "../edit/flatten";
@@ -12,11 +12,24 @@ import OcrPill from "./ocr/OcrPill";
 import { Icon, type IconName } from "./icons";
 import { outputName, saveBlob } from "../pdf/download";
 
-interface Props { scale: number; setScale: (s: number) => void; onFiles: (files: File[], mode: "open" | "add") => void }
+interface Props { scale: number; setScale: (s: number) => void; onFiles: (files: File[], mode: "open" | "add") => void; onTogglePages: () => void; pagesOpen: boolean }
 
-export default function Toolbar({ scale, setScale, onFiles }: Props) {
+const PHONE_QUERY = "(max-width: 700px)";
+const subscribePhone = (cb: () => void) => {
+  if (typeof window.matchMedia !== "function") return () => {};
+  const mq = window.matchMedia(PHONE_QUERY);
+  mq.addEventListener("change", cb);
+  return () => mq.removeEventListener("change", cb);
+};
+const isPhone = () => typeof window.matchMedia === "function" && window.matchMedia(PHONE_QUERY).matches;
+
+export default function Toolbar({ scale, setScale, onFiles, onTogglePages, pagesOpen }: Props) {
   const s = useDocumentStore();
   const [busy, setBusy] = useState(false);
+  const phone = useSyncExternalStore(subscribePhone, isPhone, () => false);
+  const [moreOpen, setMoreOpen] = useState(false);
+  const actionsRef = useRef<HTMLDivElement>(null);
+  const moreRef = useRef<HTMLButtonElement>(null);
   const openInput = useRef<HTMLInputElement>(null);
   const addInput = useRef<HTMLInputElement>(null);
   const selected = [...s.selection];
@@ -54,6 +67,19 @@ export default function Toolbar({ scale, setScale, onFiles }: Props) {
     }
   };
 
+  useEffect(() => {
+    if (!moreOpen) return;
+    const onDown = (e: PointerEvent) => {
+      const t = e.target as Node;
+      if (actionsRef.current?.contains(t) || moreRef.current?.contains(t)) return;
+      setMoreOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setMoreOpen(false); };
+    document.addEventListener("pointerdown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => { document.removeEventListener("pointerdown", onDown); document.removeEventListener("keydown", onKey); };
+  }, [moreOpen]);
+
   const pick = (ref: React.RefObject<HTMLInputElement | null>, mode: "open" | "add") => (
     <input ref={ref} type="file" accept="application/pdf" multiple hidden
       onChange={(e) => { onFiles(Array.from(e.target.files ?? []), mode); e.target.value = ""; }} />
@@ -65,8 +91,17 @@ export default function Toolbar({ scale, setScale, onFiles }: Props) {
     </button>
   );
 
+  const zoom = (
+    <div className="tb-zoom">
+      <button type="button" className="tb-icon" data-testid="zoom-out" aria-label="Zoom out" title="Zoom out" onClick={() => setScale(Math.max(0.4, scale - 0.2))}><Icon name="minus" /></button>
+      <span className="zoom">{Math.round(scale * 100)}%</span>
+      <button type="button" className="tb-icon" data-testid="zoom-in" aria-label="Zoom in" title="Zoom in" onClick={() => setScale(Math.min(3, scale + 0.2))}><Icon name="plus" /></button>
+    </div>
+  );
+
   return (
     <header className="toolbar">
+      <button type="button" className="tb-icon tb-pages" aria-label="Pages" title="Pages" aria-expanded={pagesOpen} onClick={onTogglePages}><Icon name="grid" /></button>
       <div className="tb-doc">
         <span className="tb-doc-mark"><Icon name="file" size={16} /></span>
         <div className="tb-doc-text">
@@ -77,6 +112,7 @@ export default function Toolbar({ scale, setScale, onFiles }: Props) {
           </span>
         </div>
       </div>
+      <div className={`tb-actions${moreOpen ? " open" : ""}`} ref={actionsRef}>
       <div className="tb-group">
         {ib("open", "open", "Open", () => openInput.current?.click())}
         {pick(openInput, "open")}
@@ -98,14 +134,13 @@ export default function Toolbar({ scale, setScale, onFiles }: Props) {
       </div>
       <DeepOcrMenu />
       <OcrPill />
+      {phone ? zoom : null}
+      </div>
       <div className="tb-right">
-        <div className="tb-zoom">
-          <button type="button" className="tb-icon" data-testid="zoom-out" aria-label="Zoom out" title="Zoom out" onClick={() => setScale(Math.max(0.4, scale - 0.2))}><Icon name="minus" /></button>
-          <span className="zoom">{Math.round(scale * 100)}%</span>
-          <button type="button" className="tb-icon" data-testid="zoom-in" aria-label="Zoom in" title="Zoom in" onClick={() => setScale(Math.min(3, scale + 0.2))}><Icon name="plus" /></button>
-        </div>
+        <button type="button" className="tb-icon tb-more" aria-label="More actions" title="More actions" aria-expanded={moreOpen} ref={moreRef} onClick={() => setMoreOpen((o) => !o)}><Icon name="dots" /></button>
+        {phone ? null : zoom}
         <button type="button" data-testid="download" className="primary" disabled={s.pages.length === 0 || busy}
-          onClick={() => exportPages(s.pages, "edited")}><Icon name="download" />{busy ? "Building…" : "Download"}</button>
+          onClick={() => exportPages(s.pages, "edited")}><Icon name="download" /><span className="tb-dl-label">{busy ? "Building…" : "Download"}</span></button>
       </div>
     </header>
   );

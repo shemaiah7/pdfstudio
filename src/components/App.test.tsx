@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, cleanup, act } from "@testing-library/react";
+import { render, screen, cleanup, act, fireEvent } from "@testing-library/react";
 import App from "../App";
 import { useDocumentStore } from "../store/document";
 import { loadFixture } from "../test/loadFixture";
@@ -30,5 +30,21 @@ describe("App with all pages deleted", () => {
     const download = screen.getByTestId("download") as HTMLButtonElement;
     expect(undo.disabled).toBe(false);
     expect(download.disabled).toBe(true);
+  });
+});
+
+describe("App pages drawer", () => {
+  it("opens from the Pages button and closes on scrim click", async () => {
+    await useDocumentStore.getState().openFiles([{ name: "three.pdf", bytes: loadFixture("three") }]);
+    const { container } = render(<App />);
+    const pages = screen.getByLabelText("Pages");
+    expect(pages.getAttribute("aria-expanded")).toBe("false");
+    expect(screen.queryByLabelText("Close pages")).toBeNull();
+    fireEvent.click(pages);
+    expect(pages.getAttribute("aria-expanded")).toBe("true");
+    expect(container.querySelector("aside.sidebar")!.classList.contains("open")).toBe(true);
+    fireEvent.click(screen.getByLabelText("Close pages"));
+    expect(pages.getAttribute("aria-expanded")).toBe("false");
+    expect(screen.queryByLabelText("Close pages")).toBeNull();
   });
 });

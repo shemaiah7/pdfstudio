@@ -33,6 +33,8 @@ const PATHS = {
   "alert": "M12 8v5 M12 16.5v.5 M10.3 4l-7.6 13.2A2 2 0 0 0 4.4 20h15.2a2 2 0 0 0 1.7-2.8L13.7 4a2 2 0 0 0-3.4 0z",
   "close": "M6 6l12 12 M18 6L6 18",
   "grip": "M9 6h.01 M15 6h.01 M9 12h.01 M15 12h.01 M9 18h.01 M15 18h.01",
+  "grid": "M4 4h7v7H4z M13 4h7v7h-7z M4 13h7v7H4z M13 13h7v7h-7z",
+  "dots": "M5 12h.01 M12 12h.01 M19 12h.01",
   "upload": "M12 16V4 M7 9l5-5 5 5 M4 20h16",
 } as const;
 
@@ -41,7 +43,7 @@ export type IconName = keyof typeof PATHS;
 export function Icon({ name, size = 18 }: { name: IconName; size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
-      strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      strokeWidth={name === "dots" ? 3 : 1.75} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       <path d={PATHS[name]} />
     </svg>
   );
