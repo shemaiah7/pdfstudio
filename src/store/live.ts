@@ -48,7 +48,7 @@ function errorMessage(code: string, resetAt?: number): string {
   switch (code) {
     case "voice_limit": return `Voice allowance used for today; resets at ${resetAt ? fmtTime(resetAt) : "midnight UTC"}.`;
     case "voice_unavailable": return "Voice service unavailable right now.";
-    case "verification_failed": return "Verification failed. Reload the page and try again.";
+    case "verification_failed": return "Couldn't verify you're human. Try again.";
     case "network": case "connect_timeout": return "Connection lost";
     default: return "Voice could not start.";
   }
@@ -58,7 +58,7 @@ let client: LiveClient | null = null;
 let startedAt = 0;
 let ticker: ReturnType<typeof setInterval> | null = null;
 let silence: ReturnType<typeof setTimeout> | null = null;
-let reported = false;
+const reportedClients = new WeakSet<LiveClient>();
 
 export const useLiveStore = create<LiveState>((set, get) => {
   const clearTimers = () => { if (ticker) clearInterval(ticker); ticker = null; if (silence) clearTimeout(silence); silence = null; };
@@ -67,11 +67,20 @@ export const useLiveStore = create<LiveState>((set, get) => {
 
   const report = async (keepalive = false, secs?: number) => {
     const id = get().conversationId;
-    if (!id || reported) return;
-    reported = true;
+    if (!id || !client || reportedClients.has(client)) return;
+    reportedClients.add(client);
     const api = useAiStore.getState().client;
     const r = await api?.reportLiveUsage(id, secs ?? elapsed(), keepalive);
     if (r) set({ remainingSeconds: r.remainingSeconds });
+  };
+
+  // A session cancelled while connecting: tell the worker it never ran (best effort).
+  const reportCancelled = (live: LiveClient) => {
+    const id = live.conversationId;
+    const api = useAiStore.getState().client;
+    if (!id || !api || reportedClients.has(live)) return;
+    reportedClients.add(live);
+    void Promise.resolve(api.reportLiveUsage(id, 0)).catch(() => {});
   };
 
   const search = async (query: string): Promise<string> => {
@@ -106,15 +115,10 @@ export const useLiveStore = create<LiveState>((set, get) => {
       set({ status: "connecting", error: null, captions: [], seconds: 0, searching: false, keywordMode: false, conversationId: null });
       startedAt = 0;
       try { await deps.getMedia(); } catch { set({ status: "error", error: "Microphone access is needed for voice." }); return; }
-      reported = false;
       const live = new LiveClient(
         { createSession: async () => { const s = await api.createLiveSession(); set({ conversationId: s.conversationId, resetAt: s.resetAt }); return s; } },
         {
-          onConnected: () => {
-            const doc = useDocumentStore.getState();
-            const src = doc.sources.get(doc.pages[0]?.sourceId ?? "");
-            void deps.documentText("all").then((pages) => { if (client === live) live.sendContext(overview(src?.name ?? "document", doc.pages.length, pages[0]?.text ?? "")); }).catch(() => {});
-          },
+          onConnected: () => {}, // the overview is sent once start() resolves, when the SDK conversation exists
           onUserText: (text) => { armSilence(); set({ captions: [...get().captions, { role: "you", text }] }); },
           onAgentText: (text) => { armSilence(); set({ captions: [...get().captions, { role: "assistant", text }] }); },
           onAgentCorrection: (text) => {
@@ -137,8 +141,10 @@ export const useLiveStore = create<LiveState>((set, get) => {
       client = live;
       try {
         const { remainingSeconds } = await live.start();
-        if (client !== live) { void live.close(); return; }
+        if (client !== live) { reportCancelled(live); void live.close(); return; }
         startedAt = deps.now();
+        const doc = useDocumentStore.getState();
+        live.sendContext(overview(doc.sources.get(doc.pages[0]?.sourceId ?? "")?.name ?? "document", doc.pages.length));
         set({ status: "live", remainingSeconds, seconds: 0 });
         ticker = setInterval(() => {
           set({ seconds: elapsed() });
@@ -146,7 +152,7 @@ export const useLiveStore = create<LiveState>((set, get) => {
         }, 1000);
         armSilence();
       } catch (err) {
-        if (client !== live) return;
+        if (client !== live) { reportCancelled(live); return; }
         const e = err as Error & { resetAt?: number };
         const code = e.name === "NotAllowedError" || e.name === "NotFoundError" ? "mic" : e.message;
         if (get().conversationId) void report();
@@ -179,7 +185,7 @@ if (typeof window !== "undefined") {
     const st = useLiveStore.getState();
     if (st.status !== "live") return;
     const api = useAiStore.getState().client;
-    if (st.conversationId && api && !reported) { reported = true; void api.reportLiveUsage(st.conversationId, st.seconds, true); }
+    if (st.conversationId && api && client && !reportedClients.has(client)) { reportedClients.add(client); void api.reportLiveUsage(st.conversationId, st.seconds, true); }
     client?.close().catch(() => {});
   });
   // Test hook: an e2e test can install a fake SDK and a fake microphone before the app boots.

@@ -3,7 +3,7 @@ import { queryTerms } from "../search/ranker";
 export const NO_MATCH = "No passage in the document matched that query.";
 
 /** "[p. N] text" blocks joined by blank lines, cut at a passage boundary so the result stays within maxChars. */
-export function formatPassages(passages: { page: number; text: string }[], maxChars = 1500): string {
+export function formatPassages(passages: { page: number; text: string }[], maxChars = 4000): string {
   const blocks: string[] = [];
   let used = 0;
   for (const p of passages) {
@@ -40,6 +40,6 @@ export function keywordPassages(pages: { page: number; text: string }[], query: 
   });
 }
 
-export function overview(name: string, pageCount: number, firstPageText: string): string {
-  return `Document: ${name}, ${pageCount} pages. Begins: ${firstPageText.replace(/\s+/g, " ").trim().slice(0, 300)}`;
+export function overview(name: string, pageCount: number): string {
+  return `Document: ${name}, ${pageCount} pages.`;
 }

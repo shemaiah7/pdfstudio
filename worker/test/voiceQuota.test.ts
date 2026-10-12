@@ -9,7 +9,7 @@ describe("voice quota", () => {
   it("admits a fresh visitor and reports the day", async () => {
     const r = await admitVoice(env.QUOTA, vid(), 1800);
     expect(r.ok).toBe(true);
-    if (r.ok) { expect(r.day).toBe(day); expect(r.state).toEqual({ seconds: 0, charged: {}, admitted: {}, pending: {} }); expect(r.resetAt).toBeGreaterThan(Date.now() / 1000); }
+    if (r.ok) { expect(r.day).toBe(day); expect(r.state).toEqual({ seconds: 0, charged: {}, admitted: {}, pending: {}, verified: {} }); expect(r.resetAt).toBeGreaterThan(Date.now() / 1000); }
   });
   it("refuses when the admission charge would exceed the limit", async () => {
     const v = vid();
@@ -22,7 +22,7 @@ describe("voice quota", () => {
     const v = vid();
     const t = Date.now() / 1000;
     const s1 = await chargeVoice(env.QUOTA, v, day, "c1", ADMISSION_SECONDS, t);
-    expect(s1).toEqual({ seconds: 600, charged: { c1: 600 }, admitted: { c1: t }, pending: {} });
+    expect(s1).toEqual({ seconds: 600, charged: { c1: 600 }, admitted: { c1: t }, pending: {}, verified: {} });
     const s2 = await chargeVoice(env.QUOTA, v, day, "c2", ADMISSION_SECONDS, t);
     expect(s2.seconds).toBe(1200);
     expect(await env.QUOTA.get(`v:${v}:${day}`, "json")).toEqual(s2);
@@ -54,6 +54,29 @@ describe("voice quota", () => {
     const r = await admitVoice(env.QUOTA, v, 1800, now);
     expect(r.ok).toBe(true);
     expect(await env.QUOTA.get(`v:${v}:${day}`, "json")).toMatchObject({ seconds: 40, charged: { c1: 40 }, pending: {} });
+  });
+  it("keeps a verified charge when an unverified report arrives after the window", async () => {
+    const v = vid();
+    const t = Date.now() / 1000;
+    await chargeVoice(env.QUOTA, v, day, "c1", ADMISSION_SECONDS, t);
+    await reconcileVoice(env.QUOTA, v, day, "c1", 95, t, true);
+    expect(await reconcileVoice(env.QUOTA, v, day, "c1", 0, t + 700, false)).toMatchObject({ seconds: 95, charged: { c1: 95 }, verified: { c1: true } });
+    expect(await readVoice(env.QUOTA, v, day)).toMatchObject({ seconds: 95 });
+  });
+  it("drops a pending entry for a verified id at admission", async () => {
+    const v = vid();
+    const now = Date.now() / 1000;
+    await env.QUOTA.put(`v:${v}:${day}`, JSON.stringify({ seconds: 95, charged: { c1: 95 }, admitted: { c1: now - 700 }, pending: { c1: 0 }, verified: { c1: true } }));
+    const r = await admitVoice(env.QUOTA, v, 1800, now);
+    expect(r.ok).toBe(true);
+    expect(await env.QUOTA.get(`v:${v}:${day}`, "json")).toMatchObject({ seconds: 95, charged: { c1: 95 }, pending: {} });
+  });
+  it("resetAt points at the pending settlement that makes room", async () => {
+    const v = vid();
+    const now = Date.now() / 1000;
+    await env.QUOTA.put(`v:${v}:${day}`, JSON.stringify({ seconds: 1800, charged: { a: 600, b: 600, c: 600 }, admitted: { a: now - 100, b: now - 90, c: now - 80 }, pending: { a: 30 } }));
+    const r = await admitVoice(env.QUOTA, v, 2000, now);
+    expect(r).toEqual({ ok: false, resetAt: now - 100 + 600 });
   });
   it("returns null for a conversation that was never charged", async () => {
     expect(await reconcileVoice(env.QUOTA, vid(), day, "ghost", 10)).toBeNull();

@@ -32,9 +32,16 @@ describe("getConversationDuration", () => {
     const fetchFn = (async (url: string) => { expect(url).toBe("https://api.elevenlabs.io/v1/convai/conversations/conv_1"); return ok({ status: "done", metadata: { call_duration_secs: 42 } }); }) as unknown as typeof fetch;
     expect(await getConversationDuration("k", "conv_1", fetchFn)).toBe(42);
   });
+  it("returns the duration only once the conversation has finished", async () => {
+    const mk = (status: string, secs: number) => (async () => ok({ status, metadata: { call_duration_secs: secs } })) as unknown as typeof fetch;
+    expect(await getConversationDuration("k", "c", mk("in-progress", 3))).toBeNull();
+    expect(await getConversationDuration("k", "c", mk("initiated", 3))).toBeNull();
+    expect(await getConversationDuration("k", "c", mk("processing", 42))).toBe(42);
+    expect(await getConversationDuration("k", "c", mk("failed", 7))).toBe(7);
+  });
   it("returns null on 404, network error, or a missing field", async () => {
     expect(await getConversationDuration("k", "c", (async () => ok({}, 404)) as unknown as typeof fetch)).toBeNull();
     expect(await getConversationDuration("k", "c", (async () => { throw new Error("net"); }) as unknown as typeof fetch)).toBeNull();
-    expect(await getConversationDuration("k", "c", (async () => ok({ metadata: {} })) as unknown as typeof fetch)).toBeNull();
+    expect(await getConversationDuration("k", "c", (async () => ok({ status: "done", metadata: {} })) as unknown as typeof fetch)).toBeNull();
   });
 });

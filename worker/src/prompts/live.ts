@@ -24,7 +24,7 @@ export function searchToolBody() {
 }
 
 export function agentBody(toolId: string, hostnames: string[], zeroRetention: boolean) {
-  const privacy: Record<string, unknown> = { record_voice: false, retention_days: 0, delete_transcript_and_pii: true, delete_audio: true, apply_to_existing_conversations: true };
+  const privacy: Record<string, unknown> = { record_voice: false, retention_days: zeroRetention ? -1 : 0, delete_transcript_and_pii: true, delete_audio: true, apply_to_existing_conversations: true };
   if (zeroRetention) privacy.zero_retention_mode = true;
   return {
     name: AGENT_NAME,

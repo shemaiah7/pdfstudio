@@ -40,10 +40,8 @@ describe("keywordPassages", () => {
 });
 
 describe("overview", () => {
-  it("names the document, page count and the first 300 characters", () => {
-    const o = overview("note.pdf", 7, "x".repeat(400));
-    expect(o.startsWith("Document: note.pdf, 7 pages. Begins: ")).toBe(true);
-    expect(o.length).toBe("Document: note.pdf, 7 pages. Begins: ".length + 300);
+  it("names the document and page count only", () => {
+    expect(overview("note.pdf", 7)).toBe("Document: note.pdf, 7 pages.");
   });
   it("exports the no-match string", () => { expect(NO_MATCH).toBe("No passage in the document matched that query."); });
 });

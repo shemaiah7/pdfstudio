@@ -23,12 +23,13 @@ export async function createConversationToken(apiKey: string, agentId: string, f
   return { token: body.token, conversationId: body.conversation_id };
 }
 
-/** Seconds ElevenLabs billed for a conversation, or null when the record is unavailable (deleted, not found, network). */
+/** Seconds ElevenLabs billed for a finished conversation (processing/done/failed), or null when the record is unavailable (deleted, not found, network). */
 export async function getConversationDuration(apiKey: string, conversationId: string, fetchFn: typeof fetch = fetch, timeoutMs = 5_000): Promise<number | null> {
   try {
     const res = await withTimeout(timeoutMs, (signal) => fetchFn(`${EL_BASE}/v1/convai/conversations/${encodeURIComponent(conversationId)}`, { method: "GET", headers: { "xi-api-key": apiKey }, signal }));
     if (!res.ok) return null;
-    const body = (await res.json().catch(() => null)) as { metadata?: { call_duration_secs?: unknown } } | null;
+    const body = (await res.json().catch(() => null)) as { status?: unknown; metadata?: { call_duration_secs?: unknown } } | null;
+    if (body?.status !== "processing" && body?.status !== "done" && body?.status !== "failed") return null;
     const secs = body?.metadata?.call_duration_secs;
     return typeof secs === "number" && Number.isFinite(secs) && secs >= 0 ? Math.round(secs) : null;
   } catch { return null; }

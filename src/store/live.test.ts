@@ -42,7 +42,7 @@ describe("useLiveStore", () => {
     expect(s.status).toBe("live");
     expect(s.conversationId).toBe("conv_1");
     expect(s.remainingSeconds).toBe(1200);
-    expect(conv.context[0]).toMatch(/^Document: note\.pdf, 2 pages\. Begins: Cardiology note/);
+    expect(conv.context[0]).toBe("Document: note.pdf, 2 pages.");
   });
   it("mic denied: error, no /live call, no usage report", async () => {
     configureLiveDeps({ getMedia: async () => { throw Object.assign(new Error("x"), { name: "NotAllowedError" }); } });
@@ -122,6 +122,17 @@ describe("useLiveStore", () => {
     await useLiveStore.getState().start(); await flush();
     expect(useLiveStore.getState()).toMatchObject({ status: "error", error: "Connection lost" });
     expect(client.reportLiveUsage).toHaveBeenCalledTimes(1);
+  });
+  it("reports a session cancelled while /live was still pending, once, with 0 seconds", async () => {
+    let resolveSession: (v: unknown) => void = () => {};
+    client.createLiveSession.mockImplementationOnce(() => new Promise((r) => { resolveSession = r; }));
+    const p = useLiveStore.getState().start();
+    await flush();
+    await useLiveStore.getState().end(); await flush();
+    resolveSession({ conversationId: "conv_late", token: "tok", remainingSeconds: 1200, resetAt: 0 });
+    await flush(); await p; await flush();
+    expect(client.reportLiveUsage).toHaveBeenCalledTimes(1);
+    expect(client.reportLiveUsage).toHaveBeenCalledWith("conv_late", 0);
   });
   it("document change while connecting closes the session once it connects", async () => {
     let resolveStart: () => void = () => {};

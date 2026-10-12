@@ -18,8 +18,9 @@ describe("agent config", () => {
     expect(a.conversation_config.turn).toEqual({ turn_timeout: 7, turn_eagerness: "normal" });
     expect(a.conversation_config.conversation).toEqual({ max_duration_seconds: 600, client_events: ["audio", "interruption", "user_transcript", "agent_response", "agent_response_correction", "client_tool_call"] });
     expect(a.platform_settings.auth).toEqual({ enable_auth: true, allowlist: [{ hostname: "pdfstudio.shemaiah7.workers.dev" }, { hostname: "localhost" }] });
-    expect(a.platform_settings.privacy).toEqual({ record_voice: false, retention_days: 0, delete_transcript_and_pii: true, delete_audio: true, zero_retention_mode: true, apply_to_existing_conversations: true });
-    expect((agentBody("t", [], false) as any).platform_settings.privacy.zero_retention_mode).toBeUndefined(); // eslint-disable-line @typescript-eslint/no-explicit-any
+    expect(a.platform_settings.privacy).toEqual({ record_voice: false, retention_days: -1, delete_transcript_and_pii: true, delete_audio: true, zero_retention_mode: true, apply_to_existing_conversations: true });
+    expect((agentBody("t", [], false) as any).platform_settings.privacy.zero_retention_mode).toBeUndefined();
+    expect((agentBody("t", [], false) as any).platform_settings.privacy.retention_days).toBe(0); // eslint-disable-line @typescript-eslint/no-explicit-any // eslint-disable-line @typescript-eslint/no-explicit-any
   });
   it("instructions mention the tool and the hands-free constraints", () => {
     expect(LIVE_INSTRUCTIONS).toContain("search_document");
