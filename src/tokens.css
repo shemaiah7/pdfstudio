@@ -4,7 +4,9 @@
  * Each accent has one job: indigo = citations/selection, coral = voice live,
  * green = private/OK, amber = needs attention.
  */
-:root {
+/* Everything drawn on a PDF page sits on white paper, so it keeps the light values in dark mode too. */
+:root,
+.page > * {
   /* Neutrals */
   --color-desk: #eeedea;        /* app ground behind pages */
   --color-chrome: #fbfaf8;      /* top bar, page sidebar, panel footers */

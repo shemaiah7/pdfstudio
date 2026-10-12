@@ -1,5 +1,5 @@
-/* Legacy names, mapped onto the Quiet Desk tokens in tokens.css (light only). */
-:root {
+/* Legacy names, mapped onto the Quiet Desk tokens in tokens.css. Re-declared on page content so it resolves to the light values (see tokens.css). */
+:root, .page > * {
   accent-color: var(--color-ink);
   --bg: var(--color-desk);
   --panel: var(--color-surface);
@@ -8,8 +8,8 @@
   --accent: var(--color-accent);
   --accent-soft: var(--color-accent-soft);
   --danger: var(--color-danger);
-  color-scheme: light dark;
 }
+:root { color-scheme: light dark; }
 * { box-sizing: border-box; }
 html, body, #root { height: 100%; margin: 0; }
 body { background: var(--bg); color: var(--text); font: var(--text-body); }
@@ -110,7 +110,7 @@ body { background: var(--bg); color: var(--text); font: var(--text-body); }
 .app > .dropzone.empty { flex: 1; height: auto; }
 .workspace { grid-template-rows: minmax(0, 1fr); }
 
-.page { user-select: text; }
+.page { user-select: text; color-scheme: light; }
 .page .textLayer { position: absolute; inset: 0; overflow: hidden; line-height: 1; }
 .page .textLayer ::selection { background: rgba(37, 99, 235, 0.35); }
 .page .textLayer { --user-unit: 1; --total-scale-factor: calc(var(--scale-factor) * var(--user-unit)); --scale-round-x: 1px; --scale-round-y: 1px; }
@@ -416,10 +416,16 @@ body { background: var(--bg); color: var(--text); font: var(--text-body); }
 /* ---- Line editing (Quiet Desk tokens) ---- */
 .line-editor { position: absolute; inset: 0; z-index: 30; pointer-events: none; }
 .line-field-wrap { position: absolute; pointer-events: auto; }
-.line-field { outline: 1px solid var(--color-accent); border-radius: 3px; white-space: pre; overflow: visible; min-width: 1em; caret-color: var(--color-accent); }
-.line-field.overflow { outline-color: var(--danger); }
-.line-overflow { position: absolute; left: 0; top: 100%; font-size: 12px; color: var(--danger); white-space: nowrap; }
-.line-editor-bar { position: absolute; pointer-events: auto; z-index: 31; }
-.drag-box { position: absolute; border: 1px dashed var(--color-accent); background: var(--color-accent-soft); opacity: 0.8; pointer-events: none; }
+.line-field { outline: none; border-radius: 3px; box-shadow: 0 0 0 1.5px var(--color-accent-line); white-space: pre; overflow: visible; min-width: 1em; caret-color: var(--color-accent); transition: box-shadow 120ms ease; }
+.line-field:focus { box-shadow: 0 0 0 2px var(--color-accent), 0 0 0 6px var(--color-accent-soft); }
+.line-field.overflow, .line-field.overflow:focus { box-shadow: 0 0 0 2px var(--color-warning-line), 0 0 0 6px var(--color-warning-soft); caret-color: var(--color-warning); }
+.line-overflow { position: absolute; left: -2px; top: calc(100% + 8px); display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 8px; border-radius: var(--radius-pill); background: var(--color-warning-soft); color: var(--color-warning-strong); font: 600 11px/1 var(--font-sans); white-space: nowrap; z-index: 1; }
+.line-overflow::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--color-warning); }
+.line-editor-bar { position: absolute; pointer-events: auto; z-index: 31; margin-top: 10px; }
+/* Visual order: Delete · Cancel · Done (DOM order is Done, Delete, Cancel). */
+.line-editor-bar [data-testid="line-delete"] { order: 1; }
+.line-editor-bar [data-testid="line-cancel"] { order: 2; }
+.line-editor-bar [data-testid="line-done"] { order: 3; }
+.drag-box { position: absolute; border: 1.5px dashed var(--color-accent); border-radius: 4px; background: color-mix(in srgb, var(--color-accent) 10%, transparent); pointer-events: none; }
 .edit-target-layer { position: absolute; inset: 0; cursor: text; touch-action: none; }
 .page.tool-edit .edit-line { pointer-events: none; }
