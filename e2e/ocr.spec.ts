@@ -47,3 +47,15 @@ test("downloaded PDF contains the recognized words", async ({ page }) => {
   const text = (await (await pdf.getPage(1)).getTextContent()).items.map((i) => ("str" in i ? i.str : "")).join(" ");
   expect(text).toMatch(/hypertension/i);
 });
+
+test("recognizes while the tab is hidden (requestAnimationFrame never fires)", async ({ page }) => {
+  // Chrome suspends requestAnimationFrame in background tabs; pdf.js paces default-intent renders with it.
+  test.setTimeout(180_000);
+  await page.addInitScript(() => {
+    Object.defineProperty(document, "visibilityState", { get: () => "hidden" });
+    window.requestAnimationFrame = () => 0;
+  });
+  await page.goto("/");
+  await page.setInputFiles('input[type="file"]', scan());
+  await expect(page.getByTestId("ocr-badge").first()).toHaveText("Text recognized", { timeout: 120_000 });
+});

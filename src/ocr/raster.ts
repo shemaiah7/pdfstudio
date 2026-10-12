@@ -20,7 +20,9 @@ export async function rasterizePage(source: SourceFile, pageIndex: number, maxEd
   const ctx = canvas.getContext("2d");
   if (!ctx) throw new Error("no 2d context");
   ctx.fillStyle = "white"; ctx.fillRect(0, 0, canvas.width, canvas.height);
-  await page.render({ canvas, canvasContext: ctx, viewport }).promise;
+  // intent "print": pdf.js paces default-intent renders with requestAnimationFrame, which Chrome
+  // suspends in hidden tabs, so OCR of a background tab would hang until the queue timeout.
+  await page.render({ canvas, canvasContext: ctx, viewport, intent: "print" }).promise;
   return { canvas, meta, scale };
 }
 

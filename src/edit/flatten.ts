@@ -97,7 +97,8 @@ export async function rasterizeWithPdfJs(source: SourceFile, pageIndex: number, 
   const canvasContext = canvas.getContext("2d");
   if (!canvasContext) throw new Error("Could not rasterize page");
   // annotationMode 0 (DISABLE): annotations stay as live annotations on the output page, not baked into the raster.
-  await page.render({ canvas, canvasContext, viewport, annotationMode: 0 }).promise;
+  // intent "print": avoids requestAnimationFrame pacing, which stalls in hidden tabs.
+  await page.render({ canvas, canvasContext, viewport, annotationMode: 0, intent: "print" }).promise;
   paintCovers(canvasContext, covers, scale, viewport.height / scale); // before encoding, so the PNG never carries the covered pixels
   const blob = await new Promise<Blob | null>((res) => canvas.toBlob(res, "image/png"));
   if (!blob) throw new Error("Could not rasterize page");
