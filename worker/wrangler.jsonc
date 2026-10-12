@@ -8,6 +8,8 @@
   "kv_namespaces": [{ "binding": "QUOTA", "id": "53302d2274de4c06b6acd115ee4aa1e7" }],
   "vars": {
     "ALLOWED_ORIGIN": "https://pdfstudio.shemaiah7.workers.dev",
-    "TURNSTILE_HOSTNAMES": "pdfstudio.shemaiah7.workers.dev"
+    "TURNSTILE_HOSTNAMES": "pdfstudio.shemaiah7.workers.dev",
+    "ELEVENLABS_AGENT_ID": "agent_3101m4q6478ceb686yqfw50yfhdv",
+    "VOICE_DAILY_SECONDS": "1800"
   }
 }

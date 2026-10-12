@@ -62,6 +62,29 @@ export class AiClient {
     throw new Error("upstream");
   }
 
+  async createLiveSession(): Promise<{ conversationId: string; token: string; remainingSeconds: number; resetAt: number }> {
+    let token: string;
+    try { token = await this.ensureSession(); } catch { throw new Error("verification_failed"); }
+    for (let attempt = 0; attempt < 2; attempt++) {
+      let res: Response;
+      try { res = await this.fetchFn(`${this.baseUrl}/live`, { method: "POST", headers: { authorization: `Bearer ${token}` } }); } catch { throw new Error("network"); }
+      if (res.status === 401 && attempt === 0) { try { token = await this.ensureSession(true); continue; } catch { throw new Error("verification_failed"); } }
+      if (!res.ok) { const err = (await res.json().catch(() => ({}))) as { error?: string; resetAt?: number }; throw Object.assign(new Error(err.error ?? "upstream"), { resetAt: err.resetAt }); }
+      return (await res.json()) as { conversationId: string; token: string; remainingSeconds: number; resetAt: number };
+    }
+    throw new Error("upstream");
+  }
+
+  /** Best effort: never throws. keepalive lets the report survive page unload. */
+  async reportLiveUsage(conversationId: string, seconds: number, keepalive = false): Promise<{ remainingSeconds: number } | null> {
+    try {
+      const token = await this.ensureSession();
+      const res = await this.fetchFn(`${this.baseUrl}/live/usage`, { method: "POST", keepalive, headers: { "content-type": "application/json", authorization: `Bearer ${token}` }, body: JSON.stringify({ conversationId, seconds: Math.max(0, Math.min(600, Math.round(seconds))) }) });
+      if (!res.ok) return null;
+      return (await res.json()) as { remainingSeconds: number };
+    } catch { return null; }
+  }
+
   runTask(body: AiRequest, handlers: Handlers): { abort(): void; done: Promise<void> } {
     const controller = new AbortController();
     const done = (async () => {

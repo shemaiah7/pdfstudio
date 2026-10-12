@@ -22,6 +22,7 @@
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
+    "@elevenlabs/client": "1.27.0",
     "@huggingface/transformers": "^4.3.1",
     "idb": "^8.0.4",
     "pdf-lib": "^1.17.1",

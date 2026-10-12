@@ -11,6 +11,10 @@ async function call(path: string, init: RequestInit = {}) {
 }
 
 describe("routing", () => {
+  it("routes /live and /live/usage (401 without a session)", async () => {
+    expect((await call("/live", { method: "POST" })).status).toBe(401);
+    expect((await call("/live/usage", { method: "POST" })).status).toBe(401);
+  });
   it("answers preflight with CORS headers", async () => {
     const res = await call("/ai", { method: "OPTIONS" });
     expect(res.status).toBe(204);
