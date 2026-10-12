@@ -9,7 +9,7 @@ describe("voice quota", () => {
   it("admits a fresh visitor and reports the day", async () => {
     const r = await admitVoice(env.QUOTA, vid(), 1800);
     expect(r.ok).toBe(true);
-    if (r.ok) { expect(r.day).toBe(day); expect(r.state).toEqual({ seconds: 0, charged: {} }); expect(r.resetAt).toBeGreaterThan(Date.now() / 1000); }
+    if (r.ok) { expect(r.day).toBe(day); expect(r.state).toEqual({ seconds: 0, charged: {}, admitted: {}, pending: {} }); expect(r.resetAt).toBeGreaterThan(Date.now() / 1000); }
   });
   it("refuses when the admission charge would exceed the limit", async () => {
     const v = vid();
@@ -18,20 +18,42 @@ describe("voice quota", () => {
     expect(r).toMatchObject({ ok: false });
     expect(await readVoice(env.QUOTA, v, day)).toMatchObject({ seconds: 1300 });
   });
-  it("charges the admission and sums charged entries", async () => {
+  it("charges the admission, records admitted[id] and sums charged entries", async () => {
     const v = vid();
-    const s1 = await chargeVoice(env.QUOTA, v, day, "c1", ADMISSION_SECONDS);
-    expect(s1).toEqual({ seconds: 600, charged: { c1: 600 } });
-    const s2 = await chargeVoice(env.QUOTA, v, day, "c2", ADMISSION_SECONDS);
+    const t = Date.now() / 1000;
+    const s1 = await chargeVoice(env.QUOTA, v, day, "c1", ADMISSION_SECONDS, t);
+    expect(s1).toEqual({ seconds: 600, charged: { c1: 600 }, admitted: { c1: t }, pending: {} });
+    const s2 = await chargeVoice(env.QUOTA, v, day, "c2", ADMISSION_SECONDS, t);
     expect(s2.seconds).toBe(1200);
     expect(await env.QUOTA.get(`v:${v}:${day}`, "json")).toEqual(s2);
   });
-  it("reconciles to the actual duration with a 15 s floor, idempotently", async () => {
+  it("applies a verified duration immediately with a 15 s floor, idempotently", async () => {
     const v = vid();
-    await chargeVoice(env.QUOTA, v, day, "c1", ADMISSION_SECONDS);
-    expect(await reconcileVoice(env.QUOTA, v, day, "c1", 95)).toEqual({ seconds: 95, charged: { c1: 95 } });
-    expect(await reconcileVoice(env.QUOTA, v, day, "c1", 95)).toEqual({ seconds: 95, charged: { c1: 95 } });
-    expect(await reconcileVoice(env.QUOTA, v, day, "c1", 0)).toEqual({ seconds: 15, charged: { c1: 15 } });
+    const t = Date.now() / 1000;
+    await chargeVoice(env.QUOTA, v, day, "c1", ADMISSION_SECONDS, t);
+    expect(await reconcileVoice(env.QUOTA, v, day, "c1", 95, t, true)).toMatchObject({ seconds: 95, charged: { c1: 95 } });
+    expect(await reconcileVoice(env.QUOTA, v, day, "c1", 95, t, true)).toMatchObject({ seconds: 95, charged: { c1: 95 } });
+    expect(await reconcileVoice(env.QUOTA, v, day, "c1", 0, t, true)).toMatchObject({ seconds: 15, charged: { c1: 15 } });
+  });
+  it("defers an unverified report inside the session window", async () => {
+    const v = vid();
+    const t = Date.now() / 1000;
+    await chargeVoice(env.QUOTA, v, day, "c1", ADMISSION_SECONDS, t);
+    expect(await reconcileVoice(env.QUOTA, v, day, "c1", 0, t + 100, false)).toMatchObject({ seconds: 600, charged: { c1: 600 }, pending: { c1: 0 } });
+  });
+  it("applies an unverified report after the session window", async () => {
+    const v = vid();
+    const t = Date.now() / 1000;
+    await chargeVoice(env.QUOTA, v, day, "c1", ADMISSION_SECONDS, t);
+    expect(await reconcileVoice(env.QUOTA, v, day, "c1", 0, t + 601, false)).toMatchObject({ seconds: 15, charged: { c1: 15 }, pending: {} });
+  });
+  it("admitVoice settles a pending report whose window has passed and persists it", async () => {
+    const v = vid();
+    const now = Date.now() / 1000;
+    await env.QUOTA.put(`v:${v}:${day}`, JSON.stringify({ seconds: 600, charged: { c1: 600 }, admitted: { c1: now - 700 }, pending: { c1: 40 } }));
+    const r = await admitVoice(env.QUOTA, v, 1800, now);
+    expect(r.ok).toBe(true);
+    expect(await env.QUOTA.get(`v:${v}:${day}`, "json")).toMatchObject({ seconds: 40, charged: { c1: 40 }, pending: {} });
   });
   it("returns null for a conversation that was never charged", async () => {
     expect(await reconcileVoice(env.QUOTA, vid(), day, "ghost", 10)).toBeNull();

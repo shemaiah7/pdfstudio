@@ -46,8 +46,10 @@ export async function liveUsageHandler(request: Request, env: Env, deps: LiveDep
     return json({ error: "invalid_body" }, 400, env);
   }
   const day = utcDay();
-  const actual = (await deps.getDuration(env.ELEVENLABS_API_KEY, b.conversationId)) ?? b.seconds;
-  const state = await reconcileVoice(env.QUOTA, session.vid, day, b.conversationId, actual);
+  const duration = await deps.getDuration(env.ELEVENLABS_API_KEY, b.conversationId);
+  const verified = duration !== null;
+  const actual = duration ?? b.seconds;
+  const state = await reconcileVoice(env.QUOTA, session.vid, day, b.conversationId, actual, Date.now() / 1000, verified);
   if (!state) return json({ error: "unknown_conversation" }, 404, env);
   console.log(JSON.stringify({ task: "live", vid: session.vid, status: "reconciled", seconds: Math.round(actual) }));
   return json({ remainingSeconds: Math.max(0, dailyVoiceSeconds(env) - state.seconds) }, 200, env);

@@ -6,6 +6,7 @@ import { signSession } from "../src/session";
 
 const day = new Date().toISOString().slice(0, 10);
 const token = (vid: string) => signSession({ vid, exp: Math.floor(Date.now() / 1000) + 3600 }, env.SESSION_SECRET);
+const old = () => Date.now() / 1000 - 700;
 const okDeps = (): LiveDeps => ({ createToken: async () => ({ token: "tok", conversationId: "conv_1" }), getDuration: async () => 95 });
 
 async function call(handler: typeof liveHandler, path: string, body: unknown, vid?: string, deps: LiveDeps = okDeps()) {
@@ -27,10 +28,10 @@ describe("POST /live", () => {
     expect(seenAgent).toBe("agent_test");
     expect(json).toMatchObject({ conversationId: "conv_1", token: "tok", remainingSeconds: 1200 });
     expect(json.resetAt).toBeGreaterThan(Date.now() / 1000);
-    expect(await env.QUOTA.get(`v:v-live-1:${day}`, "json")).toEqual({ seconds: 600, charged: { conv_1: 600 } });
+    expect(await env.QUOTA.get(`v:v-live-1:${day}`, "json")).toMatchObject({ seconds: 600, charged: { conv_1: 600 } });
   });
   it("429 voice_limit when 600 s would exceed the day", async () => {
-    await env.QUOTA.put(`v:v-live-2:${day}`, JSON.stringify({ seconds: 1300, charged: { a: 1300 } }));
+    await env.QUOTA.put(`v:v-live-2:${day}`, JSON.stringify({ seconds: 1300, charged: { a: 1300 }, admitted: {}, pending: {} }));
     let minted = false;
     const { res, json } = await call(liveHandler, "/live", undefined, "v-live-2", { ...okDeps(), createToken: async () => { minted = true; return { token: "t", conversationId: "c" }; } });
     expect(res.status).toBe(429);
@@ -58,17 +59,24 @@ describe("POST /live/usage", () => {
     expect((await call(liveUsageHandler, "/live/usage", { conversationId: "c", seconds: 9999 }, "v-use-0")).res.status).toBe(400);
   });
   it("reconciles from the ElevenLabs record", async () => {
-    await env.QUOTA.put(`v:v-use-1:${day}`, JSON.stringify({ seconds: 600, charged: { conv_1: 600 } }));
+    await env.QUOTA.put(`v:v-use-1:${day}`, JSON.stringify({ seconds: 600, charged: { conv_1: 600 }, admitted: { conv_1: old() }, pending: {} }));
     const { res, json } = await call(liveUsageHandler, "/live/usage", { conversationId: "conv_1", seconds: 500 }, "v-use-1", { ...okDeps(), getDuration: async (_k, id) => (id === "conv_1" ? 95 : null) });
     expect(res.status).toBe(200);
     expect(json).toEqual({ remainingSeconds: 1705 });
-    expect(await env.QUOTA.get(`v:v-use-1:${day}`, "json")).toEqual({ seconds: 95, charged: { conv_1: 95 } });
+    expect(await env.QUOTA.get(`v:v-use-1:${day}`, "json")).toMatchObject({ seconds: 95, charged: { conv_1: 95 } });
   });
   it("falls back to the client's seconds when the record is unavailable", async () => {
-    await env.QUOTA.put(`v:v-use-2:${day}`, JSON.stringify({ seconds: 600, charged: { conv_1: 600 } }));
+    await env.QUOTA.put(`v:v-use-2:${day}`, JSON.stringify({ seconds: 600, charged: { conv_1: 600 }, admitted: { conv_1: old() }, pending: {} }));
     const { res, json } = await call(liveUsageHandler, "/live/usage", { conversationId: "conv_1", seconds: 130 }, "v-use-2", { ...okDeps(), getDuration: async () => null });
     expect(res.status).toBe(200);
     expect(json).toEqual({ remainingSeconds: 1670 });
+  });
+  it("does not lower the charge from an unverified report inside the session window", async () => {
+    await env.QUOTA.put(`v:v-use-5:${day}`, JSON.stringify({ seconds: 600, charged: { conv_1: 600 }, admitted: { conv_1: Date.now() / 1000 - 100 }, pending: {} }));
+    const { res, json } = await call(liveUsageHandler, "/live/usage", { conversationId: "conv_1", seconds: 0 }, "v-use-5", { ...okDeps(), getDuration: async () => null });
+    expect(res.status).toBe(200);
+    expect(json).toEqual({ remainingSeconds: 1200 });
+    expect(await env.QUOTA.get(`v:v-use-5:${day}`, "json")).toMatchObject({ charged: { conv_1: 600 }, pending: { conv_1: 0 } });
   });
   it("404 unknown_conversation for an id this visitor never charged", async () => {
     const { res, json } = await call(liveUsageHandler, "/live/usage", { conversationId: "ghost", seconds: 10 }, "v-use-3");
@@ -76,7 +84,7 @@ describe("POST /live/usage", () => {
     expect(json.error).toBe("unknown_conversation");
   });
   it("is idempotent", async () => {
-    await env.QUOTA.put(`v:v-use-4:${day}`, JSON.stringify({ seconds: 600, charged: { conv_1: 600 } }));
+    await env.QUOTA.put(`v:v-use-4:${day}`, JSON.stringify({ seconds: 600, charged: { conv_1: 600 }, admitted: { conv_1: old() }, pending: {} }));
     await call(liveUsageHandler, "/live/usage", { conversationId: "conv_1", seconds: 20 }, "v-use-4", { ...okDeps(), getDuration: async () => 40 });
     const { json } = await call(liveUsageHandler, "/live/usage", { conversationId: "conv_1", seconds: 20 }, "v-use-4", { ...okDeps(), getDuration: async () => 40 });
     expect(json).toEqual({ remainingSeconds: 1760 });
