@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { layoutBlock, coverBoxes, layoutEdit, placeEdit } from "./layout";
+import { layoutBlock, coverBoxes, layoutEdit, placeEdit, placePieces, lineFrame } from "./layout";
+import type { Edit } from "../pdf/types";
 const measure = (t: string, s: number) => t.length * s * 0.5;
 
 describe("layoutBlock", () => {
@@ -78,5 +79,41 @@ describe("layoutEdit / placeEdit", () => {
     const p = placeEdit(legacy, measure);
     expect(p.lines[0].baseline).toBeCloseTo(50 + 12 - 8.5);
     expect(p.boxes).toBe(legacy.boxes);
+  });
+});
+
+describe("placePieces", () => {
+  const measures = () => measure;
+  const lineEdit: Edit = { id: "l", pageEntryId: "p", kind: "line", x: 20, baseline: 700, region: { x: 20, y: 697.5, width: 120, height: 12 }, runs: [{ text: "Label ", font: "helvetica-bold", fontSize: 10, color: [0, 0, 0] }, { text: "value", font: "helvetica", fontSize: 10, color: [0.2, 0.2, 0.2] }], boxes: [{ x: 20, y: 697.5, width: 120, height: 12 }], text: "Label value", fontSize: 10, font: "helvetica-bold", color: [0, 0, 0] };
+  it("lays runs left to right from x at the baseline, each with its own face", () => {
+    const { pieces, boxes } = placePieces(lineEdit, measures);
+    expect(pieces).toEqual([
+      { text: "Label ", x: 20, baseline: 700, width: 30, font: "helvetica-bold", fontSize: 10, color: [0, 0, 0] },
+      { text: "value", x: 50, baseline: 700, width: 25, font: "helvetica", fontSize: 10, color: [0.2, 0.2, 0.2] },
+    ]);
+    expect(boxes).toEqual([lineEdit.region]);
+  });
+  it("offsets runs by a moved frame and keeps the original region covered", () => {
+    const moved = { ...lineEdit, frame: { x: 30, y: 657.5, width: 120, height: 12 } };
+    const { pieces, boxes } = placePieces(moved, measures);
+    expect(pieces[0]).toMatchObject({ x: 30, baseline: 660 });
+    expect(boxes).toEqual([lineEdit.region, moved.frame]);
+  });
+  it("whites out an emptied line: covers only, no pieces", () => {
+    const { pieces, boxes } = placePieces({ ...lineEdit, runs: [], text: "" }, measures);
+    expect(pieces).toEqual([]);
+    expect(boxes).toEqual([lineEdit.region]);
+  });
+  it("turns a legacy block edit into one piece per laid-out line in the block's font", () => {
+    const legacy: Edit = { id: "b", pageEntryId: "p", boxes: [{ x: 10, y: 690, width: 100, height: 12 }], region: { x: 10, y: 690, width: 100, height: 12 }, text: "hello", fontSize: 10, font: "times", color: [0, 0, 1], lineHeight: 12 };
+    const { pieces, boxes } = placePieces(legacy, measures);
+    expect(pieces).toHaveLength(1);
+    expect(pieces[0]).toMatchObject({ text: "hello", font: "times", fontSize: 10, color: [0, 0, 1], x: 10 });
+    expect(boxes.length).toBeGreaterThan(0);
+  });
+  it("lineFrame prefers frame, then region, then the boxes' bounds", () => {
+    expect(lineFrame(lineEdit)).toEqual(lineEdit.region);
+    expect(lineFrame({ ...lineEdit, frame: { x: 1, y: 2, width: 3, height: 4 } })).toEqual({ x: 1, y: 2, width: 3, height: 4 });
+    expect(lineFrame({ ...lineEdit, region: undefined })).toEqual({ x: 20, y: 697.5, width: 120, height: 12 });
   });
 });
