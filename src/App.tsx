@@ -21,7 +21,8 @@ export default function App() {
   const openFiles = useDocumentStore((s) => s.openFiles);
   const addFiles = useDocumentStore((s) => s.addFiles);
   const setError = useDocumentStore((s) => s.setError);
-  const [scale, setScale] = useState(1.2);
+  const [scale, setScale] = useState(() => (typeof window.matchMedia === "function" && window.matchMedia("(max-width: 700px)").matches ? 0.6 : 1.2));
+  const [pagesOpen, setPagesOpen] = useState(false);
   const [dragging, setDragging] = useState(false);
 
   useEffect(() => {
@@ -44,6 +45,13 @@ export default function App() {
     window.addEventListener("beforeunload", onUnload);
     return () => { window.removeEventListener("keydown", onKey); window.removeEventListener("beforeunload", onUnload); };
   }, []);
+
+  useEffect(() => {
+    if (!pagesOpen) return;
+    const onEsc = (e: KeyboardEvent) => { if (e.key === "Escape") setPagesOpen(false); };
+    window.addEventListener("keydown", onEsc);
+    return () => window.removeEventListener("keydown", onEsc);
+  }, [pagesOpen]);
 
   useEffect(() => {
     const onSel = () => { const sel = captureSelection(); if (sel) useAiStore.getState().setSelection(sel); };
@@ -101,14 +109,15 @@ export default function App() {
       <OcrToast />
       {empty ? <DropZone onFiles={handleFiles} empty /> : (
         <>
-        <Toolbar scale={scale} setScale={setScale} onFiles={handleFiles} />
+        <Toolbar scale={scale} setScale={setScale} onFiles={handleFiles} onTogglePages={() => setPagesOpen((o) => !o)} pagesOpen={pagesOpen} />
         <div className="workspace">
-          <ThumbnailSidebar />
+          {pagesOpen ? <button type="button" className="pages-scrim" aria-label="Close pages" onClick={() => setPagesOpen(false)} /> : null}
+          <ThumbnailSidebar open={pagesOpen} onPick={() => setPagesOpen(false)} />
           <div className="canvas-area">
             <PageView scale={scale} />
             <ToolPalette />
           </div>
-          <aside className="rightpanel"><RightPanel /></aside>
+          <RightPanel />
           <DropZone onFiles={handleFiles} empty={false} forceOver={dragging} />
         </div>
         </>

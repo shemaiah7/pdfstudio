@@ -48,4 +48,20 @@ describe("RightPanel", () => {
     render(<RightPanel />);
     expect(screen.queryByTestId("voice-tab-live")).toBeNull();
   });
+  it("assistant sheet handle toggles peek and open; tabs open it; Escape collapses", () => {
+    useSearchStore.setState({ init: async () => {} } as never);
+    const { container } = render(<RightPanel />);
+    const panel = container.querySelector("aside.rightpanel")!;
+    expect(panel.classList.contains("sheet-peek")).toBe(true);
+    fireEvent.click(screen.getByLabelText("Expand assistant"));
+    expect(panel.classList.contains("sheet-open")).toBe(true);
+    const collapse = screen.getByLabelText("Collapse assistant");
+    expect(collapse.getAttribute("aria-expanded")).toBe("true");
+    fireEvent.click(collapse);
+    expect(panel.classList.contains("sheet-peek")).toBe(true);
+    fireEvent.click(screen.getByTestId("panel-tab-ai"));
+    expect(panel.classList.contains("sheet-open")).toBe(true);
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(panel.classList.contains("sheet-peek")).toBe(true);
+  });
 });
