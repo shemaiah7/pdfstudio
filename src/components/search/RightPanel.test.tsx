@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { render, cleanup } from "@testing-library/react";
+import { render, screen, fireEvent, cleanup } from "@testing-library/react";
 import RightPanel from "./RightPanel";
 import { useSearchStore } from "../../store/search";
 
@@ -21,5 +21,11 @@ describe("RightPanel", () => {
     useSearchStore.setState({ init, enabled: false, model: { status: "idle", loaded: 0, total: 0 } });
     render(<RightPanel />);
     expect(init).toHaveBeenCalledTimes(1);
+  });
+  it("has a Voice tab that shows the voice panel", () => {
+    useSearchStore.setState({ init: async () => {} } as never);
+    render(<RightPanel />);
+    fireEvent.click(screen.getByTestId("panel-tab-voice"));
+    expect(screen.getByTestId("voice-start")).toBeTruthy();
   });
 });

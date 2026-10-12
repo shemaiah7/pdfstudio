@@ -161,3 +161,10 @@ body { background: var(--bg); color: var(--text); font-family: system-ui, sans-s
 .edit-drag { cursor: move; }
 .edit-width { position: absolute; right: -4px; top: 0; width: 8px; height: 100%; cursor: ew-resize; pointer-events: auto; }
 .edit-handles { outline: 1px dashed var(--accent, #2563eb); }
+
+.voice-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--border); display: inline-block; }
+.voice-dot.on { background: var(--danger); animation: voice-pulse 1.2s ease-in-out infinite; }
+@keyframes voice-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+.voice-captions { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 6px; background: var(--bg); border-radius: 8px; padding: 10px; }
+.voice-captions .caption { margin: 0; }
+.voice-captions .caption.you { opacity: 0.8; }
