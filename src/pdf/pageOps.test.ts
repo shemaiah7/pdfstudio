@@ -303,11 +303,9 @@ describe("line edits on export", () => {
     page.drawText("value", { x: 50, y: 700, size: 10, font: regular });
     const source: SourceFile = { id: "l", name: "line.pdf", bytes: await d.save(), pageCount: 1 };
     const edit: Edit = { id: "e", pageEntryId: "l-0", kind: "line", x: 20, baseline: 700, region: { x: 20, y: 697.5, width: 55, height: 12 }, boxes: [{ x: 20, y: 697.5, width: 55, height: 12 }], runs: [{ text: "Label ", font: "helvetica-bold", fontSize: 10, color: [0, 0, 0] }, { text: "VALUE", font: "helvetica", fontSize: 10, color: [0, 0, 0] }], text: "Label VALUE", fontSize: 10, font: "helvetica-bold", color: [0, 0, 0] };
-    // editedText already reflects the edit (the line's own items are replaced), so nothing from the line comes back as an invisible layer.
-    const items = [{ str: "other", x: 20, y: 200, width: 30, height: 10, fontSize: 10, fontName: "g_d0_f9" }];
     const bytes = await buildDocument(new Map([["l", source]]), [entry("l", 0)], [edit], [], new Map(), undefined, undefined, {
       rasterize: async () => ({ png: PNG_1X1, widthPt: 612, heightPt: 792 }),
-      editedText: async () => items,
+      editedText: async () => [],
     });
     const doc = await PDFDocument.load(bytes);
     const names = new Set<string>();
@@ -321,5 +319,16 @@ describe("line edits on export", () => {
     const text = (await (await pdf.getPage(1)).getTextContent()).items.map((i) => ("str" in i ? i.str : "")).join(" ");
     expect(text).toContain("VALUE");
     expect(text).not.toContain("value");
+    // Each run is shown in its own face: resolve each Tf resource name to its BaseFont, and pair it with the next shown string.
+    const pg = doc.getPages()[0];
+    const fontDict = pg.node.Resources()!.lookup(PDFName.of("Font"), PDFDict);
+    const baseOf = (key: string) => String((fontDict.lookup(PDFName.of(key), PDFDict).get(PDFName.of("BaseFont")) as PDFName).decodeText());
+    const content = await pageContent(doc, 0);
+    const shown = new Map<string, string>();
+    for (const m of content.matchAll(/\/(\S+)\s+[\d.]+\s+Tf[\s\S]*?(?:<([0-9A-Fa-f]+)>|\(([^)]*)\))\s*Tj/g)) {
+      shown.set(m[2] ? String.fromCharCode(...(m[2].match(/../g) ?? []).map((h) => parseInt(h, 16))) : m[3], baseOf(m[1]));
+    }
+    expect(shown.get("Label ")).toBe("Helvetica-Bold");
+    expect(shown.get("VALUE")).toBe("Helvetica");
   });
 });

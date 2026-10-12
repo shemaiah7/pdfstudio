@@ -21,6 +21,15 @@ describe("EditHandles", () => {
     useDocumentStore.getState().undo();
     expect(useDocumentStore.getState().edits).toHaveLength(1);
   });
+  it("shows the font menu for block edits but not for line edits", () => {
+    const { unmount } = render(<EditHandles edit={edit} scale={1} heightPt={400} onReopen={vi.fn()} />);
+    expect(screen.queryByTestId("edit-font")).not.toBeNull();
+    unmount();
+    const line = { ...edit, kind: "line" as const, x: 10, baseline: 102, runs: [{ text: "Dose 10 mg", font: "helvetica" as const, fontSize: 10, color: [0, 0, 0] as [number, number, number] }] };
+    render(<EditHandles edit={line} scale={1} heightPt={400} onReopen={vi.fn()} />);
+    expect(screen.queryByTestId("edit-font")).toBeNull();
+    expect(screen.getByTestId("edit-drag")).toBeTruthy();
+  });
   it("drags to move and re-lays out on width change", async () => {
     render(<EditHandles edit={edit} scale={1} heightPt={400} onReopen={vi.fn()} />);
     const drag = screen.getByTestId("edit-drag");
