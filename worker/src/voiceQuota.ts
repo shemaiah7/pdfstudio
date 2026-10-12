@@ -36,6 +36,6 @@ export async function chargeVoice(kv: KVNamespace, vid: string, day: string, con
 /** Replaces the admission charge with the actual duration (floored at 15 s). Null when the id is unknown to this visitor-day. */
 export async function reconcileVoice(kv: KVNamespace, vid: string, day: string, conversationId: string, actual: number): Promise<VoiceState | null> {
   const state = await readVoice(kv, vid, day);
-  if (!(conversationId in state.charged)) return null;
+  if (!Object.hasOwn(state.charged, conversationId)) return null;
   return write(kv, vid, day, { ...state.charged, [conversationId]: Math.max(MIN_BILLED_SECONDS, Math.round(actual)) });
 }

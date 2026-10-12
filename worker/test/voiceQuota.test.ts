@@ -36,4 +36,7 @@ describe("voice quota", () => {
   it("returns null for a conversation that was never charged", async () => {
     expect(await reconcileVoice(env.QUOTA, vid(), day, "ghost", 10)).toBeNull();
   });
+  it("does not match inherited property names as charged conversations", async () => {
+    expect(await reconcileVoice(env.QUOTA, vid(), day, "constructor", 10)).toBeNull();
+  });
 });
