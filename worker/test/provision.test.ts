@@ -1,5 +1,5 @@
 // worker/test/provision.test.ts
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { agentBody, searchToolBody, LIVE_INSTRUCTIONS, AGENT_NAME, SEARCH_TOOL_NAME } from "../src/prompts/live";
 import { provisionAgent, type ElApi } from "../src/provision";
 
@@ -67,5 +67,42 @@ describe("provisionAgent", () => {
     const creates = calls.filter((c) => c.path === "/v1/convai/agents/create");
     expect(creates).toHaveLength(2);
     expect((creates[1].body as any).platform_settings.privacy.zero_retention_mode).toBeUndefined(); // eslint-disable-line @typescript-eslint/no-explicit-any
+  });
+});
+
+describe("provisionAgent failure modes", () => {
+  const wrap = (api: ElApi, o: Partial<ElApi>): ElApi => ({ ...api, ...o });
+  it("rejects on a list 5xx without creating anything", async () => {
+    const { api, calls } = fakeApi();
+    const bad = wrap(api, { get: async (p) => { calls.push({ m: "GET", path: p }); return { status: 503, body: {} }; } });
+    await expect(provisionAgent(bad, ["localhost"])).rejects.toThrow(/list failed: 503/);
+    expect(calls.some((c) => c.m === "POST")).toBe(false);
+  });
+  it("rejects when the agent list page is full with no match", async () => {
+    const agents = Array.from({ length: 100 }, (_, i) => ({ agent_id: `a${i}`, name: `other${i}` }));
+    const { api } = fakeApi({ agents });
+    await expect(provisionAgent(api, ["localhost"])).rejects.toThrow(/list page full/);
+  });
+  it("rejects when two agents share the name", async () => {
+    const { api } = fakeApi({ agents: [{ agent_id: "a1", name: "PDF Studio Voice" }, { agent_id: "a2", name: "PDF Studio Voice" }] });
+    await expect(provisionAgent(api, ["localhost"])).rejects.toThrow(/multiple agents/);
+  });
+  it("does not fall back on 403", async () => {
+    const { api, calls } = fakeApi();
+    const bad = wrap(api, { post: async (p, b) => { if (p === "/v1/convai/agents/create") { calls.push({ m: "POST", path: p, body: b }); return { status: 403, body: {} }; } return api.post(p, b); } });
+    await expect(provisionAgent(bad, ["localhost"])).rejects.toThrow(/403/);
+    expect(calls.filter((c) => c.path === "/v1/convai/agents/create")).toHaveLength(1);
+  });
+  it("warns when falling back on 422", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { api } = fakeApi({ rejectZero: true });
+    await provisionAgent(api, ["localhost"]);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("zero_retention_mode rejected"));
+    warn.mockRestore();
+  });
+  it("rejects when create returns no agent_id", async () => {
+    const { api } = fakeApi();
+    const bad = wrap(api, { post: async (p, b) => (p === "/v1/convai/agents/create" ? { status: 200, body: {} } : api.post(p, b)) });
+    await expect(provisionAgent(bad, ["localhost"])).rejects.toThrow(/no id/);
   });
 });

@@ -8,9 +8,20 @@ export interface ElApi {
 }
 const ok = (r: { status: number }) => r.status >= 200 && r.status < 300;
 
+const PAGE = 100;
+
+function findUnique<T>(items: T[], match: (x: T) => boolean, what: string, name: string): T | undefined {
+  const hits = items.filter(match);
+  if (hits.length > 1) throw new Error(`multiple ${what}s named ${name}; delete the extras in the ElevenLabs dashboard`);
+  if (hits.length === 0 && items.length >= PAGE) throw new Error(`${what} list page full; widen the lookup`);
+  return hits[0];
+}
+
 async function upsertTool(api: ElApi): Promise<string> {
   const list = await api.get("/v1/convai/tools");
-  const existing = ok(list) ? (list.body?.tools as { id: string; tool_config?: { name?: string } }[] | undefined)?.find((t) => t.tool_config?.name === SEARCH_TOOL_NAME) : undefined;
+  if (!ok(list)) throw new Error(`tool list failed: ${list.status}`);
+  const tools = (list.body?.tools ?? []) as { id: string; tool_config?: { name?: string } }[];
+  const existing = findUnique(tools, (t) => t.tool_config?.name === SEARCH_TOOL_NAME, "tool", SEARCH_TOOL_NAME);
   if (existing) {
     const r = await api.patch(`/v1/convai/tools/${existing.id}`, searchToolBody());
     if (!ok(r)) throw new Error(`tool patch failed: ${r.status}`);
@@ -23,12 +34,19 @@ async function upsertTool(api: ElApi): Promise<string> {
 
 async function upsertAgent(api: ElApi, toolId: string, hostnames: string[]): Promise<{ agentId: string; zeroRetention: boolean }> {
   const list = await api.get("/v1/convai/agents?page_size=100");
-  const existing = ok(list) ? (list.body?.agents as { agent_id: string; name?: string }[] | undefined)?.find((a) => a.name === AGENT_NAME) : undefined;
+  if (!ok(list)) throw new Error(`agent list failed: ${list.status}`);
+  const agents = (list.body?.agents ?? []) as { agent_id: string; name?: string }[];
+  const existing = findUnique(agents, (a) => a.name === AGENT_NAME, "agent", AGENT_NAME);
   for (const zero of [true, false]) {
     const body = agentBody(toolId, hostnames, zero);
     const r = existing ? await api.patch(`/v1/convai/agents/${existing.agent_id}`, body) : await api.post("/v1/convai/agents/create", body);
-    if (ok(r)) return { agentId: existing ? existing.agent_id : String(r.body?.agent_id), zeroRetention: zero };
-    if (r.status !== 422 && r.status !== 400 && r.status !== 403) throw new Error(`agent ${existing ? "patch" : "create"} failed: ${r.status}`);
+    if (ok(r)) {
+      if (existing) return { agentId: existing.agent_id, zeroRetention: zero };
+      if (typeof r.body?.agent_id !== "string") throw new Error("agent create returned no id");
+      return { agentId: r.body.agent_id, zeroRetention: zero };
+    }
+    if (r.status !== 422) throw new Error(`agent ${existing ? "patch" : "create"} failed: ${r.status}`);
+    if (zero) console.warn("WARNING: zero_retention_mode rejected by the API; retrying without it — transcripts rely on retention_days 0 deletion");
   }
   throw new Error("agent create/patch rejected even without zero_retention_mode");
 }
