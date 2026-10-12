@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { PDFArray, PDFDocument, PDFName, PDFRawStream, decodePDFRawStream } from "pdf-lib";
 import { buildDocument, countPages, addRotation } from "./pageOps";
 import type { SourceFile, PageEntry } from "./types";
-import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
+import { openPdf } from "../test/pdfjs";
 import { loadFixture } from "../test/loadFixture";
 import { PNG_1X1 } from "../test/png";
 
@@ -174,7 +174,7 @@ it("draws an edit with a courier-bold face, a coloured cover, and the crop origi
   const sources = new Map([["s", { id: "s", name: "offset.pdf", bytes, pageCount: 1 }]]);
   const pages = [{ id: "p", sourceId: "s", sourcePageIndex: 0, rotation: 0 as const }];
   const out = await buildDocument(sources, pages, [{ id: "e", pageEntryId: "p", boxes: [{ x: 20, y: 300, width: 120, height: 14 }], text: "Dose 10 mg", fontSize: 11, font: "courier-bold", color: [0, 0, 1], background: [1, 1, 0.8], lineHeight: 13, source: "native" }]);
-  const pdf = await getDocument({ data: out.slice() }).promise;
+  const pdf = await openPdf(out);
   const page = await pdf.getPage(1);
   const items = (await page.getTextContent()).items.filter((i): i is typeof i & { str: string; transform: number[] } => "str" in i);
   const hit = items.find((i) => i.str.includes("Dose"));
@@ -196,7 +196,7 @@ it("still accepts legacy font names from the AI insert", async () => {
 describe("flatten edited native pages", () => {
   const edit = { id: "e1", pageEntryId: "a-0", boxes: [{ x: 20, y: 350, width: 200, height: 24 }], text: "thre:9", fontSize: 12, font: "helvetica" as const, color: [0, 0, 0] as [number, number, number] };
   const texts = async (bytes: Uint8Array) => {
-    const pdf = await getDocument({ data: bytes.slice() }).promise;
+    const pdf = await openPdf(bytes);
     return (await (await pdf.getPage(1)).getTextContent()).items.map((i) => ("str" in i ? i.str : "")).join(" ");
   };
   const s = () => new Map([["a", src("a", "three", 3)]]);

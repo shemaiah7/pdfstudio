@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { PDFDocument, PDFName, PDFDict, PDFArray, PDFStream, PDFRawStream, decodePDFRawStream } from "pdf-lib";
-import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
+import { openPdf } from "../test/pdfjs";
 import { buildDocument } from "./pageOps";
 import { isDegenerate } from "./annotations";
 import type { Annotation, SourceFile } from "./types";
@@ -17,7 +17,7 @@ async function annotsOf(bytes: Uint8Array, pageIdx = 0) {
 }
 const name = (d: PDFDict, k: string) => String(d.get(PDFName.of(k)));
 async function pdfjsAnnots(bytes: Uint8Array) {
-  const pdf = await getDocument({ data: bytes.slice() }).promise;
+  const pdf = await openPdf(bytes);
   return (await pdf.getPage(1)).getAnnotations({ intent: "display" });
 }
 
