@@ -25,7 +25,17 @@ describe("readRuns", () => {
   it("reads spans back into runs and drops empty ones", () => {
     const el = document.createElement("div");
     el.innerHTML = '<span data-run="0">Label </span><span data-run="1"></span><span data-run="2">x</span>';
-    expect(readRuns(el, [bold, reg, reg])).toEqual([{ ...bold }, { ...reg, text: "x" }]);
+    expect(readRuns(el, [bold, reg, reg], bold)).toEqual([{ ...bold }, { ...reg, text: "x" }]);
+  });
+  it("joins bare text to the preceding run", () => {
+    const el = document.createElement("div");
+    el.innerHTML = '<span data-run="0">Label </span>typed';
+    expect(readRuns(el, [bold, reg], bold)).toEqual([{ ...bold, text: "Label typed" }]);
+  });
+  it("starts a fallback-styled run for leading bare text", () => {
+    const el = document.createElement("div");
+    el.innerHTML = 'typed<span data-run="1">value</span>';
+    expect(readRuns(el, [bold, reg], bold)).toEqual([{ ...bold, text: "typed" }, reg]);
   });
 });
 
@@ -98,5 +108,34 @@ describe("LineEditor", () => {
     expect(edits).toHaveLength(1);
     expect(edits[0].id).toBe(id);
     expect(edits[0].runs?.[1].text).toBe("again");
+  });
+  it("types into a reopened white-out", async () => {
+    const open = openLines();
+    open.lines[0].runs = [];
+    useDocumentStore.getState().addEdit({ pageEntryId: "p0", kind: "line", x: 20, baseline: 700, region: open.lines[0].line.box, boxes: [open.lines[0].line.box], runs: [], text: "", fontSize: 10, font: "helvetica", color: [0, 0, 0], background: [1, 1, 1] });
+    open.lines[0].existing = useDocumentStore.getState().edits[0];
+    render(<LineEditor open={open} scale={1} heightPt={800} onClose={() => {}} />);
+    await flush();
+    const field = screen.getAllByTestId("line-field")[0];
+    field.querySelector('[data-run="0"]')!.textContent = "typed";
+    fireEvent.input(field);
+    fireEvent.click(screen.getByTestId("line-done"));
+    await flush();
+    const edits = useDocumentStore.getState().edits;
+    expect(edits).toHaveLength(1);
+    expect(edits[0].runs).toHaveLength(1);
+    expect(edits[0].runs?.[0].text).toBe("typed");
+  });
+  it("applies on an outside pointerdown", async () => {
+    const onClose = vi.fn();
+    render(<LineEditor open={openLines()} scale={1} heightPt={800} onClose={onClose} />);
+    await flush();
+    const field = screen.getAllByTestId("line-field")[0];
+    field.querySelector('[data-run="1"]')!.textContent = "VALUE";
+    fireEvent.input(field);
+    fireEvent.pointerDown(document.body);
+    await flush();
+    expect(useDocumentStore.getState().edits).toHaveLength(1);
+    expect(onClose).toHaveBeenCalled();
   });
 });
