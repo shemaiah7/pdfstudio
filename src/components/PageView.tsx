@@ -109,8 +109,8 @@ export default function PageView({ scale }: Props) {
   const openLinesAt = async (entry: PageEntry, source: SourceFile, meta: PageMetaPt, box: Box): Promise<boolean> => {
     const text = await pageBlocks(source, entry.sourcePageIndex);
     const canvas = document.getElementById(`page-${entry.id}`)?.querySelector("canvas");
-    const colors = canvas ? sampleBlockColors(canvas, box, scale, meta.heightPt) : { background: WHITE, text: [0, 0, 0] as [number, number, number] };
-    const lines = await openLinesIn(text, source, entry, box, colors);
+    const sample = (b: Box) => (canvas ? sampleBlockColors(canvas, b, scale, meta.heightPt) : { background: WHITE, text: [0, 0, 0] as [number, number, number] });
+    const lines = await openLinesIn(text, source, entry, box, sample);
     if (!lines) return false;
     setHint(null, null);
     setOpen(null);

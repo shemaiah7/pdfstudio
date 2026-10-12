@@ -5,12 +5,12 @@ import { matchFont } from "./fontMatch";
 
 export type PdfPageLike = { commonObjs: { has(id: string): boolean; get(id: string): unknown } };
 export type Styles = Record<string, { fontFamily?: string }>;
-export interface OpenLine { line: TextLine; runs: Run[]; existing?: Edit }
+export interface OpenLine { line: TextLine; runs: Run[]; existing?: Edit; background: RGB }
 export interface OpenLines { entry: PageEntry; source: SourceFile; box: Box; lines: OpenLine[]; background: RGB }
 
-/** One styled run per detected run: face from the source font's name and flags, size from the items, one text colour for the line. */
-export function runsFor(line: TextLine, page: PdfPageLike, styles: Styles, color: RGB): Run[] {
-  return line.runs.map((r) => ({ text: r.text, font: matchFont(fontInfoFor(page, r.fontName, styles)), fontSize: r.fontSize, color }));
+/** One styled run per detected run: face from the source font's name and flags, size from the items, colour from `colorFor` (default `color`). */
+export function runsFor(line: TextLine, page: PdfPageLike, styles: Styles, color: RGB, colorFor?: (run: TextLine["runs"][number]) => RGB): Run[] {
+  return line.runs.map((r) => ({ text: r.text, font: matchFont(fontInfoFor(page, r.fontName, styles)), fontSize: r.fontSize, color: colorFor ? colorFor(r) : color }));
 }
 
 export function runsFromEdit(edit: Edit): Run[] {

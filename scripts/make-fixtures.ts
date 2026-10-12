@@ -85,6 +85,10 @@ async function makeColumns() {
     page.drawText(r[2], { x: 380, y, size: 11, font: bold });
     page.drawText(r[3], { x: 500, y, size: 11, font: reg });
   });
+  // A row whose bold label and regular value are close enough to share one line (mixed runs).
+  const sy = 340 - 3 * 18;
+  page.drawText("Status:", { x: 30, y: sy, size: 11, font: bold });
+  page.drawText("Open", { x: 30 + bold.widthOfTextAtSize("Status:", 11) + 4, y: sy, size: 11, font: reg });
   writeFileSync(join(outDir, "columns.pdf"), await doc.save());
 }
 await makeColumns();

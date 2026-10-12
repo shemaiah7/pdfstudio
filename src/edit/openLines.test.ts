@@ -13,23 +13,47 @@ const page = { commonObjs: { has: (id: string) => id === "b", get: () => ({ name
 const entry = { id: "p0", sourceId: "s", sourcePageIndex: 0, rotation: 0 as const };
 const source = { id: "s", name: "a.pdf", bytes: new Uint8Array(), pageCount: 1, hash: "h" };
 
+const sample = () => ({ background: [1, 1, 1] as [number, number, number], text: [0, 0, 0] as [number, number, number] });
+
 describe("openLinesIn", () => {
   it("returns one open line per detected line inside the box, with runs", async () => {
     useDocumentStore.setState({ ...useDocumentStore.getState(), edits: [], pages: [entry] });
-    const open = await openLinesIn({ items, page, styles: {} }, source, entry, { x: 10, y: 680, width: 100, height: 32 }, { background: [1, 1, 1], text: [0, 0, 0] });
+    const open = await openLinesIn({ items, page, styles: {} }, source, entry, { x: 10, y: 680, width: 100, height: 32 }, sample);
     expect(open?.lines.map((l) => l.runs.map((r) => r.text))).toEqual([["Label ", "value"], ["Second"]]);
     expect(open?.lines[0].runs[0].font).toBe("helvetica-bold");
   });
   it("returns null when the box holds no lines", async () => {
-    expect(await openLinesIn({ items, page, styles: {} }, source, entry, { x: 150, y: 680, width: 50, height: 32 }, { background: [1, 1, 1], text: [0, 0, 0] })).toBeNull();
+    expect(await openLinesIn({ items, page, styles: {} }, source, entry, { x: 150, y: 680, width: 50, height: 32 }, sample)).toBeNull();
   });
   it("includes an existing line edit overlapping the box as a reopenable line with its stored runs", async () => {
     const region = { x: 20, y: 697.5, width: 55, height: 12 };
     useDocumentStore.setState({ ...useDocumentStore.getState(), pages: [entry], edits: [{ id: "e", pageEntryId: "p0", kind: "line", x: 20, baseline: 700, region, boxes: [region], runs: [{ text: "Label ", font: "helvetica-bold", fontSize: 10, color: [0, 0, 0] }, { text: "VALUE", font: "helvetica", fontSize: 10, color: [0, 0, 0] }], text: "Label VALUE", fontSize: 10, font: "helvetica-bold", color: [0, 0, 0] }] });
     // Extraction already applied the edit: items for that line are the edit's runs.
     const edited: TextItemBox[] = [{ str: "Label ", x: 20, y: 700, width: 30, height: 10, fontSize: 10, fontName: "helvetica-bold" }, { str: "VALUE", x: 50, y: 700, width: 25, height: 10, fontSize: 10, fontName: "helvetica" }, items[3]];
-    const open = await openLinesIn({ items: edited, page, styles: {} }, source, entry, { x: 10, y: 680, width: 100, height: 32 }, { background: [1, 1, 1], text: [0, 0, 0] });
+    const open = await openLinesIn({ items: edited, page, styles: {} }, source, entry, { x: 10, y: 680, width: 100, height: 32 }, sample);
     expect(open?.lines[0].existing?.id).toBe("e");
     expect(open?.lines[0].runs.map((r) => r.text)).toEqual(["Label ", "VALUE"]);
+  });
+  it("calls the sampler with each line box and each run box", async () => {
+    useDocumentStore.setState({ ...useDocumentStore.getState(), edits: [], pages: [entry] });
+    const calls: { x: number; y: number; width: number; height: number }[] = [];
+    const open = await openLinesIn({ items, page, styles: {} }, source, entry, { x: 10, y: 680, width: 100, height: 32 }, (b) => { calls.push(b); return { background: [1, 1, 1], text: [0, 0, 0] }; });
+    for (const l of open!.lines) expect(calls).toContainEqual(l.line.box);
+    expect(calls.some((c) => c.x === 50 && c.width === 25)).toBe(true);
+  });
+  it("reopens a white-out edit that has no detected line", async () => {
+    const region = { x: 20, y: 697.5, width: 55, height: 12 };
+    useDocumentStore.setState({ ...useDocumentStore.getState(), pages: [entry], edits: [{ id: "w", pageEntryId: "p0", kind: "line", x: 20, baseline: 700, region, boxes: [region], runs: [], text: "", fontSize: 10, font: "helvetica", color: [0, 0, 0] }] });
+    const open = await openLinesIn({ items: [], page, styles: {} }, source, entry, { x: 10, y: 680, width: 100, height: 32 }, sample);
+    expect(open?.lines).toHaveLength(1);
+    expect(open?.lines[0].existing?.id).toBe("w");
+    expect(open?.lines[0].runs).toEqual([]);
+  });
+  it("claims an edit only for the line it mostly covers", async () => {
+    const region = { x: 20, y: 697.5, width: 55, height: 12 };
+    useDocumentStore.setState({ ...useDocumentStore.getState(), pages: [entry], edits: [{ id: "u", pageEntryId: "p0", kind: "line", x: 20, baseline: 700, region, boxes: [region], runs: [{ text: "Up", font: "helvetica", fontSize: 10, color: [0, 0, 0] }], text: "Up", fontSize: 10, font: "helvetica", color: [0, 0, 0] }] });
+    const two: TextItemBox[] = [{ str: "Upper", x: 20, y: 700, width: 30, height: 10, fontSize: 10, fontName: "r" }, { str: "Lower", x: 20, y: 690, width: 30, height: 10, fontSize: 10, fontName: "r" }];
+    const open = await openLinesIn({ items: two, page, styles: {} }, source, entry, { x: 10, y: 680, width: 100, height: 32 }, sample);
+    expect(open?.lines.map((l) => l.existing?.id)).toEqual(["u", undefined]);
   });
 });

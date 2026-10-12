@@ -6,6 +6,8 @@ import LineEditor, { readRuns, type OpenLines } from "./LineEditor";
 import { useDocumentStore } from "../store/document";
 import { linesFrom } from "../edit/blocks";
 import type { Run } from "../pdf/types";
+import { openLinesIn } from "../edit/openLines";
+import { applyEdits, type TextItemBox } from "../pdf/text";
 
 vi.mock("../pdf/metrics", () => ({ measureFor: async () => (t: string, s: number) => t.length * s * 0.5 }));
 
@@ -14,7 +16,7 @@ const reg: Run = { text: "value", font: "helvetica", fontSize: 10, color: [0, 0,
 function openLines(): OpenLines {
   const [line1] = linesFrom([{ str: "Label ", x: 20, y: 700, width: 30, height: 10, fontSize: 10, fontName: "b" }, { str: "value", x: 50, y: 700, width: 25, height: 10, fontSize: 10, fontName: "r" }]);
   const [line2] = linesFrom([{ str: "Second", x: 20, y: 686, width: 30, height: 10, fontSize: 10, fontName: "r" }]);
-  return { entry: { id: "p0", sourceId: "s", sourcePageIndex: 0, rotation: 0 }, source: { id: "s", name: "a.pdf", bytes: new Uint8Array(), pageCount: 1, hash: "h" }, box: { x: 15, y: 680, width: 100, height: 32 }, background: [1, 1, 1], lines: [{ line: line1, runs: [bold, reg] }, { line: line2, runs: [{ ...reg, text: "Second" }] }] };
+  return { entry: { id: "p0", sourceId: "s", sourcePageIndex: 0, rotation: 0 }, source: { id: "s", name: "a.pdf", bytes: new Uint8Array(), pageCount: 1, hash: "h" }, box: { x: 15, y: 680, width: 100, height: 32 }, background: [1, 1, 1], lines: [{ line: line1, runs: [bold, reg], background: [1, 1, 1] }, { line: line2, runs: [{ ...reg, text: "Second" }], background: [1, 1, 1] }] };
 }
 const flush = () => act(async () => { await new Promise((r) => setTimeout(r, 0)); });
 
@@ -151,5 +153,47 @@ describe("LineEditor", () => {
     expect(fire("formatBold")).toBe(true);
     expect(fire("insertFromDrop")).toBe(true);
     expect(fire("insertText")).toBe(false);
+  });
+  it("Delete removes the reopened edits and closes", async () => {
+    const open = openLines();
+    useDocumentStore.getState().addEdit({ pageEntryId: "p0", kind: "line", x: 20, baseline: 700, region: open.lines[0].line.box, boxes: [open.lines[0].line.box], runs: [bold, reg], text: "Label value", fontSize: 10, font: "helvetica-bold", color: [0, 0, 0], background: [1, 1, 1] });
+    open.lines[0].existing = useDocumentStore.getState().edits[0];
+    const onClose = vi.fn();
+    render(<LineEditor open={open} scale={1} heightPt={800} onClose={onClose} />);
+    await flush();
+    fireEvent.click(screen.getByTestId("line-delete"));
+    expect(useDocumentStore.getState().edits).toHaveLength(0);
+    expect(onClose).toHaveBeenCalled();
+  });
+  it("shows no Delete button for new lines", async () => {
+    render(<LineEditor open={openLines()} scale={1} heightPt={800} onClose={() => {}} />);
+    await flush();
+    expect(screen.queryByTestId("line-delete")).toBeNull();
+  });
+  it("reopening and editing keeps the stored geometry", async () => {
+    const items: TextItemBox[] = [{ str: "Rylee Lyons", x: 130, y: 700, width: 60, height: 10, fontSize: 10, fontName: "r" }];
+    const [orig] = linesFrom(items);
+    const region = orig.box;
+    const runs: Run[] = [{ text: "Jo", font: "helvetica", fontSize: 10, color: [0, 0, 0] }];
+    const id = useDocumentStore.getState().addEdit({ pageEntryId: "p0", kind: "line", x: 130, baseline: 700, region, boxes: [region], runs, text: "Jo", fontSize: 10, font: "helvetica", color: [0, 0, 0], background: [1, 1, 1] });
+    const edit = useDocumentStore.getState().edits[0];
+    const edited = await applyEdits(items, [edit]);
+    const page = { commonObjs: { has: () => false, get: () => ({}) } };
+    const entry = { id: "p0", sourceId: "s", sourcePageIndex: 0, rotation: 0 as const };
+    const source = { id: "s", name: "a.pdf", bytes: new Uint8Array(), pageCount: 1, hash: "h" };
+    const open = await openLinesIn({ items: edited, page, styles: {} }, source, entry, edit.region!, () => ({ background: [1, 1, 1], text: [0, 0, 0] }));
+    expect(open?.lines).toHaveLength(1);
+    expect(open?.lines[0].existing?.id).toBe(id);
+    render(<LineEditor open={open!} scale={1} heightPt={800} onClose={() => {}} />);
+    await flush();
+    const field = screen.getAllByTestId("line-field")[0];
+    field.querySelector('[data-run="0"]')!.textContent = "Jon";
+    fireEvent.input(field);
+    fireEvent.click(screen.getByTestId("line-done"));
+    await flush();
+    const stored = useDocumentStore.getState().edits[0];
+    expect(stored.runs?.[0].text).toBe("Jon");
+    expect(stored.region?.width).toBe(60);
+    expect(stored.boxes).toEqual([region]);
   });
 });

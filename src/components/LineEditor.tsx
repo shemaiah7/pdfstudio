@@ -70,16 +70,23 @@ export default function LineEditor({ open, scale, heightPt, onClose }: { open: O
         const el = refs.current[i];
         const runs = el ? readRuns(el, templateFor(l), fallbackFor(l)) : current[i];
         if (sameRuns(runs, l.runs)) return;
-        const region = l.line.box;
         const first = runs[0] ?? fallbackFor(l);
-        const base = { kind: "line" as const, x: l.line.x, baseline: l.line.baseline, region, boxes: [region], runs, text: runsText(runs), fontSize: first.fontSize, font: first.font, color: first.color, background: open.background, source: (l.line.fontName === "ocr" ? "ocr" : "native") as "ocr" | "native" };
-        if (l.existing) updateEdit(l.existing.id, base); else addEdit({ pageEntryId: open.entry.id, ...base });
+        if (l.existing) { updateEdit(l.existing.id, { runs, text: runsText(runs), fontSize: first.fontSize, font: first.font, color: first.color }); return; }
+        const region = l.line.box;
+        const base = { kind: "line" as const, x: l.line.x, baseline: l.line.baseline, region, boxes: [region], runs, text: runsText(runs), fontSize: first.fontSize, font: first.font, color: first.color, background: l.background ?? open.background, source: (l.line.fontName === "ocr" ? "ocr" : "native") as "ocr" | "native" };
+        addEdit({ pageEntryId: open.entry.id, ...base });
       });
     } catch (err) {
       console.error("Could not apply edits", err);
     } finally { onClose(); }
   };
   applyRef.current = apply;
+  const remove = () => {
+    if (!finish()) return;
+    try { const { removeEdit } = useDocumentStore.getState(); open.lines.forEach((l) => { if (l.existing) removeEdit(l.existing.id); }); }
+    catch (err) { console.error("Could not delete edit", err); }
+    finally { onClose(); }
+  };
   const onKey = (e: React.KeyboardEvent, i: number) => {
     if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); cancel(); }
     else if (e.key === "Enter") { e.preventDefault(); apply(); }
@@ -96,7 +103,7 @@ export default function LineEditor({ open, scale, heightPt, onClose }: { open: O
         return (
           <div key={i} className="line-field-wrap" style={{ left: l.line.x * scale, top: (heightPt - l.line.baseline - l.line.fontSize) * scale, width: width * scale }}>
             <div ref={(el) => { refs.current[i] = el; }} data-testid="line-field" data-line-index={i} className={`line-field ${overflow ? "overflow" : ""}`} contentEditable suppressContentEditableWarning spellCheck={false}
-              style={{ background: rgb(open.background), lineHeight: 1 }}
+              style={{ background: rgb(l.background ?? open.background), lineHeight: 1 }}
               onInput={() => onInput(i)} onKeyDown={(e) => onKey(e, i)}>
               {templateFor(l).map((r, k) => <span key={k} data-run={k} style={{ font: FONT_CSS[r.font].replace("1px", `${r.fontSize * scale}px`), color: rgb(r.color) }}>{l.runs.length ? r.text : ""}</span>)}
             </div>
@@ -106,6 +113,7 @@ export default function LineEditor({ open, scale, heightPt, onClose }: { open: O
       })}
       <div className="line-editor-bar" style={{ left: open.box.x * scale, top: (heightPt - open.box.y) * scale + 4 }}>
         <button data-testid="line-done" onMouseDown={(e) => e.preventDefault()} onClick={apply}>Done</button>
+        {open.lines.some((l) => l.existing) && <button data-testid="line-delete" onMouseDown={(e) => e.preventDefault()} onClick={remove}>Delete</button>}
         <button data-testid="line-cancel" onMouseDown={(e) => e.preventDefault()} onClick={cancel}>Cancel</button>
       </div>
     </div>
