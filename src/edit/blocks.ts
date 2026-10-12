@@ -48,7 +48,8 @@ function lineOf(g: TextItemBox[]): TextLine {
 }
 
 export function linesFrom(items: TextItemBox[]): TextLine[] {
-  const placed = items.filter((i) => i.str.length > 0).sort((a, b) => b.y - a.y || a.x - b.x);
+  // pdf.js emits whitespace-only items that span the gap between separately drawn strings; they would hide column gaps. runsOf re-inserts spaces from real gaps.
+  const placed = items.filter((i) => i.str.trim().length > 0).sort((a, b) => b.y - a.y || a.x - b.x);
   const groups: TextItemBox[][] = [];
   for (const p of placed) {
     const g = groups[groups.length - 1];

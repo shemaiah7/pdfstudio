@@ -10,6 +10,10 @@ describe("linesFrom", () => {
     expect(lines.map((l) => l.text)).toEqual(["Hello world", "Next"]);
     expect(lines[0]).toMatchObject({ x: 10, baseline: 700, width: 80 });
   });
+  it("ignores whitespace-only items (pdf.js gap fillers) so column gaps still split lines", () => {
+    const lines = linesFrom([it_("Label", 10, 700, 40), it_(" ", 50, 700, 100), it_("Value", 150, 700, 30)]);
+    expect(lines.map((l) => l.text)).toEqual(["Label", "Value"]);
+  });
 });
 
 describe("blocksFrom", () => {
