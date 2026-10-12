@@ -26,12 +26,14 @@ test("voice session: start, tool search, captions, end reports usage", async ({ 
     };
   });
   await page.goto("/");
+  await page.waitForLoadState("networkidle");
   await page.setInputFiles('input[type="file"]', { name: "note.pdf", mimeType: "application/pdf", buffer: await notePdf() });
-  await expect(page.locator(".page .textLayer span").first()).toBeVisible();
+  await expect(page.locator(".page .textLayer span").first()).toBeVisible({ timeout: 30_000 });
   await page.getByTestId("panel-tab-voice").click();
   page.once("dialog", (d) => d.accept());
   await page.getByTestId("voice-start").click();
   await expect(page.getByTestId("voice-status")).toContainText("min left today");
+  await page.waitForFunction(() => (window as unknown as { __liveOpts?: unknown }).__liveOpts !== undefined);
   const result = await page.evaluate(() => (window as unknown as { __liveOpts: { clientTools: { search_document(p: { query: string }): Promise<string> } } }).__liveOpts.clientTools.search_document({ query: "warfarin dose" }));
   expect(result).toMatch(/^\[p\. 1\] .*Warfarin 5 mg nightly/);
   await page.evaluate(() => { const o = (window as unknown as { __liveOpts: Record<string, any> }).__liveOpts; o.onMessage({ role: "user", message: "what is the warfarin dose", event_id: 1 }); o.onMessage({ role: "agent", message: "Five milligrams nightly, page 1.", event_id: 2 }); }); // eslint-disable-line @typescript-eslint/no-explicit-any
