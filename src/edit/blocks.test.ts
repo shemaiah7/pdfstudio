@@ -67,12 +67,18 @@ describe("linesFrom columns and runs", () => {
   it("merges consecutive items with the same font and size into runs", () => {
     const lines = linesFrom([it_("Assigned", 20, 700, 40, 10, "bold"), it_(" Caregiver", 60, 700, 50, 10, "bold"), it_("Rylee", 115, 700, 30, 10, "reg"), it_(" Lyons", 145, 700, 30, 10.1, "reg")]);
     expect(lines).toHaveLength(1);
-    expect(lines[0].runs.map((r) => [r.text, r.fontName])).toEqual([["Assigned Caregiver", "bold"], ["Rylee Lyons", "reg"]]);
+    expect(lines[0].runs.map((r) => [r.text, r.fontName])).toEqual([["Assigned Caregiver ", "bold"], ["Rylee Lyons", "reg"]]);
+    expect(lines[0].text).toBe("Assigned Caregiver Rylee Lyons");
     expect(lines[0].runs[0]).toMatchObject({ x: 20, width: 90 });
   });
   it("starts a new run when the size differs by more than 2 %", () => {
     const lines = linesFrom([it_("A", 10, 700, 10, 10, "f"), it_("B", 20, 700, 10, 12, "f")]);
     expect(lines[0].runs).toHaveLength(2);
+  });
+  it("keeps line.text equal to the joined run text", () => {
+    const [line] = linesFrom([it_("A", 10, 700, 10, 10, "a"), it_(" B", 20, 700, 10, 10, "b"), it_("C ", 30, 700, 10, 12, "b"), it_("D", 45, 700, 10, 12, "c")]);
+    expect(line.runs.length).toBeGreaterThanOrEqual(3);
+    expect(line.text).toBe(line.runs.map((r) => r.text).join(""));
   });
   it("exposes a line box from baseline and font size", () => {
     const [line] = linesFrom([it_("x", 10, 700, 20, 10)]);
@@ -92,5 +98,9 @@ describe("linesInBox and lineAt", () => {
     expect(lineAt(lines, 25, 701)?.text).toBe("Left1");
     expect(lineAt(lines, 305, 687)?.text).toBe("Right2");
     expect(lineAt(lines, 200, 700)).toBeUndefined();
+  });
+  it("selects a lone narrow glyph", () => {
+    const [narrow] = linesFrom([it_("I", 20, 700, 3)]);
+    expect(linesInBox([narrow], { x: 10, y: 690, width: 30, height: 20 })).toEqual([narrow]);
   });
 });

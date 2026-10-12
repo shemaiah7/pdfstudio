@@ -8,23 +8,31 @@ export interface TextBlock { lines: TextLine[]; box: Box; lineHeight: number; fo
 const COLUMN_GAP = 1.2;   // em
 const SIZE_TOL = 0.02;
 
-function joinText(items: TextItemBox[]): string {
-  let text = "", cursor = -Infinity;
-  for (const p of items) {
-    const gap = p.x - cursor;
-    if (text && gap > p.fontSize * 0.15 && !text.endsWith(" ") && !p.str.startsWith(" ")) text += " ";
-    text += p.str; cursor = p.x + p.width;
-  }
-  return text.replace(/\s+/g, " ").trim();
-}
-
+/** Builds the line text once; runs slice it, so runs.map(text).join("") === line text. A space at a run boundary belongs to the preceding run. */
 function runsOf(items: TextItemBox[]): TextRun[] {
-  const runs: TextItemBox[][] = [];
+  const groups: TextItemBox[][] = [];
+  const starts: number[] = [];
+  let buf = "", cursor = -Infinity;
   for (const p of items) {
-    const r = runs[runs.length - 1];
-    if (r && r[0].fontName === p.fontName && Math.abs(r[0].fontSize - p.fontSize) <= r[0].fontSize * SIZE_TOL) r.push(p); else runs.push([p]);
+    let str = p.str.replace(/\s+/g, " ");
+    const g = groups[groups.length - 1];
+    const newRun = !g || g[0].fontName !== p.fontName || Math.abs(g[0].fontSize - p.fontSize) > g[0].fontSize * SIZE_TOL;
+    if (buf.endsWith(" ") && str.startsWith(" ")) str = str.slice(1);
+    else if (buf && !buf.endsWith(" ") && (str.startsWith(" ") ? newRun : p.x - cursor > p.fontSize * 0.15)) { buf += " "; if (str.startsWith(" ")) str = str.slice(1); }
+    if (newRun) { groups.push([p]); starts.push(buf.length); } else g.push(p);
+    buf += str; cursor = p.x + p.width;
   }
-  return runs.map((r) => ({ items: r, text: joinText(r), fontName: r[0].fontName, fontSize: r[0].fontSize, x: r[0].x, width: Math.max(...r.map((i) => i.x + i.width)) - r[0].x }));
+  const lead = buf.length - buf.trimStart().length;
+  const full = buf.trim();
+  const out: TextRun[] = [];
+  groups.forEach((r, i) => {
+    const from = Math.max(0, starts[i] - lead);
+    const to = i + 1 < groups.length ? Math.max(0, starts[i + 1] - lead) : full.length;
+    const text = full.slice(Math.min(from, full.length), Math.min(to, full.length));
+    if (!text) return;
+    out.push({ items: r, text, fontName: r[0].fontName, fontSize: r[0].fontSize, x: r[0].x, width: Math.max(...r.map((i) => i.x + i.width)) - r[0].x });
+  });
+  return out;
 }
 
 export function lineBox(line: Pick<TextLine, "x" | "baseline" | "width" | "fontSize">): Box {
@@ -34,7 +42,8 @@ export function lineBox(line: Pick<TextLine, "x" | "baseline" | "width" | "fontS
 function lineOf(g: TextItemBox[]): TextLine {
   const x = Math.min(...g.map((i) => i.x));
   const right = Math.max(...g.map((i) => i.x + i.width));
-  const partial = { text: joinText(g), x, baseline: Math.min(...g.map((i) => i.y)), width: right - x, fontSize: g[0].fontSize, fontName: g[0].fontName, items: g, runs: runsOf(g) };
+  const runs = runsOf(g);
+  const partial = { text: runs.map((r) => r.text).join(""), x, baseline: Math.min(...g.map((i) => i.y)), width: right - x, fontSize: g[0].fontSize, fontName: g[0].fontName, items: g, runs };
   return { ...partial, box: lineBox(partial) };
 }
 
@@ -64,7 +73,7 @@ export function linesInBox(lines: TextLine[], box: Box): TextLine[] {
     const b = l.box;
     const vy = Math.min(b.y + b.height, box.y + box.height) - Math.max(b.y, box.y);
     const vx = Math.min(b.x + b.width, box.x + box.width) - Math.max(b.x, box.x);
-    return vy >= b.height / 2 && vx >= l.fontSize * 0.5;
+    return vy >= b.height / 2 && vx >= Math.min(l.fontSize * 0.5, l.box.width);
   });
 }
 

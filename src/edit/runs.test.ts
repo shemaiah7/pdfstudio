@@ -12,7 +12,7 @@ describe("runsFor", () => {
   it("matches a face per run and carries size and colour", () => {
     const [line] = linesFrom([it_("Label", 10, 40, "g_bold"), it_(" value", 50, 40, "g_reg")]);
     const runs = runsFor(line, page, styles, [0, 0, 0]);
-    expect(runs).toEqual([{ text: "Label", font: "helvetica-bold", fontSize: 10, color: [0, 0, 0] }, { text: "value", font: "helvetica", fontSize: 10, color: [0, 0, 0] }]);
+    expect(runs).toEqual([{ text: "Label ", font: "helvetica-bold", fontSize: 10, color: [0, 0, 0] }, { text: "value", font: "helvetica", fontSize: 10, color: [0, 0, 0] }]);
   });
   it("maps OCR items to one helvetica run", () => {
     const [line] = linesFrom([it_("scan", 10, 40, "ocr")]);
