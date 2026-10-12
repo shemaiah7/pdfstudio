@@ -107,4 +107,20 @@ describe("LiveClient", () => {
     expect(await sdk.opts().clientTools.search_document({ query: "x" })).toBe("No passage in the document matched that query.");
     expect(await sdk.opts().clientTools.search_document({})).toBe("No passage in the document matched that query.");
   });
+  it("fails fast with the disconnect cause when the session dies before connecting", async () => {
+    const sdk = fakeSdk({ connect: false });
+    const base = sdk.startSession;
+    const startSession: StartSession = async (o) => { const c = await base(o); (o as Opts).onDisconnect({ reason: "error", message: "ice failed", context: { type: "x" } }); return c; };
+    const c = new LiveClient(transport, events(), async () => "", { startSession });
+    await expect(c.start()).rejects.toThrow("ice failed");
+    expect(sdk.conv.ended).toBe(true);
+  });
+  it("is single-use: a second start rejects without calling the transport", async () => {
+    const sdk = fakeSdk();
+    const createSession = vi.fn(transport.createSession);
+    const c = new LiveClient({ createSession }, events(), async () => "", { startSession: sdk.startSession });
+    await c.start();
+    await expect(c.start()).rejects.toThrow("already_started");
+    expect(createSession).toHaveBeenCalledTimes(1);
+  });
 });

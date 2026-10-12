@@ -26,6 +26,7 @@ const sdkStartSession: StartSession = async (opts) => {
 export class LiveClient {
   private conv: LiveConversation | null = null;
   private disconnected = false;
+  private started = false;
   private onDisconnectResolve: (() => void) | null = null;
   conversationId: string | null = null;
   private readonly startSession: StartSession;
@@ -46,17 +47,23 @@ export class LiveClient {
   }
 
   async start(): Promise<{ remainingSeconds: number }> {
+    if (this.started) throw new Error("already_started");
+    this.started = true;
     const session = await this.transport.createSession();
     this.conversationId = session.conversationId;
     let connected: () => void = () => {};
-    const connectedP = new Promise<void>((r) => { connected = r; });
+    let failConnect: (err: Error) => void = () => {};
+    const connectedP = new Promise<void>((res, rej) => { connected = res; failConnect = rej; });
+    connectedP.catch(() => {});
     const tool = async (params: unknown): Promise<string> => {
       const query = typeof (params as { query?: unknown })?.query === "string" ? (params as { query: string }).query : "";
       if (!query.trim()) return NO_MATCH;
+      let timer: ReturnType<typeof setTimeout> | null = null;
       try {
-        const result = await Promise.race([this.search(query), new Promise<string>((r) => setTimeout(() => r(NO_MATCH), TOOL_TIMEOUT_MS))]);
+        const timeout = new Promise<string>((r) => { timer = setTimeout(() => r(NO_MATCH), TOOL_TIMEOUT_MS); });
+        const result = await Promise.race([this.search(query), timeout]);
         return result.trim() ? result : NO_MATCH;
-      } catch { return NO_MATCH; }
+      } catch { return NO_MATCH; } finally { if (timer) clearTimeout(timer); }
     };
     this.conv = await this.startSession({
       conversationToken: session.token,
@@ -65,10 +72,11 @@ export class LiveClient {
       onConnect: () => { connected(); this.events.onConnected(); },
       onDisconnect: (d: { reason: "user" | "agent" | "error"; message?: string }) => {
         this.disconnected = true;
+        failConnect(new Error(d.reason === "error" && d.message ? d.message : "connection_lost"));
         this.onDisconnectResolve?.();
         this.events.onDisconnected(d.reason, d.reason === "error" ? d.message : undefined);
       },
-      onError: (message: string) => this.events.onError(message),
+      onError: (message: string) => { failConnect(new Error(message)); this.events.onError(message); },
       onMessage: (m: { role?: "user" | "agent"; source?: "user" | "ai"; message: string }) => {
         const role = m.role ?? (m.source === "ai" ? "agent" : "user");
         if (role === "user") this.events.onUserText(m.message); else this.events.onAgentText(m.message);
@@ -90,10 +98,16 @@ export class LiveClient {
     const conv = this.conv;
     if (!conv) return;
     this.conv = null;
-    if (this.disconnected) return;
+    if (this.disconnected) {
+      try { await conv.endSession(); } catch { /* already closed */ }
+      return;
+    }
+    let timer: ReturnType<typeof setTimeout> | null = null;
     const gone = new Promise<void>((r) => { this.onDisconnectResolve = r; });
-    const timer = new Promise<void>((r) => setTimeout(r, this.closeTimeoutMs));
-    try { await conv.endSession(); } catch { /* already closed */ }
-    await Promise.race([gone, timer]);
+    const timeout = new Promise<void>((r) => { timer = setTimeout(r, this.closeTimeoutMs); });
+    try {
+      try { await conv.endSession(); } catch { /* already closed */ }
+      await Promise.race([gone, timeout]);
+    } finally { if (timer) clearTimeout(timer); }
   }
 }
