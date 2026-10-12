@@ -42,22 +42,20 @@ export default function ToolPalette() {
         {TOOLS.map((t) => (
           <button key={t.id} type="button" data-testid={`tool-${t.id}`} className={`tool ${tool === t.id ? "active" : ""}`}
             aria-label={t.label} title={t.title ?? t.label} aria-pressed={tool === t.id} onClick={() => chooseTool(t.id)}>
-            <Icon name={t.id} size={19} />
+            <Icon name={t.id} size={18} />
           </button>
         ))}
-        <span className="sep" />
-        {COLORS.map((c) => {
+        {COLORS.map((c, ci) => {
           const active = c.rgb.every((v, i) => v === color[i]);
           return (
             <button key={c.name} type="button" data-testid={`color-${c.name}`} title={c.name} aria-label={c.name} aria-pressed={active}
-              className={`swatch ${active ? "active" : ""}`}
+              className={`swatch ${ci === 0 ? "group-start" : ""} ${active ? "active" : ""}`}
               style={{ "--swatch": c.name === "black" ? "#F2F1EE" : `rgb(${c.rgb.map((v) => Math.round(v * 255)).join(",")})` } as React.CSSProperties}
               onClick={() => pickColor(c.rgb)} />
           );
         })}
-        <span className="sep" />
-        {WIDTHS.map((w) => (
-          <button key={w.name} type="button" data-testid={`width-${w.name}`} className={`width ${width === w.value ? "active" : ""}`}
+        {WIDTHS.map((w, wi) => (
+          <button key={w.name} type="button" data-testid={`width-${w.name}`} className={`width ${wi === 0 ? "group-start" : ""} ${width === w.value ? "active" : ""}`}
             aria-label={`${w.name} stroke`} title={w.name} aria-pressed={width === w.value} onClick={() => pickWidth(w.value)}>
             <span className="width-bar" style={{ height: WIDTH_BAR_PX[w.name] ?? 4 }} />
           </button>
