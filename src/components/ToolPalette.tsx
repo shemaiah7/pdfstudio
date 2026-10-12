@@ -50,7 +50,7 @@ export default function ToolPalette() {
           return (
             <button key={c.name} type="button" data-testid={`color-${c.name}`} title={c.name} aria-label={c.name} aria-pressed={active}
               className={`swatch ${ci === 0 ? "group-start" : ""} ${active ? "active" : ""}`}
-              style={{ "--swatch": c.name === "black" ? "#F2F1EE" : `rgb(${c.rgb.map((v) => Math.round(v * 255)).join(",")})` } as React.CSSProperties}
+              style={{ "--swatch": c.name === "black" ? "var(--color-bar-active)" : `rgb(${c.rgb.map((v) => Math.round(v * 255)).join(",")})` } as React.CSSProperties}
               onClick={() => pickColor(c.rgb)} />
           );
         })}

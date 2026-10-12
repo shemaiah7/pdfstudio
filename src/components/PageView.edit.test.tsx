@@ -13,7 +13,7 @@ vi.mock("../pdf/render", () => ({
 }));
 vi.mock("./PageCanvas", async () => {
   const React = await import("react");
-  return { default: ({ onMeta }: { onMeta?: (m: { widthPt: number; heightPt: number; pageRotate: number }) => void }) => {
+  return { default: function MockPageCanvas({ onMeta }: { onMeta?: (m: { widthPt: number; heightPt: number; pageRotate: number }) => void }) {
     React.useEffect(() => { onMeta?.({ widthPt: 600, heightPt: 800, pageRotate: 0 }); }, []); // eslint-disable-line react-hooks/exhaustive-deps
     return <canvas />;
   } };

@@ -5,6 +5,11 @@ on:
   push:
     branches: [main]
 
+env:
+  # onnxruntime-node (via @huggingface/transformers) otherwise downloads optional
+  # CUDA binaries on install, which can time out; the app uses the web runtime.
+  ONNXRUNTIME_NODE_INSTALL: skip
+
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
