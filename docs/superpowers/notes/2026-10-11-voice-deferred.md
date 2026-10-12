@@ -37,3 +37,13 @@ Branch feat/voice, 2026-10-12. Spec: docs/superpowers/specs/2026-10-11-voice-liv
 ## Operator state
 - Agent agent_3101m4q6478ceb686yqfw50yfhdv, tool tool_9201m4q64714e0razx3915fb3h9e, provisioned 2026-10-12 from worker/src/prompts/live.ts; zero_retention_mode true (retention_days -1), llm claude-sonnet-5-5, max 600 s, auth allowlist pdfstudio.shemaiah7.workers.dev + localhost.
 - Creator plan: 275 included minutes/month, 10 concurrent.
+
+## Rulings on the final reviewer's "declined to judge" items
+- Settlement window vs token lifetime (load-bearing, OPEN): the deferred-reconcile window is 600 s from admission, but a minted token can be connected later (signed URLs are valid 15 minutes; the WebRTC token's lifetime is undocumented and assumed the same). A client could mint, wait 601 s, report 0 s unverified (record still `initiated` → null), get settled to 15 s, then connect and talk 600 s. Ruling: widen the window to a named constant `SETTLE_WINDOW_S = 900 + 600 = 1500` in `reconcileVoice`, `settlePending` and `admitVoice`'s resetAt, and update the two tests that use `admitted + 601`. Not yet applied (no second fix wave); recommended as one small dispatch plus a scoped re-review before merge. Cost if the assumed 15-minute token lifetime is wrong: the hole shifts, it does not close; measure the real lifetime in Task 10 follow-up.
+- `"audio"` in client_events over WebRTC: accepted as spec-mandated; harmless if unused.
+- `localhost` allowlist entry vs `localhost:5199`: unverifiable until a dev-server voice session is tried; if refused, add `localhost:5199` to the allowlist in prompts/live.ts.
+- `keepalive` with a CORS-preflighted request at unload on non-Chromium: accepted; Chromium is the target browser and the worker reconciles from its own record anyway.
+- `call_duration_secs` on in-progress records: moot since status now gates verification.
+- `max_duration_seconds` measured from mint or connect: the same question as the first item; answered by the widened window.
+- Voice id / TTS model validity: validated by provisioning (API accepted them).
+- CSS tokens `--danger`/`--border`: confirmed present in styles.css.
