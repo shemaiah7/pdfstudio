@@ -5,6 +5,7 @@ import { join } from "node:path";
 
 test.skip(!process.env.E2E_OCR, "set E2E_OCR=1 to run the OCR tests (downloads Tesseract from jsDelivr)");
 
+const jbig2 = () => ({ name: "jbig2.pdf", mimeType: "application/pdf", buffer: readFileSync(join(process.cwd(), "src/test/fixtures/jbig2.pdf")) });
 const scan = () => ({ name: "scan.pdf", mimeType: "application/pdf", buffer: readFileSync(join(process.cwd(), "src/test/fixtures/scan.pdf")) });
 
 test("recognizes a scanned page, makes it selectable, and summarizes it", async ({ page }) => {
@@ -43,8 +44,8 @@ test("downloaded PDF contains the recognized words", async ({ page }) => {
   await expect(page.getByTestId("ocr-badge").first()).toHaveText("Text recognized", { timeout: 120_000 });
   const [download] = await Promise.all([page.waitForEvent("download"), page.getByTestId("download").click()]);
   const bytes = readFileSync(await download.path() as string);
-  const { getDocument } = await import("pdfjs-dist/legacy/build/pdf.mjs");
-  const pdf = await getDocument({ data: new Uint8Array(bytes) }).promise;
+  const { openPdf } = await import("../src/test/pdfjs");
+  const pdf = await openPdf(new Uint8Array(bytes));
   const text = (await (await pdf.getPage(1)).getTextContent()).items.map((i) => ("str" in i ? i.str : "")).join(" ");
   expect(text).toMatch(/hypertension/i);
 });
@@ -59,4 +60,12 @@ test("recognizes while the tab is hidden (requestAnimationFrame never fires)", a
   await page.goto("/");
   await page.setInputFiles('input[type="file"]', scan());
   await expect(page.getByTestId("ocr-badge").first()).toHaveText("Text recognized", { timeout: 120_000 });
+});
+
+test("recognizes a JBIG2-encoded scan", async ({ page }) => {
+  test.setTimeout(180_000);
+  await page.goto("/");
+  await page.setInputFiles('input[type="file"]', jbig2());
+  await expect(page.getByTestId("ocr-badge").first()).toHaveText("Text recognized", { timeout: 120_000 });
+  await expect(page.locator(".page .textLayer")).toContainText(/hypertension/i);
 });

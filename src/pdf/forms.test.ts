@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { PDFDocument, PDFName, PDFDict } from "pdf-lib";
-import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
+import { openPdf } from "../test/pdfjs";
 import { readFields, fieldsOnPage } from "./forms";
 import { readFieldsFromDoc, applyFormValues } from "./formFill";
 import { buildDocument } from "./pageOps";
@@ -34,7 +34,7 @@ describe("form export", () => {
     expect(form.getCheckBox("agree").isChecked()).toBe(true);
     expect(form.getRadioGroup("size").getSelected()).toBe("L");
     expect(form.getDropdown("color").getSelected()).toEqual(["blue"]);
-    const pdf = await getDocument({ data: out.slice() }).promise;
+    const pdf = await openPdf(out);
     const anns = await (await pdf.getPage(1)).getAnnotations({ intent: "display" });
     expect(anns.find((a: any) => a.fieldName === "name")).toMatchObject({ fieldValue: "Alice", hasAppearance: true });
   });
@@ -125,7 +125,7 @@ describe("form export", () => {
     const multi = doc.getForm().getFields().filter((f) => f.getName() === "grp.multi");
     expect(multi.length).toBe(1);
     expect(multi[0].acroField.getWidgets().length).toBe(2);
-    const pdf = await getDocument({ data: out.slice() }).promise;
+    const pdf = await openPdf(out);
     for (const n of [1, 2]) {
       const anns = await (await pdf.getPage(n)).getAnnotations({ intent: "display" });
       expect(anns.find((a: any) => a.fieldName === "grp.multi")).toMatchObject({ fieldValue: "M" });

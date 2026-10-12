@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { PDFArray, PDFDict, PDFDocument, PDFName, PDFRawStream, PDFRef, StandardFonts, decodePDFRawStream } from "pdf-lib";
-import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
+import { openPdf } from "../test/pdfjs";
 import { cappedScale, flattenPage, itemsToOcrPage, MAX_RASTER_PIXELS, paintCovers } from "./flatten";
 import type { TextItemBox } from "../pdf/text";
 
@@ -23,7 +23,7 @@ describe("itemsToOcrPage", () => {
 });
 
 async function textOf(bytes: Uint8Array): Promise<string[]> {
-  const pdf = await getDocument({ data: bytes.slice() }).promise;
+  const pdf = await openPdf(bytes);
   const content = await (await pdf.getPage(1)).getTextContent();
   return content.items.map((i) => ("str" in i ? i.str : "")).filter(Boolean);
 }

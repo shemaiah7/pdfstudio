@@ -10,6 +10,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "fixtures": "tsx scripts/make-fixtures.ts",
+    "fixtures:jbig2": "python3 scripts/make-jbig2-fixture.py",
     "e2e": "playwright test",
     "search:smoke": "tsx scripts/search-smoke.ts",
     "lint": "oxlint",

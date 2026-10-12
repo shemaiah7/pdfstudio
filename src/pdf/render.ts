@@ -14,7 +14,7 @@ function getDoc(source: SourceFile): Promise<PDFDocumentProxy> {
   let p = docs.get(source.id);
   if (!p) {
     // pdf.js takes ownership of the array it receives; pass a copy.
-    p = pdfjs.getDocument({ data: source.bytes.slice() }).promise;
+    p = pdfjs.getDocument({ data: source.bytes.slice(), wasmUrl: `${import.meta.env.BASE_URL}pdfjs-wasm/` }).promise;
     docs.set(source.id, p);
   }
   return p;

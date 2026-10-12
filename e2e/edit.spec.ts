@@ -17,8 +17,8 @@ async function savedText(page: import("@playwright/test").Page): Promise<string>
   const [download] = await Promise.all([page.waitForEvent("download"), page.getByTestId("download").click()]);
   const bytes = readFileSync((await download.path()) as string);
   lastSaved = new Uint8Array(bytes);
-  const { getDocument } = await import("pdfjs-dist/legacy/build/pdf.mjs");
-  const pdf = await getDocument({ data: new Uint8Array(bytes) }).promise;
+  const { openPdf } = await import("../src/test/pdfjs");
+  const pdf = await openPdf(new Uint8Array(bytes));
   const tc = await (await pdf.getPage(1)).getTextContent();
   return tc.items.map((i) => ("str" in i ? i.str : "")).join(" ");
 }

@@ -1,7 +1,7 @@
 // src/ocr/textLayer.test.ts
 import { describe, it, expect } from "vitest";
 import { PDFArray, PDFDocument, PDFRawStream, StandardFonts, decodePDFRawStream, degrees } from "pdf-lib";
-import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
+import { openPdf } from "../test/pdfjs";
 import { addInvisibleText, withoutCoveredWords } from "./textLayer";
 import { linesToOcrPage } from "./layout";
 import { buildDocument } from "../pdf/pageOps";
@@ -10,7 +10,7 @@ import type { Edit, SourceFile } from "../pdf/types";
 import type { OcrPage } from "./types";
 
 async function textItems(bytes: Uint8Array) {
-  const pdf = await getDocument({ data: bytes.slice() }).promise;
+  const pdf = await openPdf(bytes);
   const page = await pdf.getPage(1);
   const c = await page.getTextContent();
   return c.items.filter((i): i is typeof i & { str: string; transform: number[] } => "str" in i).map((i) => ({ str: i.str, x: i.transform[4], y: i.transform[5] }));
@@ -96,7 +96,7 @@ describe("withoutCoveredWords", () => {
     expect(strs).not.toContain("secretword");
     expect(strs).not.toContain("keepword");
     expect(warnings).toEqual(["Searchable text left out of edited Deep OCR pages."]);
-    const pdf = await getDocument({ data: out.slice() }).promise;
+    const pdf = await openPdf(out);
     const second = (await (await pdf.getPage(2)).getTextContent()).items.map((i) => ("str" in i ? i.str : "")).join(" ");
     expect(second).toContain("keepword");
   });
