@@ -65,12 +65,12 @@ export const useLiveStore = create<LiveState>((set, get) => {
   const elapsed = () => (startedAt === 0 ? 0 : Math.min(SESSION_CAP_S, Math.round((deps.now() - startedAt) / 1000)));
   const armSilence = () => { if (silence) clearTimeout(silence); silence = setTimeout(() => { void get().end(); }, SILENCE_S * 1000); };
 
-  const report = async (keepalive = false) => {
+  const report = async (keepalive = false, secs?: number) => {
     const id = get().conversationId;
     if (!id || reported) return;
     reported = true;
     const api = useAiStore.getState().client;
-    const r = await api?.reportLiveUsage(id, elapsed(), keepalive);
+    const r = await api?.reportLiveUsage(id, secs ?? elapsed(), keepalive);
     if (r) set({ remainingSeconds: r.remainingSeconds });
   };
 
@@ -113,7 +113,7 @@ export const useLiveStore = create<LiveState>((set, get) => {
           onConnected: () => {
             const doc = useDocumentStore.getState();
             const src = doc.sources.get(doc.pages[0]?.sourceId ?? "");
-            void deps.documentText("all").then((pages) => { if (client === live) live.sendContext(overview(src?.name ?? "document", doc.pages.length, pages[0]?.text ?? "")); });
+            void deps.documentText("all").then((pages) => { if (client === live) live.sendContext(overview(src?.name ?? "document", doc.pages.length, pages[0]?.text ?? "")); }).catch(() => {});
           },
           onUserText: (text) => { armSilence(); set({ captions: [...get().captions, { role: "you", text }] }); },
           onAgentText: (text) => { armSilence(); set({ captions: [...get().captions, { role: "assistant", text }] }); },
@@ -137,7 +137,7 @@ export const useLiveStore = create<LiveState>((set, get) => {
       client = live;
       try {
         const { remainingSeconds } = await live.start();
-        if (client !== live) return;
+        if (client !== live) { void live.close(); return; }
         startedAt = deps.now();
         set({ status: "live", remainingSeconds, seconds: 0 });
         ticker = setInterval(() => {
@@ -146,6 +146,7 @@ export const useLiveStore = create<LiveState>((set, get) => {
         }, 1000);
         armSilence();
       } catch (err) {
+        if (client !== live) return;
         const e = err as Error & { resetAt?: number };
         const code = e.name === "NotAllowedError" || e.name === "NotFoundError" ? "mic" : e.message;
         if (get().conversationId) void report();
@@ -157,9 +158,10 @@ export const useLiveStore = create<LiveState>((set, get) => {
       const live = client;
       if (!live || get().status === "ending") return;
       set({ status: "ending" });
+      const secs = elapsed();
       await live.close();
       if (client !== live) return; // a remote disconnect already finished the session
-      await report();
+      await report(false, secs);
       finish("idle", "Session ended");
     },
   };

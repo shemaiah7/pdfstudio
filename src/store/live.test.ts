@@ -89,6 +89,7 @@ describe("useLiveStore", () => {
     await useLiveStore.getState().end(); await flush();
     expect(conv.ended).toBe(true);
     expect(client.reportLiveUsage).toHaveBeenCalledWith("conv_1", 5, false);
+    expect(client.reportLiveUsage).toHaveBeenCalledTimes(1);
     expect(useLiveStore.getState()).toMatchObject({ status: "idle", remainingSeconds: 1705, captions: [{ role: "you", text: "hi" }] });
   });
   it("session cap and silence timer end the session", async () => {
@@ -115,6 +116,22 @@ describe("useLiveStore", () => {
     expect(useLiveStore.getState()).toMatchObject({ status: "error", error: "Connection lost" });
     expect(client.reportLiveUsage).toHaveBeenCalledTimes(1);
     expect(client.reportLiveUsage).toHaveBeenCalledWith("conv_1", 3, false);
+  });
+  it("disconnect before connect shows Connection lost and reports once", async () => {
+    configureLiveDeps({ startSession: async (o) => { opts = o; queueMicrotask(() => opts.onDisconnect({ reason: "error", message: "ice failed", context: { type: "x" } })); return conv; } });
+    await useLiveStore.getState().start(); await flush();
+    expect(useLiveStore.getState()).toMatchObject({ status: "error", error: "Connection lost" });
+    expect(client.reportLiveUsage).toHaveBeenCalledTimes(1);
+  });
+  it("document change while connecting closes the session once it connects", async () => {
+    configureLiveDeps({ startSession: async (o) => { opts = o; return conv; } });
+    const p = useLiveStore.getState().start();
+    await flush();
+    openDoc("s2"); await flush();
+    opts.onConnect(); await flush();
+    await p; await flush();
+    expect(conv.ended).toBe(true);
+    expect(useLiveStore.getState().status).toBe("idle");
   });
   it("agent-initiated close shows Session ended", async () => {
     await useLiveStore.getState().start(); await flush();
