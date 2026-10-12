@@ -43,7 +43,9 @@ export default function VoiceTab() {
   return (
     <div className="ai-tab voice-tab">
       <p className="muted">Talk with an assistant about the open document. It answers only from the document's text and cites pages.</p>
-      {s.error && <p className="ai-error" data-testid="voice-error">{s.error}</p>}
+      {s.error && (s.status === "error"
+        ? <p className="ai-error" data-testid="voice-error">{s.error}</p>
+        : <p className="muted" data-testid="voice-notice">{s.error}</p>)}
       {s.captions.length > 0 && (
         <div className="voice-captions" data-testid="voice-captions">
           {s.captions.map((c, i) => <p key={i} className={`caption ${c.role}`}><b>{c.role === "you" ? "You" : "Assistant"}:</b> {c.text}</p>)}

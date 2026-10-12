@@ -53,6 +53,15 @@ describe("VoiceTab", () => {
     fireEvent.click(screen.getByTestId("voice-end"));
     expect(end).toHaveBeenCalled();
   });
+  it("shows a normal end as a muted notice, not an error", () => {
+    useLiveStore.setState({ status: "idle", error: "Session ended", acknowledged: true });
+    render(<VoiceTab />);
+    const notice = screen.getByTestId("voice-notice");
+    expect(notice.textContent).toBe("Session ended");
+    expect(notice.className).toBe("muted");
+    expect(screen.queryByTestId("voice-error")).toBeNull();
+    expect(screen.getByTestId("voice-start").textContent).toBe("Start voice session");
+  });
   it("shows Unmute when muted and the error with Retry", () => {
     useLiveStore.setState({ status: "live", muted: true });
     const { unmount } = render(<VoiceTab />);
