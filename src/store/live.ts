@@ -182,4 +182,7 @@ if (typeof window !== "undefined") {
     if (st.conversationId && api && !reported) { reported = true; void api.reportLiveUsage(st.conversationId, st.seconds, true); }
     client?.close().catch(() => {});
   });
+  // Test hook: an e2e test can install a fake SDK and a fake microphone before the app boots.
+  const w = window as unknown as { __pdfstudioLiveStub?: { startSession: StartSession; getMedia?: () => Promise<void> } };
+  if (w.__pdfstudioLiveStub) configureLiveDeps({ startSession: w.__pdfstudioLiveStub.startSession, getMedia: w.__pdfstudioLiveStub.getMedia ?? (async () => {}) });
 }
