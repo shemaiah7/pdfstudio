@@ -1,5 +1,5 @@
 import { PDFBool, PDFDocument, PDFFont, PDFName, PDFPage, StandardFonts, degrees, rgb } from "pdf-lib";
-import { placeEdit } from "../edit/layout";
+import { placePieces } from "../edit/layout";
 import { toWinAnsi } from "./winansi";
 import { ensureAcroFormDR, isDegenerate, writeAnnotations } from "./annotations";
 import { applyFormValues, readFieldsFromDoc, rebuildAcroForm } from "./formFill";
@@ -9,7 +9,7 @@ import { sweepUnreachable } from "./sweep";
 import { flattenPage, type RasterCover } from "../edit/flatten";
 import type { TextItemBox } from "./text";
 import { EDIT_FONTS, STANDARD_FONTS, normalizeFont } from "./fonts";
-import type { Annotation, Box, Edit, EditFont, FormValues, PageEntry, Rotation, SourceFile, SourceId } from "./types";
+import type { Annotation, Edit, EditFont, FormValues, PageEntry, Rotation, SourceFile, SourceId } from "./types";
 
 export function addRotation(a: Rotation, delta: 90 | -90 | 180): Rotation {
   return (((a + delta) % 360) + 360) % 360 as Rotation;
@@ -76,21 +76,20 @@ export async function buildDocument(
     let flattened = false;
     const fontCache = new Map<EditFont, PDFFont>();
     const fontFor = async (f: EditFont) => fontCache.get(f) ?? (fontCache.set(f, await out.embedFont(STANDARD_FONTS[f])), fontCache.get(f)!);
+    const faces = new Set<EditFont>();
+    for (const e of pageEdits) { if (e.kind === "line") for (const r of e.runs ?? []) faces.add(r.font); else faces.add(normalizeFont(e.font)); }
+    for (const f of faces) await fontFor(f);
+    const measures = (f: EditFont) => (t: string, sz: number) => fontCache.get(f)!.widthOfTextAtSize(toWinAnsi(t), sz);
     // One layout per edit, shared by the covers handed to the rasterizer, the drawing, and the OCR omission below.
-    const plans: { e: Edit; font: PDFFont; lines: { text: string; x: number; baseline: number }[]; boxes: Box[]; fontSize: number }[] = [];
-    for (const e of pageEdits) {
-      const font = await fontFor(normalizeFont(e.font));
-      plans.push({ e, font, ...placeEdit(e, (t, sz) => font.widthOfTextAtSize(toWinAnsi(t), sz)) });
-    }
+    const plans = pageEdits.map((e) => ({ e, ...placePieces(e, measures) }));
     const drawEdits = async () => {
-      for (const { e, font, lines, boxes, fontSize } of plans) {
+      for (const { e, pieces, boxes } of plans) {
         for (const b of boxes) copied.drawRectangle({ x: b.x + ox, y: b.y + oy, width: b.width, height: b.height, color: rgb(...(e.background ?? [1, 1, 1])) });
-        const color = rgb(e.color[0], e.color[1], e.color[2]);
-        // The Insert gate prevents overflow edits; if one slips through, every line is drawn anyway.
-        for (const line of lines) {
-          const drawOpts = { x: line.x + ox, y: line.baseline + oy, size: fontSize, font, color };
+        // The Insert gate prevents overflow edits; if one slips through, every piece is drawn anyway.
+        for (const p of pieces) {
+          const drawOpts = { x: p.x + ox, y: p.baseline + oy, size: p.fontSize, font: fontCache.get(p.font)!, color: rgb(p.color[0], p.color[1], p.color[2]) };
           // Draw exactly the string that was measured.
-          const drawn = toWinAnsi(line.text);
+          const drawn = toWinAnsi(p.text);
           try { copied.drawText(drawn, drawOpts); }
           catch { copied.drawText(drawn.replace(/[^\x20-\x7E]/g, "?"), drawOpts); }
         }
