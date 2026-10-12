@@ -140,7 +140,7 @@ export default function PageView({ scale }: Props) {
       setSelectedEditId(null);
       if (await openLinesAt(entry, source, meta, box)) setMessage(null);
       else setMessage("No text here to edit");
-    } catch { setMessage("No text here to edit"); }
+    } catch (err) { console.error("Could not open editor", err); setMessage("Could not read text on this page"); }
   };
   const onEditHover = (e: React.MouseEvent<HTMLElement>, entry: PageEntry, source: SourceFile) => {
     if (open || openLines || (heights[entry.id] && (heights[entry.id].pageRotate + entry.rotation) % 360 !== 0)) return;
