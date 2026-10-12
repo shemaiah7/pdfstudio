@@ -2,6 +2,7 @@ import { useShallow } from "zustand/react/shallow";
 import { useOcrStore } from "../../store/ocr";
 import { useDocumentStore } from "../../store/document";
 import { useAiStore } from "../../store/ai";
+import { Icon } from "../icons";
 export default function DeepOcrMenu() {
   const client = useAiStore((s) => s.client);
   const acknowledged = useOcrStore((s) => s.deepOcrAcknowledged);
@@ -25,7 +26,7 @@ export default function DeepOcrMenu() {
   const disabled = !client || scanned.length === 0;
   return (
     <details className="deep-ocr" data-testid="deep-ocr">
-      <summary>Deep OCR</summary>
+      <summary><Icon name="deep-ocr" />Deep OCR<Icon name="chevron-down" size={14} /></summary>
       <div className="deep-ocr-menu">
         <button disabled={disabled || !first} onClick={() => first && run([first])}>This page</button>
         <button disabled={disabled || selected.length === 0} onClick={() => run(selected)}>Selected pages</button>

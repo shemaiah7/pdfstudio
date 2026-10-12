@@ -14,10 +14,10 @@ export default function RightPanel() {
   useEffect(() => { void init(); }, [init]);
   return (
     <div className="ai-panel">
-      <div className="ai-tabs panel-tabs">
-        <button data-testid="panel-tab-ai" className={tab === "ai" ? "active" : ""} onClick={() => setTab("ai")}>AI</button>
-        <button data-testid="panel-tab-search" className={tab === "search" ? "active" : ""} onClick={() => setTab("search")}>Search</button>
-        <button data-testid="panel-tab-voice" className={tab === "voice" ? "active" : ""} onClick={() => setTab("voice")}>
+      <div className="panel-tabs" role="tablist" aria-label="Panel">
+        <button role="tab" aria-selected={tab === "ai"} data-testid="panel-tab-ai" className={tab === "ai" ? "active" : ""} onClick={() => setTab("ai")}>AI</button>
+        <button role="tab" aria-selected={tab === "search"} data-testid="panel-tab-search" className={tab === "search" ? "active" : ""} onClick={() => setTab("search")}>Search</button>
+        <button role="tab" aria-selected={tab === "voice"} data-testid="panel-tab-voice" className={tab === "voice" ? "active" : ""} onClick={() => setTab("voice")}>
           Voice
           {liveStatus === "connecting" || liveStatus === "live" ? <span className="voice-dot on" data-testid="voice-tab-live" aria-label="Voice session active" /> : null}
         </button>

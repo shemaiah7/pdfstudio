@@ -16,9 +16,11 @@ export default function Thumbnail({ entry, source, index, selected, multiSource,
     <div ref={setNodeRef} style={style} {...attributes} {...listeners}
       className={`thumb ${selected ? "selected" : ""}`} data-testid="thumb" data-page-id={entry.id}
       title={multiSource ? source.name : undefined} onClick={onClick}>
-      <PageCanvas source={source} entry={entry} scale={0.3} lazy />
+      <div className={`thumb-paper ${isDragging ? "dragging" : ""}`}>
+        <PageCanvas source={source} entry={entry} scale={0.3} lazy />
+        <OcrBadge sourceId={source.id} pageIndex={entry.sourcePageIndex} />
+      </div>
       <div className="thumb-label">{index + 1}</div>
-      <OcrBadge sourceId={source.id} pageIndex={entry.sourcePageIndex} />
     </div>
   );
 }

@@ -9,6 +9,7 @@ import { ocrStore } from "../ocr/store";
 import type { OcrPage } from "../ocr/types";
 import DeepOcrMenu from "./ocr/DeepOcrMenu";
 import OcrPill from "./ocr/OcrPill";
+import { Icon, type IconName } from "./icons";
 import { outputName, saveBlob } from "../pdf/download";
 
 interface Props { scale: number; setScale: (s: number) => void; onFiles: (files: File[], mode: "open" | "add") => void }
@@ -58,34 +59,54 @@ export default function Toolbar({ scale, setScale, onFiles }: Props) {
       onChange={(e) => { onFiles(Array.from(e.target.files ?? []), mode); e.target.value = ""; }} />
   );
 
+  const ib = (testid: string, icon: IconName, label: string, onClick: () => void, disabled = false, title = label) => (
+    <button type="button" className="tb-icon" data-testid={testid} aria-label={label} title={title} disabled={disabled} onClick={onClick}>
+      <Icon name={icon} />
+    </button>
+  );
+
   return (
     <header className="toolbar">
-      <button data-testid="open" onClick={() => openInput.current?.click()}>Open</button>
-      {pick(openInput, "open")}
-      <button data-testid="add" onClick={() => addInput.current?.click()}>Add file</button>
-      {pick(addInput, "add")}
-      <span className="sep" />
-      <button data-testid="undo" disabled={!s.canUndo()} onClick={s.undo}>Undo</button>
-      <button data-testid="redo" disabled={!s.canRedo()} onClick={s.redo}>Redo</button>
-      <span className="sep" />
-      <button data-testid="rotate-left" disabled={!hasSel} onClick={() => s.rotate(selected, -90)}>Rotate ⟲</button>
-      <button data-testid="rotate-right" disabled={!hasSel} onClick={() => s.rotate(selected, 90)}>Rotate ⟳</button>
-      <button data-testid="delete" disabled={!hasSel} onClick={() => s.remove(selected)}>Delete</button>
-      <button data-testid="extract" disabled={!hasSel || busy}
-        onClick={() => exportPages(s.pages.filter((p) => s.selection.has(p.id)), "pages")}>Extract selected</button>
-      {firstSource && firstFields && firstFields.length > 0 ? (
-        <button data-testid="clear-form" onClick={() => s.clearForm(firstSource.id, firstFields)}>Clear form</button>
-      ) : null}
+      <div className="tb-doc">
+        <span className="tb-doc-mark"><Icon name="file" size={16} /></span>
+        <div className="tb-doc-text">
+          <span className="tb-doc-name" title={firstName}>{firstName}</span>
+          <span className="count">
+            {s.pages.length} page{s.pages.length === 1 ? "" : "s"}
+            {s.isDirty() ? <><span className="dot" aria-hidden="true" />unsaved changes</> : null}
+          </span>
+        </div>
+      </div>
+      <div className="tb-group">
+        {ib("open", "open", "Open", () => openInput.current?.click())}
+        {pick(openInput, "open")}
+        {ib("add", "add-file", "Add file", () => addInput.current?.click())}
+        {pick(addInput, "add")}
+      </div>
+      <div className="tb-group">
+        {ib("undo", "undo", "Undo", s.undo, !s.canUndo(), "Undo (⌘Z)")}
+        {ib("redo", "redo", "Redo", s.redo, !s.canRedo(), "Redo (⌘⇧Z)")}
+      </div>
+      <div className="tb-group">
+        {ib("rotate-left", "rotate-left", "Rotate left", () => s.rotate(selected, -90), !hasSel)}
+        {ib("rotate-right", "rotate-right", "Rotate right", () => s.rotate(selected, 90), !hasSel)}
+        {ib("delete", "delete", "Delete pages", () => s.remove(selected), !hasSel)}
+        {ib("extract", "extract", "Extract selected pages", () => exportPages(s.pages.filter((p) => s.selection.has(p.id)), "pages"), !hasSel || busy)}
+        {firstSource && firstFields && firstFields.length > 0
+          ? ib("clear-form", "clear-form", "Clear form", () => s.clearForm(firstSource.id, firstFields))
+          : null}
+      </div>
       <DeepOcrMenu />
-      <span className="sep" />
-      <button data-testid="zoom-out" onClick={() => setScale(Math.max(0.4, scale - 0.2))}>−</button>
-      <span className="zoom">{Math.round(scale * 100)}%</span>
-      <button data-testid="zoom-in" onClick={() => setScale(Math.min(3, scale + 0.2))}>+</button>
       <OcrPill />
-      <span className="grow" />
-      <span className="count">{s.pages.length} page{s.pages.length === 1 ? "" : "s"}{s.isDirty() ? " • unsaved" : ""}</span>
-      <button data-testid="download" className="primary" disabled={s.pages.length === 0 || busy}
-        onClick={() => exportPages(s.pages, "edited")}>{busy ? "Building…" : "Download"}</button>
+      <div className="tb-right">
+        <div className="tb-zoom">
+          <button type="button" className="tb-icon" data-testid="zoom-out" aria-label="Zoom out" title="Zoom out" onClick={() => setScale(Math.max(0.4, scale - 0.2))}><Icon name="minus" /></button>
+          <span className="zoom">{Math.round(scale * 100)}%</span>
+          <button type="button" className="tb-icon" data-testid="zoom-in" aria-label="Zoom in" title="Zoom in" onClick={() => setScale(Math.min(3, scale + 0.2))}><Icon name="plus" /></button>
+        </div>
+        <button type="button" data-testid="download" className="primary" disabled={s.pages.length === 0 || busy}
+          onClick={() => exportPages(s.pages, "edited")}><Icon name="download" />{busy ? "Building…" : "Download"}</button>
+      </div>
     </header>
   );
 }

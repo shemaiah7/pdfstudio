@@ -209,7 +209,7 @@ export default function AnnotationOverlay({ pageEntryId, annotations, meta, page
                 <rect x={b.x} y={b.y} width={b.width} height={b.height} fill="none" stroke="var(--accent)" strokeWidth={1 / scale} strokeDasharray={`${4 / scale} ${3 / scale}`} pointerEvents="none" />
                 {RESIZABLE.has(sel.kind) ? HANDLES.map((h) => {
                   const hx = h.includes("e") ? b.x + b.width : b.x, hy = h.includes("n") ? b.y + b.height : b.y;
-                  return <rect key={h} className="handle" data-handle={h} x={hx - hs / 2} y={hy - hs / 2} width={hs} height={hs} strokeWidth={1 / scale}
+                  return <rect key={h} className="handle" data-handle={h} x={hx - hs / 2} y={hy - hs / 2} width={hs} height={hs} rx={2 / scale} strokeWidth={1 / scale}
                     style={{ pointerEvents: "auto", cursor: h === "nw" || h === "se" ? "nwse-resize" : "nesw-resize" }}
                     onPointerDown={(e) => begin(e, sel, h)} />;
                 }) : null}

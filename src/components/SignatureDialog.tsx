@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useToolsStore } from "../store/tools";
 import { canRemember, forgetSignature, loadSignature, saveSignature } from "../signature/storage";
+import { Icon } from "./icons";
 import { scaledSize, trimToPng, whiteToTransparent } from "../signature/image";
 
 interface Props { onConfirm(png: string): void; onClose(): void }
@@ -91,40 +92,53 @@ export default function SignatureDialog({ onConfirm, onClose }: Props) {
   return (
     <div className="sigBackdrop" onPointerDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="sigDialog" role="dialog" aria-label="Signature">
+        <div className="sigHeader">
+          <h2>Add signature</h2>
+          <button type="button" className="sigClose" aria-label="Close" onClick={onClose}><Icon name="close" size={18} /></button>
+        </div>
         <div className="sigTabs">
           {(["draw", "type", "upload"] as Tab[]).map((t) => (
             <button key={t} data-testid={`sig-tab-${t}`} className={tab === t ? "active" : ""} onClick={() => { setTab(t); setError(null); }}>{t[0].toUpperCase() + t.slice(1)}</button>
           ))}
         </div>
-        {tab === "draw" ? (
-          <div>
-            <canvas ref={canvasRef} className="sigCanvas" width={400} height={150} onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up} />
-            <div><button onClick={clear}>Clear</button></div>
-          </div>
-        ) : null}
-        {tab === "type" ? (
-          <div>
-            <input data-testid="sig-name" placeholder="Your name" value={name} onChange={(e) => setName(e.target.value)} />
-            <div className="sigFonts">
-              {FONTS.map((f, i) => (
-                <button key={f.cls} data-testid={`sig-font-${i}`} className={`${f.cls}${font === i ? " active" : ""}`} onClick={() => setFont(i)}>{name.trim() || f.label}</button>
-              ))}
+        <div className="sigBody">
+          {tab === "draw" ? (
+            <div className="sigDraw">
+              <canvas ref={canvasRef} className="sigCanvas" width={400} height={150} onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up} />
+              <span className="sigLine" aria-hidden="true" />
+              <button type="button" className="sigClear" onClick={clear}>Clear</button>
             </div>
-          </div>
-        ) : null}
-        {tab === "upload" ? (
-          <div><input type="file" accept="image/png,image/jpeg" onChange={(e) => pickFile(e.target.files?.[0])} /></div>
-        ) : null}
-        {error ? <div className="sigError" data-testid="sig-error" role="alert">{error}</div> : null}
-        {rememberable ? <label className="sigRemember"><input type="checkbox" data-testid="sig-remember" checked={remember} onChange={(e) => setRemember(e.target.checked)} /> Remember this signature</label> : null}
+          ) : null}
+          {tab === "type" ? (
+            <div className="sigType">
+              <label className="sigLabel">Your name
+                <input data-testid="sig-name" placeholder="Your name" value={name} onChange={(e) => setName(e.target.value)} />
+              </label>
+              <div className="sigFonts">
+                {FONTS.map((f, i) => (
+                  <button key={f.cls} data-testid={`sig-font-${i}`} className={`${f.cls}${font === i ? " active" : ""}`} onClick={() => setFont(i)}>{name.trim() || f.label}</button>
+                ))}
+              </div>
+            </div>
+          ) : null}
+          {tab === "upload" ? (
+            <div className="sigUpload">
+              <Icon name="upload" size={22} />
+              <input type="file" accept="image/png,image/jpeg" onChange={(e) => pickFile(e.target.files?.[0])} />
+              <span className="sigHelper">PNG or JPG, up to 2 MB</span>
+            </div>
+          ) : null}
+          {error ? <div className="sigError" data-testid="sig-error" role="alert">{error}</div> : null}
+          {rememberable ? <label className="sigRemember"><span><input type="checkbox" data-testid="sig-remember" checked={remember} onChange={(e) => setRemember(e.target.checked)} /> Remember this signature</span><span className="sigHelper">Saved in this browser only</span></label> : null}
+        </div>
         <div className="sigActions">
           {saved ? <>
-            <button data-testid="sig-use-saved" onClick={() => onConfirm(saved)}>Use saved</button>
-            <button data-testid="sig-forget" onClick={() => { forgetSignature(); setSaved(null); }}>Forget</button>
+            <button className="sigSecondary small" data-testid="sig-use-saved" onClick={() => onConfirm(saved)}>Use saved</button>
+            <button className="sigSecondary small" data-testid="sig-forget" onClick={() => { forgetSignature(); setSaved(null); }}>Forget</button>
           </> : null}
           <span style={{ flex: 1 }} />
-          <button onClick={onClose}>Cancel</button>
-          <button data-testid="sig-confirm" className="primary" onClick={confirm}>Add signature</button>
+          <button className="sigSecondary" onClick={onClose}>Cancel</button>
+          <button data-testid="sig-confirm" className="sigPrimary" onClick={confirm}>Add signature</button>
         </div>
       </div>
     </div>

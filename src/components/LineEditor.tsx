@@ -111,10 +111,10 @@ export default function LineEditor({ open, scale, heightPt, onClose }: { open: O
           </div>
         );
       })}
-      <div className="line-editor-bar" style={{ left: open.box.x * scale, top: (heightPt - open.box.y) * scale + 4 }}>
-        <button data-testid="line-done" onMouseDown={(e) => e.preventDefault()} onClick={apply}>Done</button>
-        {open.lines.some((l) => l.existing) && <button data-testid="line-delete" onMouseDown={(e) => e.preventDefault()} onClick={remove}>Delete</button>}
-        <button data-testid="line-cancel" onMouseDown={(e) => e.preventDefault()} onClick={cancel}>Cancel</button>
+      <div className="line-editor-bar float-bar" style={{ left: open.box.x * scale, top: (heightPt - open.box.y) * scale + 4 }}>
+        <button className="fb-btn primary" data-testid="line-done" onMouseDown={(e) => e.preventDefault()} onClick={apply}>Done</button>
+        {open.lines.some((l) => l.existing) && <button className="fb-btn danger" data-testid="line-delete" onMouseDown={(e) => e.preventDefault()} onClick={remove}>Delete</button>}
+        <button className="fb-btn" data-testid="line-cancel" onMouseDown={(e) => e.preventDefault()} onClick={cancel}>Cancel</button>
       </div>
     </div>
   );
