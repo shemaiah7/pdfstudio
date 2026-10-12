@@ -6,7 +6,12 @@ export interface Box { x: number; y: number; width: number; height: number }
 export type RGB = [number, number, number];
 export type EditFont = "helvetica" | "helvetica-bold" | "helvetica-oblique" | "helvetica-boldoblique" | "times" | "times-bold" | "times-italic" | "times-bolditalic" | "courier" | "courier-bold" | "courier-oblique" | "courier-boldoblique";
 export type LegacyEditFont = "sans" | "sans-bold" | "serif";
-export interface Edit { id: string; pageEntryId: string; boxes: Box[]; text: string; fontSize: number; font: EditFont; color: RGB; background?: RGB; lineHeight?: number; source?: "native" | "ocr"; blockKey?: string; region?: Box; frame?: Box }
+export interface Run { text: string; font: EditFont; fontSize: number; color: RGB }
+export interface Edit {
+  id: string; pageEntryId: string; boxes: Box[]; text: string; fontSize: number; font: EditFont; color: RGB; background?: RGB; lineHeight?: number; source?: "native" | "ocr"; blockKey?: string; region?: Box; frame?: Box;
+  /** Line edit: ordered runs drawn left to right from (x, baseline); `region` is the original line box. `runs: []` whites the line out. */
+  kind?: "line"; runs?: Run[]; x?: number; baseline?: number;
+}
 export interface AnnotationBase { id: string; pageEntryId: string; color: RGB }
 export interface HighlightAnn extends AnnotationBase { kind: "highlight"; boxes: Box[] }
 export interface NoteAnn extends AnnotationBase { kind: "note"; x: number; y: number; text: string }

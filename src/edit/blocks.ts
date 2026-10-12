@@ -1,8 +1,42 @@
 import type { Box } from "../pdf/types";
 import type { TextItemBox } from "../pdf/text";
 
-export interface TextLine { text: string; x: number; baseline: number; width: number; fontSize: number; fontName: string; items: TextItemBox[] }
+export interface TextRun { items: TextItemBox[]; text: string; fontName: string; fontSize: number; x: number; width: number }
+export interface TextLine { text: string; x: number; baseline: number; width: number; fontSize: number; fontName: string; items: TextItemBox[]; runs: TextRun[]; box: Box }
 export interface TextBlock { lines: TextLine[]; box: Box; lineHeight: number; fontSize: number; fontName: string; text: string; firstLineIndex: number }
+
+const COLUMN_GAP = 1.2;   // em
+const SIZE_TOL = 0.02;
+
+function joinText(items: TextItemBox[]): string {
+  let text = "", cursor = -Infinity;
+  for (const p of items) {
+    const gap = p.x - cursor;
+    if (text && gap > p.fontSize * 0.15 && !text.endsWith(" ") && !p.str.startsWith(" ")) text += " ";
+    text += p.str; cursor = p.x + p.width;
+  }
+  return text.replace(/\s+/g, " ").trim();
+}
+
+function runsOf(items: TextItemBox[]): TextRun[] {
+  const runs: TextItemBox[][] = [];
+  for (const p of items) {
+    const r = runs[runs.length - 1];
+    if (r && r[0].fontName === p.fontName && Math.abs(r[0].fontSize - p.fontSize) <= r[0].fontSize * SIZE_TOL) r.push(p); else runs.push([p]);
+  }
+  return runs.map((r) => ({ items: r, text: joinText(r), fontName: r[0].fontName, fontSize: r[0].fontSize, x: r[0].x, width: Math.max(...r.map((i) => i.x + i.width)) - r[0].x }));
+}
+
+export function lineBox(line: Pick<TextLine, "x" | "baseline" | "width" | "fontSize">): Box {
+  return { x: line.x, y: line.baseline - line.fontSize * 0.25, width: line.width, height: line.fontSize * 1.2 };
+}
+
+function lineOf(g: TextItemBox[]): TextLine {
+  const x = Math.min(...g.map((i) => i.x));
+  const right = Math.max(...g.map((i) => i.x + i.width));
+  const partial = { text: joinText(g), x, baseline: Math.min(...g.map((i) => i.y)), width: right - x, fontSize: g[0].fontSize, fontName: g[0].fontName, items: g, runs: runsOf(g) };
+  return { ...partial, box: lineBox(partial) };
+}
 
 export function linesFrom(items: TextItemBox[]): TextLine[] {
   const placed = items.filter((i) => i.str.length > 0).sort((a, b) => b.y - a.y || a.x - b.x);
@@ -11,18 +45,31 @@ export function linesFrom(items: TextItemBox[]): TextLine[] {
     const g = groups[groups.length - 1];
     if (g && Math.abs(g[0].y - p.y) <= g[0].fontSize * 0.5) g.push(p); else groups.push([p]);
   }
-  return groups.map((g) => {
+  const out: TextLine[] = [];
+  for (const g of groups) {
     g.sort((a, b) => a.x - b.x);
-    let text = "", cursor = -Infinity;
+    let seg: TextItemBox[] = [];
     for (const p of g) {
-      const gap = p.x - cursor;
-      if (text && gap > p.fontSize * 0.15 && !text.endsWith(" ") && !p.str.startsWith(" ")) text += " ";
-      text += p.str; cursor = p.x + p.width;
+      const prev = seg[seg.length - 1];
+      if (prev && p.x - (prev.x + prev.width) > COLUMN_GAP * prev.fontSize) { out.push(lineOf(seg)); seg = []; }
+      seg.push(p);
     }
-    const x = Math.min(...g.map((i) => i.x));
-    const right = Math.max(...g.map((i) => i.x + i.width));
-    return { text: text.replace(/\s+/g, " ").trim(), x, baseline: Math.min(...g.map((i) => i.y)), width: right - x, fontSize: g[0].fontSize, fontName: g[0].fontName, items: g };
+    if (seg.length) out.push(lineOf(seg));
+  }
+  return out;
+}
+
+export function linesInBox(lines: TextLine[], box: Box): TextLine[] {
+  return lines.filter((l) => {
+    const b = l.box;
+    const vy = Math.min(b.y + b.height, box.y + box.height) - Math.max(b.y, box.y);
+    const vx = Math.min(b.x + b.width, box.x + box.width) - Math.max(b.x, box.x);
+    return vy >= b.height / 2 && vx >= l.fontSize * 0.5;
   });
+}
+
+export function lineAt(lines: TextLine[], x: number, y: number, tol = 2): TextLine | undefined {
+  return lines.find((l) => x >= l.box.x - tol && x <= l.box.x + l.box.width + tol && y >= l.box.y - tol && y <= l.box.y + l.box.height + tol);
 }
 
 function joins(a: TextLine, b: TextLine): boolean {
