@@ -23,6 +23,15 @@ const PATHS = {
   "arrow": "M5 19L19 5 M10 5h9v9",
   "freetext": "M4 4h16v16H4z M8 9h8 M12 9v7",
   "sign": "M3 17c3 0 4-8 6-8s0 8 3 8 3-4 5-4 2 2 4 2 M3 21h18",
+  "mic": "M12 3a3 3 0 0 1 3 3v6a3 3 0 0 1-6 0V6a3 3 0 0 1 3-3z M5 11a7 7 0 0 0 14 0 M12 18v3",
+  "mic-off": "M12 3a3 3 0 0 1 3 3v6a3 3 0 0 1-6 0V6a3 3 0 0 1 3-3z M5 11a7 7 0 0 0 14 0 M12 18v3 M4 4l16 16",
+  "voice": "M4 10v4 M8 7v10 M12 4v16 M16 7v10 M20 10v4",
+  "search": "M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14z M20 20l-4-4",
+  "lock": "M6 11h12v9H6z M8 11V8a4 4 0 0 1 8 0v3",
+  "send": "M12 19V5 M6 11l6-6 6 6",
+  "page": "M7 3h7l5 5v13H7z M14 3v5h5",
+  "alert": "M12 8v5 M12 16.5v.5 M10.3 4l-7.6 13.2A2 2 0 0 0 4.4 20h15.2a2 2 0 0 0 1.7-2.8L13.7 4a2 2 0 0 0-3.4 0z",
+  "close": "M6 6l12 12 M18 6L6 18",
 } as const;
 
 export type IconName = keyof typeof PATHS;
