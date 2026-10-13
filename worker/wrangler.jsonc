@@ -6,10 +6,16 @@
   "compatibility_flags": ["nodejs_compat"],
   "dev": { "port": 8797, "inspector_port": 9311 },
   "kv_namespaces": [{ "binding": "QUOTA", "id": "53302d2274de4c06b6acd115ee4aa1e7" }],
+  "d1_databases": [{ "binding": "DB", "database_name": "pdfstudio", "database_id": "REPLACE_WITH_ID_FROM_wrangler_d1_create", "migrations_dir": "migrations" }],
   "vars": {
     "ALLOWED_ORIGIN": "https://pdfstudio.shemaiah7.workers.dev",
     "TURNSTILE_HOSTNAMES": "pdfstudio.shemaiah7.workers.dev",
     "ELEVENLABS_AGENT_ID": "agent_3101m4q6478ceb686yqfw50yfhdv",
-    "VOICE_DAILY_SECONDS": "1800"
+    "VOICE_DAILY_SECONDS": "1800",
+    "PAYWALL_ENABLED": "false",
+    "CLERK_ISSUER": "",
+    "STRIPE_PRICE_MONTHLY": "",
+    "STRIPE_PRICE_YEARLY": "",
+    "APP_URL": "https://pdfstudio.shemaiah7.workers.dev"
   }
 }
