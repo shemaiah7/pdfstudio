@@ -2,7 +2,11 @@ import { defineConfig } from "@playwright/test";
 
 export default defineConfig({
   testDir: "e2e",
-  webServer: { command: "npm run dev -- --port 5199", port: 5199, reuseExistingServer: true },
+  webServer: [
+    { command: "npm run dev -- --port 5199", port: 5199, reuseExistingServer: true },
+    // Production build for the PWA spec (the service worker is only registered in production builds).
+    { command: "npm run build && npx vite preview --port 5299 --strictPort", port: 5299, reuseExistingServer: true, timeout: 240_000 },
+  ],
   use: {
     baseURL: "http://localhost:5199",
     headless: true,

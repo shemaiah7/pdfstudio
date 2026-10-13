@@ -16,6 +16,8 @@ async function toBytes(files: File[]) {
   return Promise.all(files.map(async (f) => ({ name: f.name, bytes: new Uint8Array(await f.arrayBuffer()) })));
 }
 
+interface LaunchQueue { setConsumer(cb: (params: { files: { getFile(): Promise<File> }[] }) => void | Promise<void>): void }
+
 export default function App() {
   const hasSources = useDocumentStore((s) => s.sources.size > 0);
   const openFiles = useDocumentStore((s) => s.openFiles);
@@ -84,6 +86,16 @@ export default function App() {
     if (res.oversized.length) msgs.push(`${res.oversized.join(", ")} is very large; editing may be slow.`);
     if (msgs.length) setError(msgs.join(" "));
   }, [openFiles, addFiles, setError]);
+
+  // Installed app: PDFs opened from the OS arrive through the File Handling API (Chromium only).
+  useEffect(() => {
+    const lq = (window as unknown as { launchQueue?: LaunchQueue }).launchQueue;
+    if (!lq) return;
+    lq.setConsumer(async (p) => {
+      const files = await Promise.all(p.files.map((h) => h.getFile()));
+      if (files.length) void handleFiles(files, "open");
+    });
+  }, [handleFiles]);
 
   useEffect(() => {
     const on = (e: globalThis.DragEvent) => { e.preventDefault(); setDragging(true); };
