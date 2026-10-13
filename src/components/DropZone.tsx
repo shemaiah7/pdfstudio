@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState, type DragEvent } from "react";
 
 import { Icon, type IconName } from "./icons";
+import ThemeToggle from "./ThemeToggle";
 
 const FEATURES: { icon: IconName; title: string; text: string }[] = [
   { icon: "highlight", title: "A full editor, no upload", text: "Mark up, sign, retype text, merge files. Your PDF stays on this device." },
@@ -32,7 +33,10 @@ export default function DropZone({ onFiles, empty, forceOver = false }: Props) {
         <>
           <header className="empty-top">
             <div className="empty-brand"><span className="empty-brand-mark"><Icon name="file" size={16} /></span>PDF Studio</div>
-            <span className="empty-privacy"><Icon name="lock" size={14} />Files never leave your browser.</span>
+            <div className="empty-top-right">
+              <ThemeToggle className="theme-toggle-ghost" />
+              <span className="empty-privacy"><Icon name="lock" size={14} />Files never leave your browser.</span>
+            </div>
           </header>
           <div className="empty-main">
             <div className="empty-copy">

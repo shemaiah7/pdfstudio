@@ -9,7 +9,8 @@
   --accent-soft: var(--color-accent-soft);
   --danger: var(--color-danger);
 }
-:root { color-scheme: light dark; }
+:root { color-scheme: light; }
+:root[data-theme="dark"] { color-scheme: dark; }
 * { box-sizing: border-box; }
 html, body, #root { height: 100%; margin: 0; }
 body { background: var(--bg); color: var(--text); font: var(--text-body); }
@@ -27,6 +28,9 @@ body { background: var(--bg); color: var(--text); font: var(--text-body); }
 .empty-top { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; padding: 18px 28px; }
 .empty-brand { display: flex; align-items: center; gap: 10px; font-size: 16px; font-weight: 600; }
 .empty-brand-mark { width: 30px; height: 30px; display: grid; place-items: center; border-radius: 8px; background: var(--color-primary); color: var(--color-on-primary); }
+.empty-top-right { display: flex; align-items: center; gap: 12px; }
+.theme-toggle-ghost { width: 36px; height: 36px; display: inline-grid; place-items: center; padding: 0; border: 0; border-radius: 10px; background: transparent; color: var(--color-ink-2); cursor: pointer; }
+.theme-toggle-ghost:hover { background: var(--color-fill-subtle); color: var(--color-ink); }
 .empty-privacy { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: var(--radius-pill); background: var(--color-ok-soft); color: var(--color-ok); font-size: 13px; font-weight: 500; }
 .empty-main { width: 100%; max-width: 1240px; margin: 0 auto; display: flex; flex-wrap: wrap; align-items: center; gap: 56px; padding: 24px 28px 48px; }
 .empty-copy { flex: 1 1 440px; min-width: 0; }
@@ -93,6 +97,7 @@ body { background: var(--bg); color: var(--text); font: var(--text-body); }
 .tb-icon:disabled { opacity: 0.35; cursor: default; }
 .tb-right { margin-left: auto; display: flex; align-items: center; gap: 12px; }
 .tb-actions { display: contents; }
+.tb-right .tb-group { height: 42px; }
 .tb-pages, .tb-more, .sheet-handle, .pages-scrim { display: none; }
 .tb-zoom { display: flex; align-items: center; height: 42px; padding: 0 4px; background: var(--color-surface); border: 1px solid var(--color-line); border-radius: 10px; }
 .toolbar .zoom { width: 44px; text-align: center; font: var(--text-mono); font-family: var(--font-mono); font-size: 12px; }
@@ -401,10 +406,8 @@ body { background: var(--bg); color: var(--text); font: var(--text-body); }
 }
 
 /* ---- Dark theme adjustments that are not just token swaps ---- */
-@media (prefers-color-scheme: dark) {
-  .panel-tabs button.active, .scope-toggle label.checked, .sigTabs button.active { background: var(--color-ink-raised); }
-  .palette, .float-bar { box-shadow: var(--shadow-bar), 0 0 0 1px var(--color-line); }
-}
+:root[data-theme="dark"] .panel-tabs button.active, :root[data-theme="dark"] .scope-toggle label.checked, :root[data-theme="dark"] .sigTabs button.active { background: var(--color-ink-raised); }
+:root[data-theme="dark"] .palette, :root[data-theme="dark"] .float-bar { box-shadow: var(--shadow-bar), 0 0 0 1px var(--color-line); }
 
 /* ---- Line editing (Quiet Desk tokens) ---- */
 .line-editor { position: absolute; inset: 0; z-index: 30; pointer-events: none; }
