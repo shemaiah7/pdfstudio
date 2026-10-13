@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { formatPassages, keywordPassages, overview, NO_MATCH } from "./grounding";
+import { formatPassages, keywordPassages, overview, NO_MATCH, pagesNamed, looksGarbled } from "./grounding";
 
 describe("formatPassages", () => {
   it("prefixes each passage with its page and joins with blank lines", () => {
@@ -44,4 +44,36 @@ describe("overview", () => {
     expect(overview("note.pdf", 7)).toBe("Document: note.pdf, 7 pages.");
   });
   it("exports the no-match string", () => { expect(NO_MATCH).toBe("No passage in the document matched that query."); });
+});
+
+describe("pagesNamed", () => {
+  it.each([
+    ["what does page 4 say", 10, [4]],
+    ["PAGE 4", 10, [4]],
+    ["pages 4 and 6", 10, [4, 6]],
+    ["see pages 2, 5 and 7", 10, [2, 5, 7]],
+    ["p. 4 please", 10, [4]],
+    ["p4", 10, [4]],
+    ["pg 3", 10, [3]],
+    ["the aide statement on page four", 10, [4]],
+    ["page Twenty", 25, [20]],
+    ["page 4 and page 4 again", 10, [4]],
+    ["page 12 and page 3", 10, [3]],
+    ["page 0", 10, []],
+    ["pages 1, 2, 3 and 4", 10, [1, 2, 3]],
+    ["it is 4 pages long", 10, []],
+    ["turn the page", 10, []],
+    ["page", 10, []],
+  ])("%s", (q, n, want) => { expect(pagesNamed(q, n)).toEqual(want); });
+});
+
+describe("looksGarbled", () => {
+  it("is false for clean typed English", () => {
+    expect(looksGarbled("The patient was seen in clinic today for follow-up of hypertension. Blood pressure is well controlled on lisinopril 10 mg daily.")).toBe(false);
+  });
+  it("is false for short text", () => { expect(looksGarbled("Rsdnt fnd 0n flr")).toBe(false); expect(looksGarbled("")).toBe(false); });
+  it("is true for Tesseract output on handwriting", () => {
+    expect(looksGarbled("Rsdnt fnd 0n flr ,, l/ wt~ pt c/o lft hp ;; ||")).toBe(true);
+    expect(looksGarbled("Rsdnt fnd 0n flr ,, l/ wt~ pt c/o lft hp ;; || Hz rsdnt ntd 2 b hrt ~~ stmnt dd")).toBe(true);
+  });
 });
