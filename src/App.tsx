@@ -18,6 +18,7 @@ import UpgradeSheet from "./components/account/UpgradeSheet";
 import PaywallSheet from "./components/account/PaywallSheet";
 import ActivatingNotice from "./components/account/ActivatingNotice";
 import RolloutBanner from "./components/account/RolloutBanner";
+import { requireFeature } from "./components/account/useGate";
 
 /** Needs ClerkProvider, so App only renders it when a Clerk key is configured. */
 function SignedInTerms() {
@@ -51,7 +52,7 @@ export default function App() {
       if (mod && e.key === "z" && !e.shiftKey) { e.preventDefault(); st.undo(); }
       else if (mod && (e.key === "y" || (e.key === "z" && e.shiftKey))) { e.preventDefault(); st.redo(); }
       else if ((e.key === "Delete" || e.key === "Backspace") && st.selectedAnnotationId && !isEditing()) { e.preventDefault(); st.removeAnnotation(st.selectedAnnotationId); }
-      else if ((e.key === "Delete" || e.key === "Backspace") && st.selection.size && !isEditing()) { e.preventDefault(); st.remove([...st.selection]); }
+      else if ((e.key === "Delete" || e.key === "Backspace") && st.selection.size && !isEditing()) { e.preventDefault(); if (requireFeature("edit")) st.remove([...st.selection]); }
     };
     const onUnload = (e: BeforeUnloadEvent) => {
       if (useDocumentStore.getState().isDirty()) { e.preventDefault(); e.returnValue = ""; }

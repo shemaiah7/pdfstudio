@@ -14,6 +14,7 @@ export interface AiState {
   client: AiClient | null;
   remaining: { requests: number; tokens: number; resetAt: number } | null;
   limitedUntil: number | null;
+  limitKind: "daily" | "monthly" | null;
   scope: "all" | "selected";
   summary: { text: string; status: Status; error: string | null };
   chat: { turns: { role: "user" | "assistant"; text: string }[]; draft: string; status: Status; error: string | null; passages: number | null };
@@ -48,7 +49,7 @@ const fmtTime = (unix: number) => new Date(unix * 1000).toLocaleTimeString([], {
 const fmtDate = (unix: number) => new Date(unix * 1000).toLocaleDateString([], { month: "short", day: "numeric" });
 
 const initial = () => ({
-  remaining: null, limitedUntil: null,
+  remaining: null, limitedUntil: null, limitKind: null,
   scope: "all" as "all" | "selected",
   summary: { text: "", ...idle() },
   chat: { turns: [], draft: "", passages: null as number | null, ...idle() },
@@ -81,7 +82,7 @@ export const useAiStore = create<AiState>((set, get) => ({
     for (const abort of aborts.values()) { try { abort(); } catch { /* ignore */ } }
     aborts.clear();
     inflight.clear();
-    set((s) => ({ ...initial(), remaining: s.remaining, limitedUntil: s.limitedUntil }));
+    set((s) => ({ ...initial(), remaining: s.remaining, limitedUntil: s.limitedUntil, limitKind: s.limitKind }));
   },
 
   errorMessage(code, extra) {
@@ -206,7 +207,7 @@ async function runTask(task: AiRequest["task"], client: AiClient) {
       },
       onError: (code, extra) => {
         if (stale()) return;
-        if (code === "daily_limit" || code === "monthly_limit") set({ limitedUntil: Number(extra?.resetAt ?? 0) });
+        if (code === "daily_limit" || code === "monthly_limit") set({ limitedUntil: Number(extra?.resetAt ?? 0), limitKind: code === "monthly_limit" ? "monthly" : "daily" });
         if (task === "ask") set((s) => {
           const turns = s.chat.turns;
           const last = turns[turns.length - 1];

@@ -9,7 +9,7 @@ import { useSheets } from "../account/useGate";
 vi.mock("../../ai/turnstile", () => ({ getTurnstileToken: async () => "tok" }));
 
 describe("AiPanel", () => {
-  afterEach(() => { cleanup(); vi.unstubAllEnvs(); useAccount.setState({ me: null, loading: false }); useSheets.setState({ open: null }); useAiStore.setState({ limitedUntil: null, remaining: null }); });
+  afterEach(() => { cleanup(); vi.unstubAllEnvs(); useAccount.setState({ me: null, loading: false }); useSheets.setState({ open: null }); useAiStore.setState({ limitedUntil: null, limitKind: null, remaining: null }); });
 
   it("shows the privacy notice once and the four tabs", () => {
     render(<AiPanel />);
@@ -61,5 +61,23 @@ describe("AiPanel", () => {
     render(<AiPanel />);
     expect(screen.getByTestId("ai-limit").textContent).toMatch(/Resets/);
     expect(screen.queryByRole("button", { name: "Upgrade to Pro" })).toBeNull();
+  });
+
+  it("paywall off: a daily limit shows no limit panel and the old footer", () => {
+    const at = Math.floor(Date.now() / 1000) + 3600;
+    useAiStore.setState({ limitedUntil: at, limitKind: "daily" });
+    render(<AiPanel />);
+    expect(screen.queryByTestId("ai-limit")).toBeNull();
+    const time = new Date(at * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    expect(screen.getByTestId("ai-footer").textContent).toBe(`20 free requests per day · resets ${time}`);
+  });
+  it("paywall on: a monthly limit shows the reset date in the footer", () => {
+    vi.stubEnv("VITE_PAYWALL_ENABLED", "true");
+    const at = Math.floor(Date.now() / 1000) + 3600;
+    useAiStore.setState({ limitedUntil: at, limitKind: "monthly" });
+    useAccount.setState({ me: { plan: "pro", paywall: true } as never });
+    render(<AiPanel />);
+    const date = new Date(at * 1000).toLocaleDateString([], { month: "short", day: "numeric" });
+    expect(screen.getByTestId("ai-footer").textContent).toContain(`resets ${date}`);
   });
 });

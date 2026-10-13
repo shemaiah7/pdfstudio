@@ -12,17 +12,20 @@ export const useSheets = create<SheetsState>((set) => ({
   close: () => set({ open: null }),
 }));
 
-/** `require(feature)` is true when the plan allows it; otherwise it opens the right sheet (anon: upgrade, free: paywall) and returns false. */
+/** Non-hook gate for event handlers outside components: true when allowed; otherwise opens the right sheet (anon: upgrade, free: paywall) and returns false. */
+export function requireFeature(feature: Feature): boolean {
+  const { me, loading } = useAccount.getState();
+  // A signed-in user whose plan is still loading must not be shown the anonymous Upgrade sheet.
+  if (me === null && loading && paywallEnabled()) return false;
+  const plan = useAccount.getState().plan();
+  if (can(plan, feature, paywallEnabled())) return true;
+  useSheets.getState().show(plan === "anon" ? "upgrade" : "paywall");
+  return false;
+}
+
+/** `require(feature)` is true when the plan allows it; otherwise it opens the right sheet and returns false. */
 export function useGate(): { require(feature: Feature): boolean } {
-  const require = useCallback((feature: Feature): boolean => {
-    const { me, loading } = useAccount.getState();
-    // A signed-in user whose plan is still loading must not be shown the anonymous Upgrade sheet.
-    if (me === null && loading && paywallEnabled()) return false;
-    const plan = useAccount.getState().plan();
-    if (can(plan, feature, paywallEnabled())) return true;
-    useSheets.getState().show(plan === "anon" ? "upgrade" : "paywall");
-    return false;
-  }, []);
+  const require = useCallback((feature: Feature): boolean => requireFeature(feature), []);
   return { require };
 }
 

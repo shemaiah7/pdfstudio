@@ -9,19 +9,20 @@ import RewriteTab from "./RewriteTab";
 import { useOcrStore } from "../../store/ocr";
 import ScopeToggle from "./ScopeToggle";
 import { Icon } from "../icons";
+import { paywallEnabled } from "../../account/capabilities";
 import UpgradeProButton from "../account/UpgradeProButton";
 
-/** Time of day when the reset is within a day, otherwise the date (monthly limits). */
-const resetLabel = (unix: number) => {
+/** Monthly limits reset on a date; daily ones at a time of day. */
+const resetLabel = (unix: number, monthly: boolean) => {
   const d = new Date(unix * 1000);
-  return unix - Date.now() / 1000 > 86400 ? d.toLocaleDateString([], { month: "short", day: "numeric" }) : d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  return monthly ? d.toLocaleDateString([], { month: "short", day: "numeric" }) : d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 };
 
 type Tab = "summarize" | "ask" | "rewrite" | "extract";
 
 export default function AiPanel() {
   const [tab, setTab] = useState<Tab>("summarize");
-  const { noticeDismissed, dismissNotice, remaining, limitedUntil, resetForNewDocument } = useAiStore();
+  const { noticeDismissed, dismissNotice, remaining, limitedUntil, limitKind, resetForNewDocument } = useAiStore();
   const ocrEnabled = useOcrStore((s) => s.enabled);
   const setOcrEnabled = useOcrStore((s) => s.setEnabled);
   const sourcesKey = useDocumentStore((s) => [...s.sources.keys()].join(","));
@@ -32,6 +33,7 @@ export default function AiPanel() {
 
   if (!configured) return <div className="ai-panel"><p className="muted">AI features are not configured.</p></div>;
 
+  const paywall = paywallEnabled();
   const limited = limitedUntil !== null && limitedUntil > Date.now() / 1000;
   const tabs: Tab[] = ["summarize", "ask", "rewrite", "extract"];
   return (
@@ -54,15 +56,15 @@ export default function AiPanel() {
       {tab === "ask" && <AskTab disabled={limited} />}
       {tab === "rewrite" && <RewriteTab disabled={limited} />}
       {tab === "extract" && <ExtractTab disabled={limited} />}
-      {limited && limitedUntil && (
+      {paywall && limited && limitedUntil && (
         <div className="limit-panel" data-testid="ai-limit">
-          <p>Limit reached. Resets {resetLabel(limitedUntil)}.</p>
+          <p>Limit reached. Resets {resetLabel(limitedUntil, limitKind === "monthly")}.</p>
           <UpgradeProButton />
         </div>
       )}
       <div className="ai-footer" data-testid="ai-footer">
         {remaining ? `${remaining.requests} requests left today` : "20 free requests per day"}
-        {limited && limitedUntil && ` · resets ${new Date(limitedUntil * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`}
+        {limited && limitedUntil && ` · resets ${resetLabel(limitedUntil, paywall && limitKind === "monthly")}`}
       </div>
     </div>
   );
