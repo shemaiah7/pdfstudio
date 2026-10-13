@@ -1,9 +1,9 @@
 import { cloudflareTest, readD1Migrations } from "@cloudflare/vitest-plugin";
 import { defineConfig } from "vitest/config";
-import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 export default defineConfig(async () => {
-  const migrations = await readD1Migrations(join(__dirname, "migrations"));
+  const migrations = await readD1Migrations(fileURLToPath(new URL("./migrations", import.meta.url)));
   return {
     plugins: [
       cloudflareTest({
