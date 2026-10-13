@@ -2,8 +2,8 @@
 import type { Env } from "../env";
 import { json } from "../cors";
 import { verifySession } from "../session";
-import { getUser, updateUser } from "../users";
-import { stripeFetch, setStripeFetch } from "../stripe";
+import { getUser, getUserByCustomer, updateUser } from "../users";
+import { stripeFetch, setStripeFetch, verifyStripeSignature } from "../stripe";
 
 export function configureBillingDeps(p: { fetch?: typeof fetch }): void { if (p.fetch) setStripeFetch(p.fetch); }
 
@@ -48,4 +48,58 @@ export async function portalHandler(request: Request, env: Env): Promise<Respons
     const p = await stripeFetch<{ url: string }>("/billing_portal/sessions", env, { customer: u.stripe_customer_id, return_url: env.APP_URL });
     return json({ url: p.url }, 200, env);
   } catch { return json({ error: "billing_unavailable" }, 502, env); }
+}
+
+type Sub = { id: string; status: string; current_period_end: number; customer: string };
+
+async function applySubscription(env: Env, subId: string, forceStatus?: string): Promise<void> {
+  const s = await stripeFetch<Sub>(`/subscriptions/${encodeURIComponent(subId)}`, env);
+  const u = await getUserByCustomer(env.DB, s.customer);
+  if (!u) return;
+  const status = forceStatus ?? s.status;
+  const patch: Parameters<typeof updateUser>[2] = { subscription_status: status, current_period_end: s.current_period_end };
+  if (status === "active" || status === "trialing") patch.past_due_since = null;
+  if ((status === "past_due" || status === "unpaid") && u.past_due_since === null) patch.past_due_since = Math.floor(Date.now() / 1000);
+  await updateUser(env.DB, u.id, patch);
+}
+
+export async function webhookHandler(request: Request, env: Env): Promise<Response> {
+  const raw = await request.text();
+  if (!(await verifyStripeSignature(raw, request.headers.get("stripe-signature"), env.STRIPE_WEBHOOK_SECRET))) return new Response("bad signature", { status: 400 });
+  const ev = JSON.parse(raw) as { id: string; type: string; data: { object: Record<string, unknown> } };
+  try {
+    const seen = await env.DB.prepare("INSERT INTO stripe_events (id, received_at) VALUES (?, ?) ON CONFLICT(id) DO NOTHING").bind(ev.id, Math.floor(Date.now() / 1000)).run();
+    if (seen.meta.changes === 0) return Response.json({ received: true });
+    const o = ev.data.object;
+    switch (ev.type) {
+      case "checkout.session.completed": {
+        const uid = o.client_reference_id as string | null, customer = o.customer as string | null;
+        if (uid && customer) await updateUser(env.DB, uid, { stripe_customer_id: customer });
+        if (typeof o.subscription === "string") await applySubscription(env, o.subscription);
+        break;
+      }
+      case "customer.subscription.created":
+      case "customer.subscription.updated":
+        await applySubscription(env, o.id as string);
+        break;
+      case "customer.subscription.deleted":
+        await applySubscription(env, o.id as string, "canceled");
+        break;
+      case "invoice.payment_failed": {
+        const u = await getUserByCustomer(env.DB, o.customer as string);
+        if (u && u.past_due_since === null) await updateUser(env.DB, u.id, { past_due_since: Math.floor(Date.now() / 1000) });
+        break;
+      }
+      case "invoice.paid": {
+        const u = await getUserByCustomer(env.DB, o.customer as string);
+        if (u) await updateUser(env.DB, u.id, { past_due_since: null });
+        break;
+      }
+    }
+  } catch {
+    // let Stripe retry: remove the idempotency marker so the retry is processed
+    await env.DB.prepare("DELETE FROM stripe_events WHERE id = ?").bind(ev.id).run().catch(() => {});
+    return new Response("retry", { status: 500 });
+  }
+  return Response.json({ received: true });
 }

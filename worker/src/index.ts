@@ -4,7 +4,7 @@ import { sessionHandler } from "./handlers/session";
 import { aiHandler } from "./handlers/ai";
 import { ocrHandler } from "./handlers/ocr";
 import { liveHandler, liveUsageHandler } from "./handlers/live";
-import { checkoutHandler, portalHandler } from "./handlers/billing";
+import { checkoutHandler, portalHandler, webhookHandler } from "./handlers/billing";
 import { meHandler, termsHandler, deleteAccountHandler } from "./handlers/me";
 
 export type Handler = (request: Request, env: Env, ctx: ExecutionContext) => Promise<Response>;
@@ -20,6 +20,7 @@ const routes: Record<string, Handler> = {
   "/account/delete": (r, env) => deleteAccountHandler(r, env),
   "/billing/checkout": (r, env) => checkoutHandler(r, env),
   "/billing/portal": (r, env) => portalHandler(r, env),
+  "/billing/webhook": (r, env) => webhookHandler(r, env),
 };
 
 export default {
