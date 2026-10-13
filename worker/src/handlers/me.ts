@@ -48,14 +48,29 @@ export async function termsHandler(request: Request, env: Env): Promise<Response
   return json({ ok: true }, 200, env);
 }
 
+async function purgeCounters(kv: KVNamespace, vid: string): Promise<void> {
+  for (const base of ["d:ai", "d:ocr", "m:ai", "m:ocr", "m:voice", "v", "q", "b"]) {
+    let cursor: string | undefined;
+    do {
+      const page = await kv.list({ prefix: `${base}:${vid}:`, cursor });
+      for (const k of page.keys) await kv.delete(k.name);
+      cursor = page.list_complete ? undefined : page.cursor;
+    } while (cursor);
+  }
+}
+
 export async function deleteAccountHandler(request: Request, env: Env): Promise<Response> {
   const s = await authed(request, env);
   if (!s?.uid) return json({ error: "unauthorized" }, 401, env);
-  try {
-    const user = await getUser(env.DB, s.uid);
-    if (user?.stripe_customer_id) await deps.cancelSubscription(user.stripe_customer_id, env);
-    await deps.deleteClerkUser(s.uid, env);
-    await deleteUser(env.DB, s.uid);
-  } catch { return json({ error: "account_unavailable" }, 503, env); }
+  const uid = s.uid;
+  const fail = (step: string) => { console.log(JSON.stringify({ task: "account_delete", uid, step, status: "error" })); return json({ error: "account_unavailable" }, 503, env); };
+  let user;
+  try { user = await getUser(env.DB, uid); } catch { return fail("lookup"); }
+  if (user?.stripe_customer_id) {
+    try { await deps.cancelSubscription(user.stripe_customer_id, env); } catch { return fail("stripe"); }
+  }
+  try { await purgeCounters(env.QUOTA, `u:${uid}`); } catch { console.log(JSON.stringify({ task: "account_delete", uid, step: "kv", status: "error" })); }
+  try { await deleteUser(env.DB, uid); } catch { return fail("d1"); }
+  try { await deps.deleteClerkUser(uid, env); } catch { return fail("clerk"); }
   return json({ ok: true }, 200, env);
 }
