@@ -75,6 +75,20 @@ describe("useLiveStore", () => {
     expect(await opts.clientTools.search_document({ query: "zzzz" })).toBe("No passage in the document matched that query.");
     expect(useLiveStore.getState().searching).toBe(false);
   });
+  it("search tool answers from keywords when retrieval is too slow, instead of timing out with no match", async () => {
+    await useLiveStore.getState().start(); await flush();
+    retrieve.mockReturnValueOnce(new Promise(() => {})); // e.g. the on-device search model embedding slowly on CPU
+    const result = opts.clientTools.search_document({ query: "troponin" });
+    await vi.advanceTimersByTimeAsync(3_000);
+    expect(await result).toContain("[p. 1] Cardiology note. Troponin elevated.");
+    expect(useLiveStore.getState().keywordMode).toBe(true);
+    expect(useLiveStore.getState().searching).toBe(false);
+  });
+  it("search tool falls back to keywords when retrieval finds nothing above its threshold", async () => {
+    await useLiveStore.getState().start(); await flush();
+    retrieve.mockResolvedValueOnce([]);
+    expect(await opts.clientTools.search_document({ query: "troponin" })).toContain("[p. 1]");
+  });
   it("captions: user and assistant messages, corrections replace the last assistant caption", async () => {
     await useLiveStore.getState().start(); await flush();
     opts.onMessage({ role: "user", message: "what dose", event_id: 1 });

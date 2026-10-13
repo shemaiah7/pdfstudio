@@ -9,6 +9,8 @@ import { useAiStore } from "./ai";
 
 export const SESSION_CAP_S = 600;
 export const SILENCE_S = 120;
+/** How long the voice search tool waits for on-device retrieval before answering from keyword matches (well under TOOL_TIMEOUT_MS). */
+export const RETRIEVE_BUDGET_MS = 2_500;
 
 export interface LiveState {
   status: "idle" | "connecting" | "live" | "ending" | "error";
@@ -85,15 +87,23 @@ export const useLiveStore = create<LiveState>((set, get) => {
 
   const search = async (query: string): Promise<string> => {
     set({ searching: true });
+    // Keyword matching runs alongside retrieval: a slow on-device embed must not use up the tool's
+    // TOOL_TIMEOUT_MS and answer "no match" for text that is plainly in the document.
+    const keyword = deps.documentText("all").then((pages) => keywordPassages(pages, query)).catch(() => []);
+    let timer: ReturnType<typeof setTimeout> | null = null;
     try {
       let passages: { page: number; text: string }[] | null = null;
-      try { const r = await deps.retrieve(query, 4); if (Array.isArray(r) && r.length > 0) passages = r; } catch { passages = null; }
+      try {
+        const budget = new Promise<null>((r) => { timer = setTimeout(() => r(null), RETRIEVE_BUDGET_MS); });
+        const r = await Promise.race([deps.retrieve(query, 4), budget]);
+        if (Array.isArray(r) && r.length > 0) passages = r;
+      } catch { passages = null; }
       if (!passages) {
         set({ keywordMode: true });
-        passages = keywordPassages(await deps.documentText("all"), query);
+        passages = await keyword;
       }
       return passages.length ? formatPassages(passages) : NO_MATCH;
-    } finally { set({ searching: false }); }
+    } finally { if (timer) clearTimeout(timer); set({ searching: false }); }
   };
 
   const finish = (status: "idle" | "error", error: string | null) => {
