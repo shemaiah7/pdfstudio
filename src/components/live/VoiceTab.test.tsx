@@ -6,11 +6,11 @@ import VoiceTab from "./VoiceTab";
 import { useLiveStore } from "../../store/live";
 import { useDocumentStore } from "../../store/document";
 
-const start = vi.fn(async () => {}); const end = vi.fn(async () => {}); const setMuted = vi.fn(); const acknowledge = vi.fn();
+const start = vi.fn(async () => {}); const end = vi.fn(async () => {}); const setMuted = vi.fn(); const acknowledge = vi.fn(); const setMic = vi.fn();
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 beforeEach(() => {
-  start.mockClear(); end.mockClear(); setMuted.mockClear(); acknowledge.mockClear();
-  useLiveStore.setState({ status: "idle", error: null, captions: [], seconds: 0, remainingSeconds: null, resetAt: null, muted: false, acknowledged: false, searching: false, keywordMode: false, conversationId: null, start, end, setMuted, acknowledge });
+  start.mockClear(); end.mockClear(); setMuted.mockClear(); acknowledge.mockClear(); setMic.mockClear();
+  useLiveStore.setState({ status: "idle", error: null, captions: [], seconds: 0, remainingSeconds: null, resetAt: null, muted: false, acknowledged: false, searching: false, keywordMode: false, conversationId: null, micId: null, mics: [], start, end, setMuted, acknowledge, setMic });
   useDocumentStore.setState({ ...useDocumentStore.getState(), sources: new Map([["s", { id: "s", name: "a.pdf", bytes: new Uint8Array(), pageCount: 1, hash: "h" }]]), pages: [{ id: "p0", sourceId: "s", sourcePageIndex: 0, rotation: 0 }] });
 });
 
@@ -72,5 +72,29 @@ describe("VoiceTab", () => {
     expect(screen.getByTestId("voice-error").textContent).toBe("Voice service unavailable right now.");
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     expect(start).toHaveBeenCalled();
+  });
+  it("lists System default plus devices and calls setMic on change", () => {
+    useLiveStore.setState({ mics: [{ deviceId: "a", label: "MacBook Mic" }, { deviceId: "b", label: "iPhone Mic" }], micId: "a" });
+    render(<VoiceTab />);
+    const select = screen.getByTestId("voice-mic") as HTMLSelectElement;
+    expect(screen.getByLabelText("Microphone")).toBe(select);
+    expect(Array.from(select.options).map((o) => o.textContent)).toEqual(["System default", "MacBook Mic", "iPhone Mic"]);
+    expect(select.value).toBe("a");
+    expect(screen.queryByText("Allow the microphone once to see your devices.")).toBeNull();
+    fireEvent.change(select, { target: { value: "b" } });
+    expect(setMic).toHaveBeenCalledWith("b");
+    fireEvent.change(select, { target: { value: "" } });
+    expect(setMic).toHaveBeenLastCalledWith(null);
+  });
+  it("with no devices listed still offers System default and hints to allow the microphone", () => {
+    render(<VoiceTab />);
+    const select = screen.getByTestId("voice-mic") as HTMLSelectElement;
+    expect(Array.from(select.options).map((o) => o.textContent)).toEqual(["System default"]);
+    expect(screen.getByText("Allow the microphone once to see your devices.")).toBeTruthy();
+  });
+  it("shows the picker in the live state too", () => {
+    useLiveStore.setState({ status: "live", mics: [{ deviceId: "a", label: "MacBook Mic" }] });
+    render(<VoiceTab />);
+    expect(screen.getByTestId("voice-mic")).toBeTruthy();
   });
 });
