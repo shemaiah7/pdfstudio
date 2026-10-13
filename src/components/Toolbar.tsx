@@ -4,7 +4,7 @@ import { buildDocument } from "../pdf/pageOps";
 import { rasterizeWithPdfJs } from "../edit/flatten";
 import { extractPageText } from "../pdf/text";
 import { useFields } from "./useFields";
-import { useOcrStore, pageKey } from "../store/ocr";
+import { useOcrStore, pageKey, isTextPage } from "../store/ocr";
 import { ocrStore } from "../ocr/store";
 import type { OcrPage } from "../ocr/types";
 import DeepOcrMenu from "./ocr/DeepOcrMenu";
@@ -57,7 +57,7 @@ export default function Toolbar({ scale, setScale, onFiles, onTogglePages, pages
       const ocrState = useOcrStore.getState().pages;
       for (const p of entries) {
         const src = s.sources.get(p.sourceId);
-        if (!src?.hash || ocrState[pageKey(p.sourceId, p.sourcePageIndex)]?.state !== "done") continue;
+        if (!src?.hash || ocrState[pageKey(p.sourceId, p.sourcePageIndex)]?.state !== "done" || isTextPage(pageKey(p.sourceId, p.sourcePageIndex))) continue; // typed pages keep their real text: no invisible OCR layer
         try {
           const page = await ocrStore.get(src.hash, p.sourcePageIndex);
           if (page) ocrPages.set(p.id, page);

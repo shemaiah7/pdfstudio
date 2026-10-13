@@ -3,7 +3,7 @@ import "fake-indexeddb/auto";
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { useDocumentStore } from "./document";
 import { useAiStore } from "./ai";
-import { useOcrStore, configureOcrDeps, pageKey, applyQuota } from "./ocr";
+import { useOcrStore, configureOcrDeps, pageKey, applyQuota, isTextPage } from "./ocr";
 import { createClaudeEngine } from "../ocr/claudeEngine";
 import { createOcrStore } from "../ocr/store";
 import { linesToOcrPage } from "../ocr/layout";
@@ -237,7 +237,7 @@ describe("useOcrStore", () => {
     expect(useAiStore.getState()).toMatchObject({ remaining: null, unlimited: true, limitedUntil: null });
     useAiStore.setState({ remaining: null, limitedUntil: null, unlimited: false });
   });
-  it("a batch-fatal Deep OCR error cancels the remaining Deep OCR jobs, keeps Tesseract text, and toasts once", async () => {
+  it("a batch-fatal Deep OCR error cancels the remaining Deep OCR jobs, keeps Tesseract text, and reports the error once", async () => {
     let calls = 0;
     configureOcrDeps({ claude: () => ({ recognize: async () => { calls++; throw new Error("too_fast"); } }) });
     const id = await openScan(3);
@@ -249,7 +249,7 @@ describe("useOcrStore", () => {
     unsub();
     expect(calls).toBe(1);
     for (let p = 0; p < 3; p++) expect(useOcrStore.getState().pages[pageKey(id, p)]).toEqual({ state: "done", engine: "tesseract" });
-    expect(toasts).toEqual(["Slow down a little and try again in a few seconds."]);
+    expect(toasts).toEqual(["Deep OCR started on 3 pages.", "Slow down a little and try again in a few seconds."]);
   });
   it("a batch-fatal error on pages without Tesseract text marks the rest failed with that code", async () => {
     configureOcrDeps({ claude: () => ({ recognize: async () => { throw new Error("network"); } }) });
@@ -272,5 +272,54 @@ describe("useOcrStore", () => {
     finishTess();
     await new Promise((r) => setTimeout(r, 80)); await flush();
     expect(useOcrStore.getState().pages[pageKey(id, 0)]).toEqual({ state: "done", engine: "tesseract" });
+  });
+  describe("deepOcr reporting and typed pages", () => {
+    it("does not send a page with typed text without allowText, and says so", async () => {
+      configureOcrDeps({ hasText: async () => true });
+      const id = await openScan(2);
+      await useOcrStore.getState().deepOcr([`pg-${n - 1}-1`]); await flush();
+      expect(useOcrStore.getState().pages[pageKey(id, 1)]).toBeUndefined();
+      expect(useOcrStore.getState().toast).toBe("Skipped page 2: it already has typed text.");
+    });
+    it("sends a typed page with allowText and reports the start", async () => {
+      configureOcrDeps({ hasText: async () => true });
+      const id = await openScan(2);
+      await useOcrStore.getState().deepOcr([`pg-${n - 1}-1`], { allowText: true }); await flush();
+      expect(useOcrStore.getState().toast).toBe("Deep OCR started on page 2.");
+      expect(useOcrStore.getState().pages[pageKey(id, 1)]).toMatchObject({ state: "done", engine: "claude" });
+      expect((await store.get(`h${n - 1}`, 1))?.lines[0].text).toBe("deep text");
+      expect(isTextPage(pageKey(id, 1))).toBe(true);
+    });
+    it("reports a page that already has Deep OCR instead of sending it again", async () => {
+      let calls = 0;
+      configureOcrDeps({ claude: () => ({ recognize: async () => { calls++; return { ...linesToOcrPage(["deep text"], { widthPt: 300, heightPt: 400 }), engine: "claude", confidence: 1 }; } }) });
+      const id = await openScan(1);
+      await useOcrStore.getState().scanSource(id); await flush();
+      await useOcrStore.getState().deepOcr([`pg-${n - 1}-0`]); await flush();
+      expect(calls).toBe(1);
+      await useOcrStore.getState().deepOcr([`pg-${n - 1}-0`]); await flush();
+      expect(calls).toBe(1);
+      expect(useOcrStore.getState().toast).toBe("Page 1 already has Deep OCR.");
+    });
+    it("reports the count for several pages and nothing-to-do for an empty target", async () => {
+      const id = await openScan(3);
+      await useOcrStore.getState().scanSource(id); await flush();
+      await useOcrStore.getState().deepOcr("all-scanned"); await flush();
+      expect(useOcrStore.getState().toast).toBe("Deep OCR started on 3 pages.");
+      await useOcrStore.getState().deepOcr([]);
+      expect(useOcrStore.getState().toast).toBe("No page to read.");
+      useOcrStore.setState({ toast: null });
+      configureOcrDeps({ hasText: async () => true });
+      await openScan(1);
+      await useOcrStore.getState().deepOcr("all-scanned");
+      expect(useOcrStore.getState().toast).toBe("No page to read.");
+    });
+    it("pagesWithText lists the entries whose page has typed text", async () => {
+      configureOcrDeps({ hasText: async (_s, p) => p !== 1 });
+      await openScan(3);
+      expect(await useOcrStore.getState().pagesWithText([`pg-${n - 1}-0`, `pg-${n - 1}-1`, `pg-${n - 1}-2`, "missing"])).toEqual([`pg-${n - 1}-0`, `pg-${n - 1}-2`]);
+      configureOcrDeps({ hasText: async () => { throw new Error("boom"); } });
+      expect(await useOcrStore.getState().pagesWithText([`pg-${n - 1}-0`])).toEqual([]);
+    });
   });
 });

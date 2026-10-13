@@ -40,6 +40,24 @@ describe("extractPageText OCR merge", () => {
     expect(linesFromItems([{ str: " ", transform: [1, 0, 0, 1, 0, 0], width: 1, height: 1 }]).trim()).toBe("");
     expect((await extractPageText(src, 0)).text).toBe("x y");
   });
+  it("a text page with a Deep OCR result returns the transcription but keeps the pdf.js items", async () => {
+    await useDocumentStore.getState().openFiles([{ name: "three.pdf", bytes: loadFixture("three") }]);
+    const src = [...useDocumentStore.getState().sources.values()][0];
+    const before = await extractPageText(src, 0);
+    expect(before.text).toBe("three:0");
+    await ocrStore.put(src.hash!, 0, { ...linesToOcrPage(["Typed form", "Handwritten: hold warfarin"], { widthPt: 300, heightPt: 400 }), engine: "claude" });
+    invalidatePageText(src.id, 0);
+    const t = await extractPageText(src, 0);
+    expect(t.text).toBe("Typed form\nHandwritten: hold warfarin");
+    expect(t.ocr).toBeUndefined();
+    expect(t.items).toEqual(before.items);
+  });
+  it("ignores a Tesseract result on a page that has pdf.js text", async () => {
+    await useDocumentStore.getState().openFiles([{ name: "three.pdf", bytes: loadFixture("three") }]);
+    const src = [...useDocumentStore.getState().sources.values()][0];
+    await ocrStore.put(src.hash!, 0, { ...linesToOcrPage(["tess words"], { widthPt: 300, heightPt: 400 }), engine: "tesseract" });
+    expect((await extractPageText(src, 0)).text).toBe("three:0");
+  });
   it("returns empty text when the OCR lookup throws", async () => {
     await useDocumentStore.getState().openFiles([{ name: "scan.pdf", bytes: loadFixture("scan") }]);
     const src = [...useDocumentStore.getState().sources.values()][0];
