@@ -83,12 +83,12 @@ describe("AiClient", () => {
     const fetchFn = vi.fn()
       .mockResolvedValueOnce(json({ token: "t1", expiresAt: 9e9 }, 200))
       .mockResolvedValueOnce(json({ conversationId: "c", token: "el", remainingSeconds: 1200, resetAt: 5 }, 200))
-      .mockResolvedValueOnce(json({ error: "voice_limit", resetAt: 99 }, 429));
+      .mockResolvedValueOnce(json({ error: "voice_limit", resetAt: 99, remainingSeconds: 540, sessionSeconds: 600 }, 429));
     const c = new AiClient({ baseUrl: "https://ai.test", getTurnstileToken: async () => "tok", fetchFn });
     expect(await c.createLiveSession()).toEqual({ conversationId: "c", token: "el", remainingSeconds: 1200, resetAt: 5 });
     expect(fetchFn.mock.calls[1][0]).toBe("https://ai.test/live");
     expect((fetchFn.mock.calls[1][1] as RequestInit).headers).toMatchObject({ authorization: "Bearer t1" });
-    await expect(c.createLiveSession()).rejects.toMatchObject({ message: "voice_limit", resetAt: 99 });
+    await expect(c.createLiveSession()).rejects.toMatchObject({ message: "voice_limit", resetAt: 99, remainingSeconds: 540, sessionSeconds: 600 });
   });
   it("reportLiveUsage posts the body with keepalive and returns null on failure", async () => {
     const fetchFn = vi.fn()

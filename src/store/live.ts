@@ -46,9 +46,16 @@ const deps: LiveDeps = {
 export function configureLiveDeps(partial: Partial<LiveDeps>): void { Object.assign(deps, partial); }
 
 const fmtTime = (unix: number) => new Date(unix * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-function errorMessage(code: string, resetAt?: number): string {
+type LimitInfo = { resetAt?: number; remainingSeconds?: number; sessionSeconds?: number };
+function errorMessage(code: string, info: LimitInfo = {}): string {
+  const at = info.resetAt ? fmtTime(info.resetAt) : "midnight UTC";
   switch (code) {
-    case "voice_limit": return `Voice allowance used for today; resets at ${resetAt ? fmtTime(resetAt) : "midnight UTC"}.`;
+    case "voice_limit": {
+      // A session reserves its full length up front, so a start can be refused while some minutes remain.
+      const left = Math.floor((info.remainingSeconds ?? 0) / 60), need = Math.round((info.sessionSeconds ?? 0) / 60);
+      if (left >= 1 && need > left) return `Voice sessions need ${need} free minutes to start — you have ${left}. More time frees up at ${at}.`;
+      return `Voice allowance used for today; resets at ${at}.`;
+    }
     case "voice_unavailable": return "Voice service unavailable right now.";
     case "verification_failed": return "Couldn't verify you're human. Try again.";
     case "network": case "connect_timeout": return "Connection lost";
@@ -163,10 +170,10 @@ export const useLiveStore = create<LiveState>((set, get) => {
         armSilence();
       } catch (err) {
         if (client !== live) { reportCancelled(live); return; }
-        const e = err as Error & { resetAt?: number };
+        const e = err as Error & LimitInfo;
         const code = e.name === "NotAllowedError" || e.name === "NotFoundError" ? "mic" : e.message;
         if (get().conversationId) void report();
-        finish("error", code === "mic" ? "Microphone access is needed for voice." : errorMessage(code, e.resetAt));
+        finish("error", code === "mic" ? "Microphone access is needed for voice." : errorMessage(code, e));
       }
     },
 

@@ -38,6 +38,7 @@ describe("POST /live", () => {
     expect(res.status).toBe(429);
     expect(json.error).toBe("voice_limit");
     expect(typeof json.resetAt).toBe("number");
+    expect(json).toMatchObject({ remainingSeconds: 500, sessionSeconds: 600 });
     expect(minted).toBe(false);
   });
   it("502 voice_unavailable when ElevenLabs fails, without charging", async () => {

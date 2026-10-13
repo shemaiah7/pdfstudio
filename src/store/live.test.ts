@@ -57,6 +57,16 @@ describe("useLiveStore", () => {
     expect(useLiveStore.getState().error).toMatch(/^Voice allowance used for today; resets at /);
     expect(useLiveStore.getState().status).toBe("error");
   });
+  it("voice_limit with time left explains the per-session reservation instead of saying the day is used up", async () => {
+    client.createLiveSession.mockRejectedValueOnce(Object.assign(new Error("voice_limit"), { resetAt: 1_900_000_000, remainingSeconds: 540, sessionSeconds: 600 }));
+    await useLiveStore.getState().start();
+    expect(useLiveStore.getState().error).toMatch(/^Voice sessions need 10 free minutes to start — you have 9\. More time frees up at .+\.$/);
+  });
+  it("voice_limit with under a minute left keeps the used-for-today message", async () => {
+    client.createLiveSession.mockRejectedValueOnce(Object.assign(new Error("voice_limit"), { resetAt: 1_900_000_000, remainingSeconds: 30, sessionSeconds: 600 }));
+    await useLiveStore.getState().start();
+    expect(useLiveStore.getState().error).toMatch(/^Voice allowance used for today; resets at /);
+  });
   it("voice_unavailable maps to its message", async () => {
     client.createLiveSession.mockRejectedValueOnce(new Error("voice_unavailable"));
     await useLiveStore.getState().start();
