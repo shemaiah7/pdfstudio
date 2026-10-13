@@ -2,7 +2,7 @@ import type { Env } from "../env";
 import { json } from "../cors";
 import { verifySession, utcDay, type SessionPayload } from "../session";
 import { createConversationToken, getConversationDuration, ElevenLabsError } from "../elevenlabs";
-import { admitVoice, chargeVoice, reconcileVoice, ADMISSION_SECONDS } from "../voiceQuota";
+import { admitVoice, chargeVoice, reconcileVoice, readVoice, ADMISSION_SECONDS } from "../voiceQuota";
 
 export interface LiveDeps { createToken: typeof createConversationToken; getDuration: typeof getConversationDuration }
 const defaultDeps: LiveDeps = { createToken: createConversationToken, getDuration: getConversationDuration };
@@ -23,7 +23,11 @@ export async function liveHandler(request: Request, env: Env, deps: LiveDeps = d
   if (!session) return json({ error: "unauthorized" }, 401, env);
   const limit = dailyVoiceSeconds(env);
   const admit = await admitVoice(env.QUOTA, session.vid, limit);
-  if (!admit.ok) return json({ error: "voice_limit", resetAt: admit.resetAt }, 429, env);
+  if (!admit.ok) {
+    // Report what is left and what a session reserves, so the app can say "needs 10 free minutes" when time remains.
+    const used = (await readVoice(env.QUOTA, session.vid, utcDay())).seconds;
+    return json({ error: "voice_limit", resetAt: admit.resetAt, remainingSeconds: Math.max(0, limit - used), sessionSeconds: ADMISSION_SECONDS }, 429, env);
+  }
   let minted: { token: string; conversationId: string };
   try {
     minted = await deps.createToken(env.ELEVENLABS_API_KEY, env.ELEVENLABS_AGENT_ID);
