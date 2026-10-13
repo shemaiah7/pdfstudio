@@ -1,4 +1,7 @@
-export interface SessionPayload { vid: string; exp: number }
+import type { Plan } from "./plan";
+
+export interface SessionPayload { vid: string; exp: number; plan?: Plan; uid?: string }
+export function sessionPlan(s: SessionPayload): Plan { return s.plan ?? "anon"; }
 
 const enc = new TextEncoder();
 
@@ -47,6 +50,7 @@ export async function verifySession(token: string, secret: string, now: number =
   try {
     const payload = JSON.parse(fromB64url(p)) as SessionPayload;
     if (typeof payload.vid !== "string" || typeof payload.exp !== "number") return null;
+    if (payload.plan !== undefined && !["anon", "free", "trial", "pro"].includes(payload.plan)) return null;
     if (payload.exp <= now) return null;
     return payload;
   } catch {
