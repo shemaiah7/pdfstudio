@@ -38,3 +38,16 @@ it("cannot be dismissed with Escape", () => {
   fireEvent.keyDown(window, { key: "Escape" });
   expect(screen.getByRole("dialog")).toBeTruthy();
 });
+
+it("moves focus into the dialog and wraps Tab within it", () => {
+  useAccount.setState({ me: { plan: "trial", paywall: true, termsAccepted: false } as never });
+  render(<TermsDialog signedIn />);
+  const dialog = screen.getByRole("dialog");
+  expect(dialog.contains(document.activeElement)).toBe(true);
+  const box = screen.getByLabelText(TERMS_CHECKBOX);
+  fireEvent.click(box);
+  const btn = screen.getByRole("button", { name: "Continue" });
+  btn.focus();
+  fireEvent.keyDown(window, { key: "Tab" });
+  expect(document.activeElement).toBe(dialog.querySelector("a"));
+});

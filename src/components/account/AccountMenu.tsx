@@ -39,10 +39,10 @@ function planRow(me: MeResponse): { name: string; detail: string } {
 }
 
 
-interface Props { onClose: () => void; navigate?: (url: string) => void }
+interface Props { onClose: () => void; navigate?: (url: string) => void; reload?: () => void }
 
 /** Plan, renewal or trial date, usage bars, Manage billing, Sign out and Delete account. Needs ClerkProvider. */
-export default function AccountMenu({ onClose, navigate = (url) => window.location.assign(url) }: Props) {
+export default function AccountMenu({ onClose, navigate = (url) => window.location.assign(url), reload = () => window.location.reload() }: Props) {
   const { user } = useUser();
   const { signOut } = useClerk();
   const me = useAccount((s) => s.me);
@@ -76,9 +76,10 @@ export default function AccountMenu({ onClose, navigate = (url) => window.locati
       const client = useAiStore.getState().client;
       if (!client) throw new Error("no client");
       await client.deleteAccount();
-      useAccount.getState().clear();
-      await signOut();
-    } catch { setError("Couldn't delete your account. Try again."); setBusy(false); }
+    } catch { setError("Couldn't delete your account. Try again."); setBusy(false); return; }
+    // The account is gone; if Clerk can't sign out cleanly, a reload drops the dead session.
+    useAccount.getState().clear();
+    try { await signOut(); } catch { reload(); }
   };
 
   const plan = me ? planRow(me) : null;

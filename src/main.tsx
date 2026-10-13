@@ -9,13 +9,14 @@ import './styles.css'
 import { ClerkProvider } from '@clerk/clerk-react'
 import App from './App.tsx'
 import { ClerkBridge } from './account/ClerkBridge.tsx'
+import { clerkAppearance } from './account/clerkAppearance.ts'
 
 const clerkKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY as string | undefined
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     {clerkKey ? (
-      <ClerkProvider publishableKey={clerkKey} afterSignOutUrl="/">
+      <ClerkProvider publishableKey={clerkKey} afterSignOutUrl="/" appearance={clerkAppearance}>
         <ClerkBridge />
         <App />
       </ClerkProvider>

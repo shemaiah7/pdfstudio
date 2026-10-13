@@ -60,3 +60,17 @@ it("Sign out calls Clerk signOut", () => {
   fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
   expect(signOut).toHaveBeenCalled();
 });
+
+it("when deletion succeeded but signOut throws, reloads instead of showing an error", async () => {
+  signOut.mockRejectedValueOnce(new Error("clerk"));
+  const reload = vi.fn();
+  useAiStore.setState({ client: { deleteAccount: vi.fn().mockResolvedValue(undefined) } as never });
+  useAccount.setState({ me: pro as never });
+  render(<AccountMenu onClose={vi.fn()} reload={reload} />);
+  fireEvent.click(screen.getByRole("button", { name: /Delete account/ }));
+  fireEvent.change(screen.getByLabelText(/Type DELETE/), { target: { value: "DELETE" } });
+  fireEvent.click(screen.getByRole("button", { name: "Delete my account" }));
+  await vi.waitFor(() => expect(reload).toHaveBeenCalled());
+  expect(screen.queryByText(/Couldn't delete/)).toBeNull();
+  expect(useAccount.getState().me).toBeNull();
+});

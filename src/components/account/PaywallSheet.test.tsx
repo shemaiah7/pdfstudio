@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
-import { render, screen, fireEvent, cleanup } from "@testing-library/react";
+import { render, screen, fireEvent, cleanup, act } from "@testing-library/react";
 import { vi, it, expect, afterEach, beforeEach } from "vitest";
 import PaywallSheet from "./PaywallSheet";
 import { useSheets } from "./useGate";
 import { useAiStore } from "../../store/ai";
+import { useAccount } from "../../account/store";
 
 beforeEach(() => { useSheets.setState({ open: "paywall" }); });
 afterEach(() => { cleanup(); useSheets.setState({ open: null }); });
@@ -43,4 +44,26 @@ it("shows an error when checkout fails", async () => {
   fireEvent.click(screen.getByRole("button", { name: "Subscribe" }));
   expect(await screen.findByText("Couldn't start checkout. Try again.")).toBeTruthy();
   expect(navigate).not.toHaveBeenCalled();
+});
+
+it.each([
+  ["free", "Your trial has ended. Pro brings back editing and full AI."],
+  ["trial", "Keep editing and full AI after your trial ends."],
+] as const)("%s lede", (plan, text) => {
+  useAccount.setState({ me: { plan, paywall: true } as never });
+  render(<PaywallSheet navigate={vi.fn()} />);
+  expect(screen.getByText(text)).toBeTruthy();
+  useAccount.setState({ me: null });
+});
+
+it("resets to yearly and clears the error on reopen", async () => {
+  useAiStore.setState({ client: { checkout: vi.fn().mockRejectedValue(new Error("x")) } as never });
+  render(<PaywallSheet navigate={vi.fn()} />);
+  fireEvent.click(screen.getByRole("radio", { name: "Monthly" }));
+  fireEvent.click(screen.getByRole("button", { name: "Subscribe" }));
+  await screen.findByText("Couldn't start checkout. Try again.");
+  act(() => useSheets.setState({ open: null }));
+  act(() => useSheets.setState({ open: "paywall" }));
+  expect(screen.getByRole("radio", { name: /Yearly/ }).getAttribute("aria-checked")).toBe("true");
+  expect(screen.queryByText("Couldn't start checkout. Try again.")).toBeNull();
 });

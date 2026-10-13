@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useAccount } from "../../account/store";
 import { useAiStore } from "../../store/ai";
 import Sheet from "./Sheet";
 import { useSheets } from "./useGate";
@@ -13,7 +14,10 @@ export default function PaywallSheet({ navigate = (url: string) => window.locati
   const [interval, setInterval] = useState<Interval>("year");
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
+  const plan = useAccount((s) => s.plan());
+  useEffect(() => { if (open) { setInterval("year"); setFailed(false); setBusy(false); } }, [open]);
   if (!open) return null;
+  const lede = plan === "free" ? "Your trial has ended. Pro brings back editing and full AI." : plan === "trial" ? "Keep editing and full AI after your trial ends." : "Pro brings editing and full AI.";
 
   const subscribe = async () => {
     setBusy(true); setFailed(false);
@@ -27,7 +31,7 @@ export default function PaywallSheet({ navigate = (url: string) => window.locati
   return (
     <Sheet title="Go Pro" onClose={close} className="acct-hero">
       <div className="sigBody">
-        <p className="acct-lede">Your trial has ended. Pro brings back editing and full AI.</p>
+        <p className="acct-lede">{lede}</p>
         <div className="sigTabs acct-toggle" role="radiogroup" aria-label="Billing interval">
           <button type="button" role="radio" aria-checked={interval === "month"} className={interval === "month" ? "active" : ""} onClick={() => setInterval("month")}>Monthly</button>
           <button type="button" role="radio" aria-checked={interval === "year"} className={interval === "year" ? "active" : ""} onClick={() => setInterval("year")}>Yearly <span className="acct-save">2 months free</span></button>
