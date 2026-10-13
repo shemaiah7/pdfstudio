@@ -6,6 +6,7 @@ import { retrievePassages } from "./search";
 import { documentText } from "../pdf/text";
 import { useDocumentStore } from "./document";
 import { useAiStore } from "./ai";
+import { listMics, getSavedMic, saveMic, resolveMic, onDeviceChange, type Mic } from "../live/mics";
 
 export const SESSION_CAP_S = 600;
 export const SILENCE_S = 120;
@@ -25,25 +26,47 @@ export interface LiveState {
   searching: boolean;
   keywordMode: boolean;
   conversationId: string | null;
+  /** Chosen microphone deviceId; null means the system default. */
+  micId: string | null;
+  mics: Mic[];
   start(): Promise<void>;
   end(): Promise<void>;
   setMuted(on: boolean): void;
   acknowledge(): void;
+  setMic(id: string | null): void;
+  refreshMics(): Promise<void>;
 }
 
 export interface LiveDeps {
   retrieve: typeof retrievePassages;
   documentText: typeof documentText;
   startSession?: StartSession;
-  getMedia: () => Promise<void>;
+  getMedia: (micId: string | null) => Promise<void>;
+  getUserMedia: (c: MediaStreamConstraints) => Promise<MediaStream>;
+  listMics: () => Promise<Mic[]>;
   now: () => number;
 }
 const deps: LiveDeps = {
   retrieve: retrievePassages,
   documentText,
-  getMedia: async () => { const s = await navigator.mediaDevices.getUserMedia({ audio: true }); for (const t of s.getTracks()) t.stop(); },
+  getMedia: (micId) => openMicrophone(micId),
+  getUserMedia: (c) => navigator.mediaDevices.getUserMedia(c),
+  listMics,
   now: () => Date.now(),
 };
+/** Mic check: opens the chosen device (or the default) and releases it. A saved device that is gone falls back to the default and is forgotten. */
+export async function openMicrophone(micId: string | null): Promise<void> {
+  let stream: MediaStream;
+  try {
+    stream = await deps.getUserMedia({ audio: micId ? { deviceId: { exact: micId } } : true });
+  } catch (err) {
+    const name = (err as { name?: string })?.name;
+    if (!micId || (name !== "OverconstrainedError" && name !== "NotFoundError")) throw err;
+    stream = await deps.getUserMedia({ audio: true });
+    useLiveStore.getState().setMic(null);
+  }
+  for (const t of stream.getTracks()) t.stop();
+}
 export function configureLiveDeps(partial: Partial<LiveDeps>): void { Object.assign(deps, partial); }
 
 const fmtTime = (unix: number) => new Date(unix * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
@@ -123,8 +146,15 @@ export const useLiveStore = create<LiveState>((set, get) => {
   return {
     status: "idle", error: null, captions: [], seconds: 0, remainingSeconds: null, unlimited: false, resetAt: null,
     muted: false, acknowledged: false, searching: false, keywordMode: false, conversationId: null,
+    micId: getSavedMic(), mics: [],
     acknowledge: () => set({ acknowledged: true }),
     setMuted: (on) => { client?.mute(on); set({ muted: on }); },
+    setMic: (id) => {
+      saveMic(id);
+      set({ micId: id });
+      if (get().status === "live") void client?.setInputDevice(id ?? undefined);
+    },
+    refreshMics: async () => { set({ mics: await deps.listMics() }); },
 
     async start() {
       if (get().status !== "idle" && get().status !== "error") return;
@@ -132,7 +162,9 @@ export const useLiveStore = create<LiveState>((set, get) => {
       if (!api) { set({ status: "error", error: "Voice could not start." }); return; }
       set({ status: "connecting", error: null, captions: [], seconds: 0, searching: false, keywordMode: false, conversationId: null });
       startedAt = 0;
-      try { await deps.getMedia(); } catch { set({ status: "error", error: "Microphone access is needed for voice." }); return; }
+      try { await deps.getMedia(get().micId); } catch { set({ status: "error", error: "Microphone access is needed for voice." }); return; }
+      await get().refreshMics(); // device labels are available now that permission was granted
+      const inputDeviceId = resolveMic(get().micId, get().mics);
       const live = new LiveClient(
         { createSession: async () => { const s = await api.createLiveSession(); set({ conversationId: s.conversationId, resetAt: s.resetAt ?? null }); return s; } },
         {
@@ -158,7 +190,7 @@ export const useLiveStore = create<LiveState>((set, get) => {
       );
       client = live;
       try {
-        const { remainingSeconds, unlimited } = await live.start();
+        const { remainingSeconds, unlimited } = await live.start(inputDeviceId);
         if (client !== live) { reportCancelled(live); void live.close(); return; }
         startedAt = deps.now();
         const doc = useDocumentStore.getState();
@@ -190,6 +222,10 @@ export const useLiveStore = create<LiveState>((set, get) => {
     },
   };
 });
+
+// Plugging a microphone in or out refreshes the picker.
+onDeviceChange(() => { void useLiveStore.getState().refreshMics(); });
+void useLiveStore.getState().refreshMics();
 
 // Document change while live ends the session.
 useDocumentStore.subscribe((s, prev) => {

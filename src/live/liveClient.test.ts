@@ -4,13 +4,14 @@ import { describe, it, expect, vi } from "vitest";
 import { LiveClient, type LiveEvents, type LiveConversation, type StartSession } from "./liveClient";
 
 type Opts = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
-function fakeSdk(behaviour: { connect?: boolean; disconnectOnEnd?: boolean; throwOnStart?: Error } = {}) {
+function fakeSdk(behaviour: { connect?: boolean; disconnectOnEnd?: boolean; throwOnStart?: Error; failChange?: boolean } = {}) {
   let opts: Opts = {};
-  const conv: LiveConversation & { ended: boolean; context: string[]; muted: boolean | null } = {
-    ended: false, context: [], muted: null,
+  const conv: LiveConversation & { ended: boolean; context: string[]; muted: boolean | null; devices: string[] } = {
+    ended: false, context: [], muted: null, devices: [],
     async endSession() { this.ended = true; if (behaviour.disconnectOnEnd !== false) opts.onDisconnect?.({ reason: "user" }); },
     sendContextualUpdate(t) { this.context.push(t); },
     setMicMuted(m) { this.muted = m; },
+    async changeInputDevice(o) { if (behaviour.failChange) throw new Error("no device"); this.devices.push(o.inputDeviceId); },
     getId: () => "conv_1",
   };
   const startSession: StartSession = async (o) => {
@@ -36,6 +37,30 @@ describe("LiveClient", () => {
     expect(ev.onConnected).toHaveBeenCalledTimes(1);
     expect(await sdk.opts().clientTools.search_document({ query: "warfarin" })).toBe("[p. 1] warfarin");
     expect(search).toHaveBeenCalledWith("warfarin");
+  });
+  it("forwards inputDeviceId to startSession only when set", async () => {
+    const a = fakeSdk();
+    await new LiveClient(transport, events(), async () => "", { startSession: a.startSession }).start("mic-1");
+    expect(a.opts().inputDeviceId).toBe("mic-1");
+    const b = fakeSdk();
+    await new LiveClient(transport, events(), async () => "", { startSession: b.startSession }).start();
+    expect("inputDeviceId" in b.opts()).toBe(false);
+  });
+  it("setInputDevice switches the live conversation, defaulting to 'default'", async () => {
+    const sdk = fakeSdk(); const ev = events();
+    const c = new LiveClient(transport, ev, async () => "", { startSession: sdk.startSession });
+    await c.setInputDevice("x"); // not connected: no-op
+    await c.start();
+    await c.setInputDevice("mic-2"); await c.setInputDevice(undefined);
+    expect(sdk.conv.devices).toEqual(["mic-2", "default"]);
+    expect(ev.onError).not.toHaveBeenCalled();
+  });
+  it("setInputDevice reports failures through onError instead of throwing", async () => {
+    const sdk = fakeSdk({ failChange: true }); const ev = events();
+    const c = new LiveClient(transport, ev, async () => "", { startSession: sdk.startSession });
+    await c.start();
+    await expect(c.setInputDevice("mic-2")).resolves.toBeUndefined();
+    expect(ev.onError).toHaveBeenCalledWith("no device");
   });
   it("routes messages by role and forwards corrections and interruptions", async () => {
     const sdk = fakeSdk(); const ev = events();
