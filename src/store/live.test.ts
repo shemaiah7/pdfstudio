@@ -29,7 +29,7 @@ beforeEach(() => {
   retrieve.mockReset().mockResolvedValue([{ page: 2, text: "warfarin 5 mg nightly" }]);
   useAiStore.setState({ client: client as never });
   configureLiveDeps({ retrieve: retrieve as never, documentText: async () => [{ page: 1, text: "Cardiology note. Troponin elevated." }, { page: 2, text: "warfarin 5 mg nightly" }], startSession, getMedia: async () => {}, now: () => Date.now() });
-  useLiveStore.setState({ status: "idle", error: null, captions: [], seconds: 0, remainingSeconds: null, resetAt: null, muted: false, acknowledged: true, searching: false, keywordMode: false, conversationId: null });
+  useLiveStore.setState({ status: "idle", error: null, captions: [], seconds: 0, remainingSeconds: null, unlimited: false, resetAt: null, muted: false, acknowledged: true, searching: false, keywordMode: false, conversationId: null });
   openDoc();
 });
 afterEach(() => { vi.useRealTimers(); });
@@ -43,6 +43,16 @@ describe("useLiveStore", () => {
     expect(s.conversationId).toBe("conv_1");
     expect(s.remainingSeconds).toBe(1200);
     expect(conv.context[0]).toBe("Document: note.pdf, 2 pages.");
+  });
+  it("owner sessions: remainingSeconds null, unlimited true", async () => {
+    client.createLiveSession.mockResolvedValue({ conversationId: "conv_1", token: "tok", remainingSeconds: null, unlimited: true, resetAt: undefined });
+    client.reportLiveUsage.mockResolvedValue({ remainingSeconds: null, unlimited: true });
+    await useLiveStore.getState().start();
+    await flush();
+    expect(useLiveStore.getState()).toMatchObject({ status: "live", remainingSeconds: null, unlimited: true });
+    await useLiveStore.getState().end();
+    expect(useLiveStore.getState()).toMatchObject({ status: "idle", remainingSeconds: null, unlimited: true });
+    useLiveStore.setState({ unlimited: false });
   });
   it("mic denied: error, no /live call, no usage report", async () => {
     configureLiveDeps({ getMedia: async () => { throw Object.assign(new Error("x"), { name: "NotAllowedError" }); } });

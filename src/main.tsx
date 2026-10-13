@@ -1,4 +1,5 @@
 import './polyfills' // before anything that reads PDF text (Safari: ReadableStream async iteration)
+import './ai/owner' // captures #owner=<key> and strips it from the URL before the app renders
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import 'pdfjs-dist/web/pdf_viewer.css'

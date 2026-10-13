@@ -29,7 +29,7 @@ export default function VoiceTab() {
   const disclosure = (
     <div className="voice-disclosure"><Icon name="lock" size={14} /><span>{DISCLOSURE}</span></div>
   );
-  const meter = s.remainingSeconds !== null && (
+  const meter = !s.unlimited && s.remainingSeconds !== null && (
     <div className="voice-meter" aria-hidden="true"><div className="voice-meter-fill" style={{ width: `${Math.min(100, Math.max(0, (s.remainingSeconds / 1800) * 100))}%` }} /></div>
   );
 
@@ -43,7 +43,7 @@ export default function VoiceTab() {
           <span className={`voice-label ${connecting ? "pending" : ""}`}><span className={`voice-dot ${connecting ? "" : "on"}`} aria-hidden="true" />{connecting ? "Starting" : "Live"}</span>
           <span className="voice-status" data-testid="voice-status">
             {s.status === "connecting" ? "Connecting…" : s.status === "ending" ? "Ending…" : mmss(s.seconds)}
-            {s.remainingSeconds !== null && ` · ${Math.floor(s.remainingSeconds / 60)} min left today`}
+            {s.unlimited ? " · Owner · unlimited" : s.remainingSeconds !== null && ` · ${Math.floor(s.remainingSeconds / 60)} min left today`}
           </span>
         </div>
         {meter}
@@ -92,7 +92,7 @@ export default function VoiceTab() {
         )}
         <button data-testid="voice-start" className="voice-start" onClick={begin} disabled={!hasDoc}><Icon name="mic" size={18} />{isError ? "Retry" : "Start voice session"}</button>
         {!hasDoc && <p className="muted voice-hint">Open a document first.</p>}
-        {s.remainingSeconds !== null && <><p className="muted voice-min">{Math.floor(s.remainingSeconds / 60)} min left today</p>{meter}</>}
+        {s.unlimited ? <p className="muted voice-min">Owner · unlimited</p> : s.remainingSeconds !== null && <><p className="muted voice-min">{Math.floor(s.remainingSeconds / 60)} min left today</p>{meter}</>}
       </div>
       {disclosure}
     </div>

@@ -156,4 +156,17 @@ describe("POST /ai", () => {
     const state = await env.QUOTA.get(`q:vid-cancel:${new Date().toISOString().slice(0, 10)}`, "json");
     expect(state).toEqual({ requests: 1, tokens: 510 });
   });
+
+  it("owner sessions bypass the daily limit and report unlimited", async () => {
+    const t = await signSession({ vid: "vid-owner", exp: Math.floor(Date.now() / 1000) + 3600, owner: true }, env.SESSION_SECRET);
+    const day = new Date().toISOString().slice(0, 10);
+    await env.QUOTA.put(`q:vid-owner:${day}`, JSON.stringify({ requests: DAILY_REQUESTS, tokens: 10_000_000 }));
+    const { res, text } = await post(doc, t);
+    expect(res.status).toBe(200);
+    expect(text).toContain("event: done");
+    expect(text).toContain('"remaining":null');
+    expect(text).toContain('"unlimited":true');
+    expect(await env.QUOTA.get(`q:vid-owner:${day}`, "json")).toEqual({ requests: DAILY_REQUESTS, tokens: 10_000_000 });
+    expect(await env.QUOTA.get(`b:vid-owner`)).toBeNull();
+  });
 });

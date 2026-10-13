@@ -122,4 +122,24 @@ describe("AiClient.runOcr", () => {
       String(input).endsWith("/session") ? new Response(JSON.stringify({ token: "tok" })) : new Response(JSON.stringify({ error: "daily_limit", resetAt: 5 }), { status: 429 }) });
     await expect(client.runOcr([{ page: 1, image: "abc" }])).rejects.toMatchObject({ message: "daily_limit", resetAt: 5 });
   });
+
+  it("sends the stored owner key with /session and remembers an owner session", async () => {
+    localStorage.setItem("pdfstudio.ownerKey", "k".repeat(40));
+    const fetchFn = vi.fn().mockResolvedValueOnce(json({ token: "t1", expiresAt: 9e9, owner: true }, 200));
+    const c = new AiClient({ baseUrl: "https://ai.test", getTurnstileToken: async () => "tok", fetchFn });
+    expect(c.isOwner).toBe(false);
+    await c.ensureSession();
+    expect(JSON.parse((fetchFn.mock.calls[0][1] as RequestInit).body as string)).toEqual({ turnstileToken: "tok", ownerKey: "k".repeat(40) });
+    expect(c.isOwner).toBe(true);
+    localStorage.clear();
+  });
+
+  it("omits ownerKey when none is stored and is not an owner", async () => {
+    localStorage.clear();
+    const fetchFn = vi.fn().mockResolvedValueOnce(json({ token: "t1", expiresAt: 9e9 }, 200));
+    const c = new AiClient({ baseUrl: "https://ai.test", getTurnstileToken: async () => "tok", fetchFn });
+    await c.ensureSession();
+    expect(JSON.parse((fetchFn.mock.calls[0][1] as RequestInit).body as string)).toEqual({ turnstileToken: "tok" });
+    expect(c.isOwner).toBe(false);
+  });
 });

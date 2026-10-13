@@ -1,4 +1,4 @@
-export interface SessionPayload { vid: string; exp: number }
+export interface SessionPayload { vid: string; exp: number; owner?: true }
 
 const enc = new TextEncoder();
 
@@ -48,6 +48,7 @@ export async function verifySession(token: string, secret: string, now: number =
     const payload = JSON.parse(fromB64url(p)) as SessionPayload;
     if (typeof payload.vid !== "string" || typeof payload.exp !== "number") return null;
     if (payload.exp <= now) return null;
+    if (payload.owner !== undefined && payload.owner !== true) return null;
     return payload;
   } catch {
     return null;
