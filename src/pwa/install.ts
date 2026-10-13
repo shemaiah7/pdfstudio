@@ -19,7 +19,7 @@ export const isSafariMac = ({ ua, platform, maxTouchPoints }: PlatformInfo): boo
 export const computeHint = (info: PlatformInfo, canPrompt: boolean): PlatformHint =>
   isIos(info) ? "ios" : isSafariMac(info) ? "safari-mac" : canPrompt ? "prompt" : "none";
 
-const readPlatform = (): PlatformInfo =>
+export const readPlatform = (): PlatformInfo =>
   typeof navigator === "undefined" ? { ua: "", platform: "", maxTouchPoints: 0 }
     : { ua: navigator.userAgent ?? "", platform: navigator.platform ?? "", maxTouchPoints: navigator.maxTouchPoints ?? 0 };
 
