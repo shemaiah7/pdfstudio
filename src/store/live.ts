@@ -1,16 +1,18 @@
 // src/store/live.ts
 import { create } from "zustand";
 import { LiveClient, type StartSession } from "../live/liveClient";
-import { formatPassages, keywordPassages, overview, NO_MATCH } from "../live/grounding";
+import { formatPassages, keywordPassages, overview, NO_MATCH, pagesNamed, looksGarbled } from "../live/grounding";
 import { retrievePassages } from "./search";
 import { documentText } from "../pdf/text";
 import { useDocumentStore } from "./document";
 import { useAiStore } from "./ai";
+import { useOcrStore, pageKey } from "./ocr";
 import { listMics, getSavedMic, saveMic, resolveMic, onDeviceChange, type Mic } from "../live/mics";
 
 export const SESSION_CAP_S = 600;
 export const SILENCE_S = 120;
 /** How long the voice search tool waits for on-device retrieval before answering from keyword matches (well under TOOL_TIMEOUT_MS). */
+const NAMED_PAGE_CHARS = 1500;
 export const RETRIEVE_BUDGET_MS = 2_500;
 
 export interface LiveState {
@@ -40,6 +42,8 @@ export interface LiveState {
 export interface LiveDeps {
   retrieve: typeof retrievePassages;
   documentText: typeof documentText;
+  /** True when result page N (1-based) has a finished Deep OCR (Claude) transcription. */
+  isDeepOcr: (page: number) => boolean;
   startSession?: StartSession;
   getMedia: (micId: string | null) => Promise<void>;
   getUserMedia: (c: MediaStreamConstraints) => Promise<MediaStream>;
@@ -49,6 +53,11 @@ export interface LiveDeps {
 const deps: LiveDeps = {
   retrieve: retrievePassages,
   documentText,
+  isDeepOcr: (page) => {
+    const p = useDocumentStore.getState().pages[page - 1];
+    const st = p ? useOcrStore.getState().pages[pageKey(p.sourceId, p.sourcePageIndex)] : undefined;
+    return st?.state === "done" && st.engine === "claude";
+  },
   getMedia: (micId) => openMicrophone(micId),
   getUserMedia: (c) => navigator.mediaDevices.getUserMedia(c),
   listMics,
@@ -120,7 +129,8 @@ export const useLiveStore = create<LiveState>((set, get) => {
     set({ searching: true });
     // Keyword matching runs alongside retrieval: a slow on-device embed must not use up the tool's
     // TOOL_TIMEOUT_MS and answer "no match" for text that is plainly in the document.
-    const keyword = deps.documentText("all").then((pages) => keywordPassages(pages, query)).catch(() => []);
+    const allPages = deps.documentText("all").catch(() => [] as { page: number; text: string }[]);
+    const keyword = allPages.then((pages) => keywordPassages(pages, query));
     let timer: ReturnType<typeof setTimeout> | null = null;
     try {
       let passages: { page: number; text: string }[] | null = null;
@@ -133,7 +143,22 @@ export const useLiveStore = create<LiveState>((set, get) => {
         set({ keywordMode: true });
         passages = await keyword;
       }
-      return passages.length ? formatPassages(passages) : NO_MATCH;
+      const all = await allPages;
+      const named = pagesNamed(query, all.length);
+      if (named.length) {
+        const lead = named.map((n) => {
+          const text = (all.find((p) => p.page === n)?.text ?? "").trim().slice(0, NAMED_PAGE_CHARS);
+          return { page: n, text: text || "(no readable text on this page)" };
+        });
+        passages = [...lead, ...passages.filter((p) => !named.includes(p.page))];
+      }
+      if (!passages.length) return NO_MATCH;
+      const suspect = [...new Set(passages.filter((p) => looksGarbled(p.text) && !deps.isDeepOcr(p.page)).map((p) => p.page))];
+      if (!suspect.length) return formatPassages(passages);
+      const noteFor = (pgs: number[]) => `Note for the assistant: the text on p. ${pgs.join(", ")} looks garbled, probably handwriting read by basic OCR. Tell the user the page may be unreadable and suggest running Deep OCR on it (toolbar \u2192 Deep OCR) for an accurate transcription.`;
+      const body = formatPassages(passages, 4000 - noteFor(suspect).length - 2);
+      const shown = suspect.filter((n) => body.includes(`[p. ${n}] `));
+      return shown.length ? `${body}\n\n${noteFor(shown)}` : body;
     } finally { if (timer) clearTimeout(timer); set({ searching: false }); }
   };
 

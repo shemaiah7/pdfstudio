@@ -31,6 +31,7 @@ beforeEach(() => {
   configureLiveDeps({ retrieve: retrieve as never, documentText: async () => [{ page: 1, text: "Cardiology note. Troponin elevated." }, { page: 2, text: "warfarin 5 mg nightly" }], startSession, getMedia: async () => {}, listMics: async () => [], now: () => Date.now() });
   useLiveStore.setState({ status: "idle", error: null, captions: [], seconds: 0, remainingSeconds: null, unlimited: false, resetAt: null, muted: false, acknowledged: true, searching: false, keywordMode: false, conversationId: null, micId: null, mics: [] });
   openDoc();
+  configureLiveDeps({ isDeepOcr: () => false });
 });
 afterEach(() => { vi.useRealTimers(); });
 
@@ -201,6 +202,56 @@ describe("useLiveStore", () => {
     useLiveStore.getState().setMuted(true);
     expect(spy).toHaveBeenCalledWith(true);
     expect(useLiveStore.getState().muted).toBe(true);
+  });
+
+  describe("search_document page lookup", () => {
+    const GARBLED = "Rsdnt fnd 0n flr ,, l/ wt~ pt c/o lft hp ;; || Hz rsdnt ntd 2 b hrt ~~ stmnt dd";
+    const pages4 = [
+      { page: 1, text: "Cardiology note. Troponin elevated." },
+      { page: 2, text: "warfarin 5 mg nightly" },
+      { page: 3, text: "" },
+      { page: 4, text: "Aide statement: the resident was found on the floor beside the bed this morning." },
+    ];
+    const live = async () => { await useLiveStore.getState().start(); await flush(); };
+    it("puts a named page first even when retrieval returns other pages", async () => {
+      configureLiveDeps({ documentText: async () => pages4 });
+      await live();
+      const out = await opts.clientTools.search_document({ query: "what does page 4 say" });
+      expect(out.startsWith("[p. 4] Aide statement")).toBe(true);
+      expect(out).toContain("[p. 2] warfarin 5 mg nightly");
+      expect(out).not.toContain("Note for the assistant");
+    });
+    it("skips duplicates of the named page and lists an empty one", async () => {
+      configureLiveDeps({ documentText: async () => pages4 });
+      retrieve.mockResolvedValue([{ page: 3, text: "dup" }, { page: 2, text: "warfarin 5 mg nightly" }]);
+      await live();
+      const out = await opts.clientTools.search_document({ query: "page 3" });
+      expect(out.startsWith("[p. 3] (no readable text on this page)")).toBe(true);
+      expect(out).not.toContain("dup");
+    });
+    it("trims each named page to 1500 chars", async () => {
+      configureLiveDeps({ documentText: async () => [{ page: 1, text: "word ".repeat(600) }] });
+      await live();
+      const out = await opts.clientTools.search_document({ query: "page 1" });
+      expect(out.split("\n\n")[0].length).toBeLessThanOrEqual(1500 + 8);
+    });
+    it("appends a Deep OCR note for a garbled named page", async () => {
+      configureLiveDeps({ documentText: async () => [...pages4.slice(0, 3), { page: 4, text: GARBLED }] });
+      await live();
+      const out = await opts.clientTools.search_document({ query: "page four" });
+      expect(out.endsWith("Note for the assistant: the text on p. 4 looks garbled, probably handwriting read by basic OCR. Tell the user the page may be unreadable and suggest running Deep OCR on it (toolbar \u2192 Deep OCR) for an accurate transcription.")).toBe(true);
+      expect(out.length).toBeLessThanOrEqual(4000);
+    });
+    it("adds no note when the page already has Deep OCR", async () => {
+      configureLiveDeps({ documentText: async () => [...pages4.slice(0, 3), { page: 4, text: GARBLED }], isDeepOcr: (p) => p === 4 });
+      await live();
+      expect(await opts.clientTools.search_document({ query: "page 4" })).not.toContain("Note for the assistant");
+    });
+    it("leaves queries without a page reference unchanged", async () => {
+      configureLiveDeps({ documentText: async () => pages4 });
+      await live();
+      expect(await opts.clientTools.search_document({ query: "warfarin" })).toBe("[p. 2] warfarin 5 mg nightly");
+    });
   });
 
   describe("microphone choice", () => {
