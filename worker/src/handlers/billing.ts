@@ -50,23 +50,29 @@ export async function portalHandler(request: Request, env: Env): Promise<Respons
   } catch { return json({ error: "billing_unavailable" }, 502, env); }
 }
 
-type Sub = { id: string; status: string; current_period_end: number; customer: string };
+type Sub = { id: string; status: string; current_period_end?: number; items?: { data: { current_period_end?: number }[] }; customer: string; ended_at?: number | null };
 
-async function applySubscription(env: Env, subId: string, forceStatus?: string): Promise<void> {
+async function applySubscription(env: Env, subId: string, deleted = false): Promise<void> {
   const s = await stripeFetch<Sub>(`/subscriptions/${encodeURIComponent(subId)}`, env);
   const u = await getUserByCustomer(env.DB, s.customer);
   if (!u) return;
-  const status = forceStatus ?? s.status;
-  const patch: Parameters<typeof updateUser>[2] = { subscription_status: status, current_period_end: s.current_period_end };
+  const status = deleted ? "canceled" : s.status;
+  const now = Math.floor(Date.now() / 1000);
+  const patch: Parameters<typeof updateUser>[2] = { subscription_status: status };
+  let periodEnd = s.current_period_end ?? s.items?.data?.[0]?.current_period_end;
+  if (deleted) periodEnd = Math.min(periodEnd ?? Infinity, s.ended_at ?? now);
+  if (typeof periodEnd === "number" && Number.isFinite(periodEnd)) patch.current_period_end = periodEnd;
   if (status === "active" || status === "trialing") patch.past_due_since = null;
-  if ((status === "past_due" || status === "unpaid") && u.past_due_since === null) patch.past_due_since = Math.floor(Date.now() / 1000);
+  if ((status === "past_due" || status === "unpaid") && u.past_due_since === null) patch.past_due_since = now;
   await updateUser(env.DB, u.id, patch);
 }
 
 export async function webhookHandler(request: Request, env: Env): Promise<Response> {
   const raw = await request.text();
   if (!(await verifyStripeSignature(raw, request.headers.get("stripe-signature"), env.STRIPE_WEBHOOK_SECRET))) return new Response("bad signature", { status: 400 });
-  const ev = JSON.parse(raw) as { id: string; type: string; data: { object: Record<string, unknown> } };
+  let ev: { id: string; type: string; data: { object: Record<string, unknown> } };
+  try { ev = JSON.parse(raw); } catch { return new Response("bad payload", { status: 400 }); }
+  if (!ev || typeof ev.id !== "string" || !ev.id || typeof ev.type !== "string" || !ev.data || typeof ev.data.object !== "object" || ev.data.object === null) return new Response("bad payload", { status: 400 });
   try {
     const seen = await env.DB.prepare("INSERT INTO stripe_events (id, received_at) VALUES (?, ?) ON CONFLICT(id) DO NOTHING").bind(ev.id, Math.floor(Date.now() / 1000)).run();
     if (seen.meta.changes === 0) return Response.json({ received: true });
@@ -83,7 +89,7 @@ export async function webhookHandler(request: Request, env: Env): Promise<Respon
         await applySubscription(env, o.id as string);
         break;
       case "customer.subscription.deleted":
-        await applySubscription(env, o.id as string, "canceled");
+        await applySubscription(env, o.id as string, true);
         break;
       case "invoice.payment_failed": {
         const u = await getUserByCustomer(env.DB, o.customer as string);

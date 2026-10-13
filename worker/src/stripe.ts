@@ -2,6 +2,7 @@
 import type { Env } from "./env";
 
 const API = "https://api.stripe.com/v1";
+export const STRIPE_VERSION = "2025-03-31.basil";
 let stripeFetchImpl: typeof fetch = (i, init) => fetch(i, init);
 export function setStripeFetch(f: typeof fetch): void { stripeFetchImpl = f; }
 
@@ -9,7 +10,7 @@ export function setStripeFetch(f: typeof fetch): void { stripeFetchImpl = f; }
 export async function stripeFetch<T = Record<string, unknown>>(path: string, env: Env, form?: Record<string, string>, method: "GET" | "POST" | "DELETE" = form ? "POST" : "GET"): Promise<T> {
   const res = await stripeFetchImpl(`${API}${path}`, {
     method,
-    headers: { authorization: `Bearer ${env.STRIPE_SECRET_KEY}`, ...(form ? { "content-type": "application/x-www-form-urlencoded" } : {}) },
+    headers: { authorization: `Bearer ${env.STRIPE_SECRET_KEY}`, "Stripe-Version": STRIPE_VERSION, ...(form ? { "content-type": "application/x-www-form-urlencoded" } : {}) },
     body: form ? new URLSearchParams(form).toString() : undefined,
   });
   if (!res.ok) throw new Error(`stripe_${res.status}`);
