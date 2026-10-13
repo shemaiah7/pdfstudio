@@ -157,3 +157,34 @@ describe("POST /ai", () => {
     expect(state).toEqual({ requests: 1, tokens: 510 });
   });
 });
+
+async function callAi(e: typeof env, tok: string, body: unknown, stream: StreamFn = fakeStream(["ok"])) {
+  const req = new Request("https://ai.example/ai", { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${tok}` }, body: JSON.stringify(body) });
+  const ctx = createExecutionContext();
+  const res = await aiHandler(req, e, ctx, stream);
+  if (res.body) await res.clone().text();
+  await waitOnExecutionContext(ctx);
+  return res;
+}
+
+describe("/ai with PAYWALL_ENABLED", () => {
+  const on = { ...env, PAYWALL_ENABLED: "true" } as typeof env;
+  const exp = () => Math.floor(Date.now() / 1000) + 600;
+  it("anon -> 403 account_required", async () => {
+    const tok = await signSession({ vid: "anon1", exp: exp() }, env.SESSION_SECRET);
+    const res = await callAi(on, tok, doc);
+    expect(res.status).toBe(403);
+    expect(await res.json()).toMatchObject({ error: "account_required" });
+  });
+  it("free user over 5/day -> 429 daily_limit scope day", async () => {
+    const tok = await signSession({ vid: "u:user_f1", uid: "user_f1", plan: "free", exp: exp() }, env.SESSION_SECRET);
+    for (let i = 0; i < 5; i++) expect((await callAi(on, tok, doc)).status).toBe(200);
+    const res = await callAi(on, tok, doc);
+    expect(res.status).toBe(429);
+    expect(await res.json()).toMatchObject({ error: "daily_limit", scope: "day" });
+  });
+  it("flag off: signed-in user uses the old anonymous quota (unchanged behaviour)", async () => {
+    const tok = await signSession({ vid: "u:user_f2", uid: "user_f2", plan: "free", exp: exp() }, env.SESSION_SECRET);
+    expect((await callAi(env, tok, doc)).status).toBe(200);
+  });
+});

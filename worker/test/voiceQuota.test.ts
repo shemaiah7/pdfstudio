@@ -18,6 +18,21 @@ describe("voice quota", () => {
     expect(r).toMatchObject({ ok: false });
     expect(await readVoice(env.QUOTA, v, day)).toMatchObject({ seconds: 1300 });
   });
+  it("a smaller minReserve admits into a short allowance and reserves what is left", async () => {
+    const v = vid();
+    await env.QUOTA.put(`v:${v}:${day}`, JSON.stringify({ seconds: 100, charged: { a: 100 } }));
+    expect(await admitVoice(env.QUOTA, v, 300)).toMatchObject({ ok: false });
+    expect(await admitVoice(env.QUOTA, v, 300, Date.now() / 1000, 60)).toMatchObject({ ok: true, reserve: 200 });
+    expect(await admitVoice(env.QUOTA, v, 1800)).toMatchObject({ ok: true, reserve: 600 });
+    expect(await admitVoice(env.QUOTA, v, 150, Date.now() / 1000, 60)).toMatchObject({ ok: false });
+  });
+  it("reconcile reports the change in the conversation's charge", async () => {
+    const v = vid();
+    const t = Date.now() / 1000;
+    await chargeVoice(env.QUOTA, v, day, "c1", 300, t);
+    expect(await reconcileVoice(env.QUOTA, v, day, "c1", 95, t, true)).toMatchObject({ delta: -205 });
+    expect(await reconcileVoice(env.QUOTA, v, day, "c1", 95, t, true)).toMatchObject({ delta: 0 });
+  });
   it("charges the admission, records admitted[id] and sums charged entries", async () => {
     const v = vid();
     const t = Date.now() / 1000;

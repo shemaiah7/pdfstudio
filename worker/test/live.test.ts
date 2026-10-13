@@ -92,3 +92,48 @@ describe("POST /live/usage", () => {
     expect(json).toEqual({ remainingSeconds: 1760 });
   });
 });
+
+describe("POST /live with PAYWALL_ENABLED", () => {
+  const on = { ...env, PAYWALL_ENABLED: "true" } as typeof env;
+  const exp = () => Math.floor(Date.now() / 1000) + 600;
+  const liveAs = async (payload: Parameters<typeof signSession>[0], deps: LiveDeps = okDeps()) => {
+    const tok = await signSession(payload, env.SESSION_SECRET);
+    const res = await liveHandler(new Request("https://ai.example/live", { method: "POST", headers: { authorization: `Bearer ${tok}` } }), on, deps);
+    return { res, json: (await res.json().catch(() => null)) as any }; // eslint-disable-line @typescript-eslint/no-explicit-any
+  };
+  it("anon -> 403 account_required", async () => {
+    const { res, json } = await liveAs({ vid: "anon-live", exp: exp() });
+    expect(res.status).toBe(403);
+    expect(json).toMatchObject({ error: "account_required" });
+  });
+  it("free user, 0 s used -> 200 reserving the 300 s allowance", async () => {
+    const { res, json } = await liveAs({ vid: "u:user_l1", uid: "user_l1", plan: "free", exp: exp() });
+    expect(res.status).toBe(200);
+    expect(json).toMatchObject({ maxSeconds: 300, remainingSeconds: 0 });
+    expect(await env.QUOTA.get(`v:u:user_l1:${day}`, "json")).toMatchObject({ seconds: 300, charged: { conv_1: 300 } });
+    expect(await env.QUOTA.get(`m:voice:u:user_l1:${new Date().toISOString().slice(0, 7)}`)).toBe("300");
+  });
+  it("free user with 300 s used today -> 429 voice_limit", async () => {
+    await env.QUOTA.put(`v:u:user_l2:${day}`, JSON.stringify({ seconds: 300, charged: { a: 300 }, admitted: {}, pending: {} }));
+    const { res, json } = await liveAs({ vid: "u:user_l2", uid: "user_l2", plan: "free", exp: exp() });
+    expect(res.status).toBe(429);
+    expect(json).toMatchObject({ error: "voice_limit", remainingSeconds: 0, sessionSeconds: 600 });
+  });
+  it("free user with 250 s used (< 60 s left would refuse; 50 s left) -> 429", async () => {
+    await env.QUOTA.put(`v:u:user_l3:${day}`, JSON.stringify({ seconds: 250, charged: { a: 250 }, admitted: {}, pending: {} }));
+    expect((await liveAs({ vid: "u:user_l3", uid: "user_l3", plan: "free", exp: exp() })).res.status).toBe(429);
+  });
+  it("pro user with a full allowance -> 200 reserving 600 s", async () => {
+    const { res, json } = await liveAs({ vid: "u:user_l4", uid: "user_l4", plan: "trial", exp: exp() });
+    expect(res.status).toBe(200);
+    expect(json).toMatchObject({ maxSeconds: 600, remainingSeconds: 1200 });
+  });
+  it("usage report adjusts the month counter by the settled delta", async () => {
+    const payload = { vid: "u:user_l5", uid: "user_l5", plan: "trial" as const, exp: exp() };
+    await liveAs(payload);
+    const tok = await signSession(payload, env.SESSION_SECRET);
+    const res = await liveUsageHandler(new Request("https://ai.example/live/usage", { method: "POST", headers: { authorization: `Bearer ${tok}` }, body: JSON.stringify({ conversationId: "conv_1", seconds: 95 }) }), on, okDeps());
+    expect(res.status).toBe(200);
+    expect(await env.QUOTA.get(`m:voice:u:user_l5:${new Date().toISOString().slice(0, 7)}`)).toBe("95");
+  });
+});

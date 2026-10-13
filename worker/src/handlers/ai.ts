@@ -1,6 +1,7 @@
 import type { Env } from "../env";
 import { json } from "../cors";
-import { verifySession } from "../session";
+import { verifySession, utcDay } from "../session";
+import { gateFor, checkUsage } from "../limits";
 import { validateAiBody } from "../validate";
 import { buildRequest } from "../request";
 import { checkQuota, recordTokens, DAILY_REQUESTS, DAILY_TOKENS, type QuotaState } from "../quota";
@@ -27,8 +28,19 @@ export async function aiHandler(request: Request, env: Env, ctx: ExecutionContex
     (b.task === "rewrite" ? b.selection.length : 0) +
     (b.task === "ask" ? b.question.length : 0);
   const estimate = Math.ceil(chars / 3.5);
-  const quota = await checkQuota(env.QUOTA, session.vid, Date.now() / 1000, estimate);
-  if (!quota.ok) return json({ error: quota.reason, resetAt: quota.resetAt }, 429, env);
+  const now = Date.now() / 1000;
+  const gate = await gateFor(env, session, now);
+  if (gate === "account_required") return json({ error: "account_required" }, 403, env);
+  if (gate === "account_unavailable") return json({ error: "account_unavailable" }, 503, env);
+  let quota;
+  if (gate) {
+    const u = await checkUsage(env.QUOTA, session.vid, gate.plan, "ai", 1, gate.mk, now);
+    if (!u.ok) return json({ error: u.error, resetAt: u.resetAt, scope: u.scope }, u.error === "pro_required" ? 403 : 429, env);
+    quota = { ok: true as const, day: utcDay(now), resetAt: u.resetAt, charged: { requests: 0, tokens: 0 }, remaining: { requests: 0, tokens: 0 } };
+  } else {
+    quota = await checkQuota(env.QUOTA, session.vid, now, estimate);
+    if (!quota.ok) return json({ error: quota.reason, resetAt: quota.resetAt }, 429, env);
+  }
 
   let result;
   try {
@@ -46,7 +58,7 @@ export async function aiHandler(request: Request, env: Env, ctx: ExecutionContex
   const record = (u: { inputTokens: number; outputTokens: number }) =>
     (recorded ??= (async () => {
       const delta = Math.max(0, u.inputTokens + u.outputTokens - estimate);
-      return delta === 0 ? quota.charged : recordTokens(env.QUOTA, vid, day, delta);
+      return delta === 0 || gate ? quota.charged : recordTokens(env.QUOTA, vid, day, delta);
     })());
   let finished!: () => void;
   ctx.waitUntil(new Promise<void>((resolve) => { finished = resolve; }));

@@ -1,6 +1,7 @@
 import type { Env } from "../env";
 import { json } from "../cors";
-import { verifySession } from "../session";
+import { verifySession, utcDay } from "../session";
+import { gateFor, checkUsage } from "../limits";
 import { validateOcrBody } from "../validate";
 import { checkQuota, recordTokens, DAILY_REQUESTS, DAILY_TOKENS } from "../quota";
 import { ocrWithSdk, mapError, type OcrFn } from "../claude";
@@ -22,8 +23,18 @@ export async function ocrHandler(request: Request, env: Env, ctx: ExecutionConte
   const pages = v.body.pages;
   const now = Date.now() / 1000;
   // Each page is one AI request: reserve the whole batch in a single quota call (one burst write, one day write).
-  const quota = await checkQuota(env.QUOTA, session.vid, now, TOKENS_PER_PAGE * pages.length, pages.length);
-  if (!quota.ok) return json({ error: quota.reason, resetAt: quota.resetAt }, 429, env);
+  const gate = await gateFor(env, session, now);
+  if (gate === "account_required") return json({ error: "account_required" }, 403, env);
+  if (gate === "account_unavailable") return json({ error: "account_unavailable" }, 503, env);
+  let quota;
+  if (gate) {
+    const u = await checkUsage(env.QUOTA, session.vid, gate.plan, "ocr", pages.length, gate.mk, now);
+    if (!u.ok) return json({ error: u.error, resetAt: u.resetAt, scope: u.scope }, u.error === "pro_required" ? 403 : 429, env);
+    quota = { ok: true as const, day: utcDay(now), resetAt: u.resetAt, charged: { requests: 0, tokens: 0 }, remaining: { requests: 0, tokens: 0 } };
+  } else {
+    quota = await checkQuota(env.QUOTA, session.vid, now, TOKENS_PER_PAGE * pages.length, pages.length);
+    if (!quota.ok) return json({ error: quota.reason, resetAt: quota.resetAt }, 429, env);
+  }
 
   const out: { page: number; lines: string[] }[] = [];
   const failed: number[] = [];
@@ -38,7 +49,7 @@ export async function ocrHandler(request: Request, env: Env, ctx: ExecutionConte
       failed.push(p.page);
     }
   }
-  const state = extra > 0 ? await recordTokens(env.QUOTA, session.vid, quota.day, extra) : quota.charged;
+  const state = extra > 0 && !gate ? await recordTokens(env.QUOTA, session.vid, quota.day, extra) : quota.charged;
   console.log(JSON.stringify({ task: "ocr", vid: session.vid, pages: pages.length, failed: failed.length }));
   return json({ pages: out, failed, remaining: { requests: Math.max(0, DAILY_REQUESTS - state.requests), tokens: Math.max(0, DAILY_TOKENS - state.tokens) }, resetAt: quota.resetAt }, 200, env);
 }
