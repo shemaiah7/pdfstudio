@@ -1,0 +1,281 @@
+<title>PDF Studio Design Brief</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Public+Sans:ital,wght@0,400;0,600;1,400&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: single reading column (~72ch) with a sticky contents rail on wide screens; wireframes drawn in CSS. */
+:root {
+  --bg: #f6f7f9;
+  --surface: #ffffff;
+  --ink: #16191f;
+  --ink-soft: #4b5260;
+  --rule: #dde1e7;
+  --accent: #2b4fd6;
+  --mark: #ffe25a;
+  --mark-ink: #3a3000;
+  --code-bg: #eef1f5;
+  --font-display: "Bricolage Grotesque", "Avenir Next", system-ui, sans-serif;
+  --font-body: "Public Sans", "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #12151b; --surface: #1b1f27; --ink: #eef0f4; --ink-soft: #a7aebb; --rule: #2e343f;
+    --accent: #8ea6ff; --mark: #6b5a00; --mark-ink: #fff4b8; --code-bg: #232833; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #12151b; --surface: #1b1f27; --ink: #eef0f4; --ink-soft: #a7aebb; --rule: #2e343f;
+  --accent: #8ea6ff; --mark: #6b5a00; --mark-ink: #fff4b8; --code-bg: #232833; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 16px; line-height: 1.6; padding: 0 20px; }
+.shell { max-width: 1120px; margin: 0 auto; display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 56px; padding-block: 48px 96px; }
+@media (max-width: 900px) { .shell { grid-template-columns: minmax(0, 1fr); gap: 24px; padding-block: 28px 64px; } nav.toc { position: static !important; } }
+nav.toc { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 24px); align-self: start; font-size: 14px; }
+nav.toc p { font-family: var(--font-mono); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-soft); margin: 0 0 8px; }
+nav.toc ol { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+nav.toc a { color: var(--ink-soft); text-decoration: none; }
+nav.toc a:hover, nav.toc a:focus-visible { color: var(--accent); }
+main { min-width: 0; max-width: 72ch; }
+h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; line-height: 1.15; }
+h1 { font-size: clamp(34px, 6vw, 52px); font-weight: 700; margin: 0 0 12px; letter-spacing: -0.01em; }
+h2 { font-size: 28px; font-weight: 700; margin: 64px 0 12px; padding-top: 20px; border-top: 1px solid var(--rule); }
+h3 { font-size: 19px; font-weight: 600; margin: 32px 0 6px; }
+p { margin: 0 0 14px; }
+.lede { font-size: 19px; color: var(--ink-soft); }
+.eyebrow { font-family: var(--font-mono); font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-soft); margin-bottom: 14px; }
+mark { background: var(--mark); color: var(--mark-ink); padding: 0 3px; border-radius: 2px; }
+code { font-family: var(--font-mono); font-size: .86em; background: var(--code-bg); padding: 1px 5px; border-radius: 4px; }
+a { color: var(--accent); }
+ul { padding-left: 20px; margin: 0 0 14px; } li { margin-bottom: 4px; }
+.meta { display: flex; flex-wrap: wrap; gap: 8px 24px; font-size: 14px; color: var(--ink-soft); margin: 18px 0 0; }
+.meta b { color: var(--ink); font-weight: 600; }
+.tablewrap { overflow-x: auto; margin: 12px 0 20px; }
+table { border-collapse: collapse; width: 100%; font-size: 14.5px; }
+th, td { text-align: left; vertical-align: top; padding: 9px 12px 9px 0; border-bottom: 1px solid var(--rule); }
+th { font-family: var(--font-mono); font-size: 11px; letter-spacing: .07em; text-transform: uppercase; color: var(--ink-soft); font-weight: 500; }
+td:first-child { font-weight: 600; white-space: nowrap; }
+.swatches { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; margin: 12px 0 20px; }
+.sw { background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; padding: 8px; font-size: 13px; display: flex; gap: 10px; align-items: center; }
+.chip { width: 28px; height: 28px; border-radius: 6px; border: 1px solid rgba(0,0,0,.12); flex: none; }
+.sw span { font-family: var(--font-mono); font-size: 12px; color: var(--ink-soft); display: block; }
+/* Wireframe */
+.wire { background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; padding: 10px; margin: 16px 0 8px; font-family: var(--font-mono); font-size: 11.5px; color: var(--ink-soft); }
+.wire .bar { border: 1px dashed var(--rule); border-radius: 6px; padding: 7px 10px; margin-bottom: 6px; overflow-wrap: anywhere; }
+.wire .ws { display: grid; grid-template-columns: 18% minmax(0, 1fr) 30%; gap: 6px; height: 240px; }
+.wire .col { border: 1px dashed var(--rule); border-radius: 6px; padding: 8px; display: flex; flex-direction: column; gap: 6px; min-width: 0; overflow: hidden; }
+.wire .pg { background: var(--bg); border-radius: 3px; flex: 1; display: grid; place-items: center; }
+.wire .th { background: var(--bg); border-radius: 3px; height: 44px; }
+.wire .lab { color: var(--ink); font-weight: 500; }
+.caption { font-size: 13px; color: var(--ink-soft); margin-bottom: 20px; }
+.callout { background: var(--surface); border: 1px solid var(--rule); border-left: 4px solid var(--mark); border-radius: 6px; padding: 14px 16px; margin: 16px 0; }
+.callout p:last-child { margin: 0; }
+.pain { counter-reset: p; list-style: none; padding: 0; }
+.pain li { counter-increment: p; position: relative; padding-left: 34px; margin-bottom: 10px; }
+.pain li::before { content: counter(p); position: absolute; left: 0; top: 1px; width: 22px; height: 22px; border-radius: 50%; background: var(--code-bg); font-family: var(--font-mono); font-size: 12px; display: grid; place-items: center; }
+</style>
+
+<div class="shell">
+  <nav class="toc" aria-label="Contents">
+    <p>Contents</p>
+    <ol>
+      <li><a href="#what">What it is</a></li>
+      <li><a href="#principles">Product principles</a></li>
+      <li><a href="#layout">Screens and layout</a></li>
+      <li><a href="#toolbar">Top toolbar</a></li>
+      <li><a href="#palette">Tool palette</a></li>
+      <li><a href="#pages">Page sidebar and canvas</a></li>
+      <li><a href="#onpage">On-page editors</a></li>
+      <li><a href="#panel">Right panel</a></li>
+      <li><a href="#system">System feedback</a></li>
+      <li><a href="#current">Current visual system</a></li>
+      <li><a href="#problems">What feels dated</a></li>
+      <li><a href="#ask">The ask</a></li>
+    </ol>
+  </nav>
+
+  <main>
+    <div class="eyebrow">Design brief · Redesign</div>
+    <h1>PDF Studio</h1>
+    <p class="lede">A PDF editor that runs entirely in the web browser, with AI that reads the document with you. Think of a lightweight Adobe Acrobat that never uploads your file, plus a voice assistant you can talk to about it.</p>
+    <div class="meta">
+      <span><b>Platform</b> Web app, desktop-first</span>
+      <span><b>Stack</b> React, pdf.js, pdf-lib</span>
+      <span><b>Headline feature</b> Voice</span>
+    </div>
+
+    <h2 id="what">What it is</h2>
+    <p>You drop one or more PDFs into the browser. PDF Studio shows the pages and lets you reorganize them, mark them up, fill and sign forms, and change the text that is already printed on the page. Then you download a new PDF. The file stays on your computer the whole time.</p>
+    <p>On top of the editor sit three kinds of assistance, all in a panel on the right:</p>
+    <ul>
+      <li><b>Voice:</b> start a spoken conversation about the open document. The assistant answers only from the document and says which page it found the answer on. This is the feature we lead with, and the panel opens on it by default.</li>
+      <li><b>AI:</b> summarize, ask questions in a chat, rewrite a selected passage, or pull out key facts as a table.</li>
+      <li><b>Search:</b> search by meaning across every document you've opened, using a model that runs on your own device.</li>
+    </ul>
+    <p>Scanned pages are read automatically (OCR), so the AI tools and search work on scans too.</p>
+
+    <h2 id="principles">Product principles the design should express</h2>
+    <ul>
+      <li><b>Private by default.</b> "Your file never leaves your browser" is a core promise. Wherever something does leave the device (text sent to the AI, microphone audio sent to the voice service, page images sent for Deep OCR), the app tells the user plainly before it happens. Those disclosures need to stay, but should feel calm and trustworthy, not like warnings.</li>
+      <li><b>Answers point back to the page.</b> AI answers, search hits, voice replies and extracted facts all link to a page number. Clicking one scrolls to that page and briefly highlights the text. Citations deserve a strong, consistent visual treatment.</li>
+      <li><b>The document is the hero.</b> Pages should feel like real paper on a quiet desk; the controls around them should recede.</li>
+      <li><b>Free with limits.</b> Users get 20 AI requests a day and 30 minutes of voice. Limits are shown, not hidden.</li>
+    </ul>
+
+    <h2 id="layout">Screens and layout</h2>
+    <p>There are two screens.</p>
+    <h3>1. Empty state (no document open)</h3>
+    <p>A large dashed drop area filling the window, with the title "PDF Studio", "Drop PDF files here, or" and a <b>Choose files</b> button. Below: "Files never leave your browser." and a hint promoting voice: "Open a document, then talk to it: ask questions by voice and hear answers cited to the page." This is the first impression and the main marketing moment, and right now it is very bare.</p>
+
+    <h3>2. Workspace (document open)</h3>
+    <div class="wire" role="img" aria-label="Wireframe of the workspace: two stacked toolbars on top, then three columns: page thumbnails, page canvas, and the right panel.">
+      <div class="bar"><span class="lab">Toolbar</span> · Open · Add file | Undo Redo | Rotate ⟲ ⟳ · Delete · Extract selected · Clear form · Deep OCR | − 120% + · OCR status ······ 12 pages • unsaved · <b>Download</b></div>
+      <div class="bar"><span class="lab">Tool palette</span> · Select · Edit text · Highlight · Note · Draw · Rectangle · Arrow · Text box · Sign | ● ● ● ● ● ● | thin medium thick</div>
+      <div class="ws">
+        <div class="col"><span class="lab">Pages</span><div class="th"></div><div class="th"></div><div class="th"></div></div>
+        <div class="col"><span class="lab">Canvas</span><div class="pg">page 1</div><div class="pg">page 2</div></div>
+        <div class="col"><span class="lab">Right panel</span><span>AI | Search | Voice</span><div class="pg">tab content</div></div>
+      </div>
+    </div>
+    <p class="caption">Current widths: page sidebar 180px, right panel 360px, canvas takes the rest. Below 700px wide the right panel is hidden and the sidebar shrinks to 96px.</p>
+    <p>Dragging a file anywhere onto the workspace shows a full-window blue dashed overlay; dropping adds the file's pages to the end of the document.</p>
+
+    <h2 id="toolbar">Top toolbar</h2>
+    <p>One row of plain text buttons, wrapping onto two lines on narrow screens. From left to right:</p>
+    <div class="tablewrap"><table>
+      <thead><tr><th>Group</th><th>Controls</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td>Files</td><td>Open, Add file</td><td>Open replaces the document; Add file appends pages from more PDFs.</td></tr>
+        <tr><td>History</td><td>Undo, Redo</td><td>Also ⌘Z / ⌘⇧Z. Disabled when there's nothing to undo.</td></tr>
+        <tr><td>Page actions</td><td>Rotate left, Rotate right, Delete, Extract selected</td><td>Act on pages selected in the sidebar or canvas; disabled when none are selected. Extract downloads only those pages.</td></tr>
+        <tr><td>Form</td><td>Clear form</td><td>Only appears when the PDF has fillable fields.</td></tr>
+        <tr><td>Deep OCR</td><td>Dropdown: This page / Selected pages / All scanned pages</td><td>Sends page images to Claude for high-accuracy transcription of handwriting and tables. Shows a disclosure first.</td></tr>
+        <tr><td>Zoom</td><td>−, 120%, +</td><td>40% to 300% in 20% steps.</td></tr>
+        <tr><td>OCR status</td><td>"Recognizing text 3/12", Cancel, Retry</td><td>Appears only while scanned pages are being read.</td></tr>
+        <tr><td>Status</td><td>"12 pages • unsaved"</td><td>Pushed to the right.</td></tr>
+        <tr><td>Download</td><td>Primary button</td><td>Builds the edited PDF; label becomes "Building…" while working.</td></tr>
+      </tbody>
+    </table></div>
+
+    <h2 id="palette">Tool palette</h2>
+    <p>A second row below the toolbar. Exactly one tool is active at a time; Esc returns to Select.</p>
+    <div class="tablewrap"><table>
+      <thead><tr><th>Tool</th><th>What it does</th></tr></thead>
+      <tbody>
+        <tr><td>Select</td><td>Select text and pages; click annotations to move, resize or delete them.</td></tr>
+        <tr><td>Edit text</td><td>Shortcut <code>E</code>. Click a paragraph on the page and retype it in place (see On-page editors).</td></tr>
+        <tr><td>Highlight</td><td>Drag across text to highlight it. Defaults to yellow.</td></tr>
+        <tr><td>Note</td><td>Click to drop a sticky note; opens a small popover with a text area, Done and Delete.</td></tr>
+        <tr><td>Draw</td><td>Freehand pen.</td></tr>
+        <tr><td>Rectangle, Arrow</td><td>Draw shapes.</td></tr>
+        <tr><td>Text box</td><td>Type free text anywhere on the page.</td></tr>
+        <tr><td>Sign</td><td>Opens the signature dialog, then click to place the signature.</td></tr>
+      </tbody>
+    </table></div>
+    <p>After the tools: six colour swatches (black, red, blue, green, yellow, purple) as small circles, then three stroke widths (thin, medium, thick) as text buttons. Choosing a colour or width also changes the selected annotation. Short hints such as "No selectable text on this page" appear at the end of the row.</p>
+
+    <h2 id="pages">Page sidebar and canvas</h2>
+    <h3>Page sidebar (left)</h3>
+    <p>A vertical strip of page thumbnails with a small page number badge. Click to select, shift/⌘-click for several, drag to reorder. Selected thumbnails get a blue border and tinted background. Pages from different files are mixed into one sequence.</p>
+    <h3>Canvas (centre)</h3>
+    <p>All pages stacked vertically on a grey background with a drop shadow, scrolled continuously. Each page carries:</p>
+    <ul>
+      <li>a page number label (bottom right) and, on scanned pages, an OCR badge (top left): "Recognizing…", "Text recognized", "Deep OCR", "No text found", or "Failed · Retry";</li>
+      <li>a selectable text layer, annotations, and fillable form fields drawn as light-blue boxes;</li>
+      <li>a blue outline when the page is selected.</li>
+    </ul>
+
+    <h2 id="onpage">On-page editors and dialogs</h2>
+    <h3>Edit text</h3>
+    <p>Hovering a paragraph shows a dashed outline. Clicking turns it into an editable box sized to the original, with a small floating bar underneath: a fit status ("Fits" or "Overflows by 2 lines", or a warning when a character can't be saved in that font), plus Cancel and Done. A finished edit can be reopened, dragged, resized by its right edge, re-fonted or deleted from a small bar above it. A newer version that edits single lines instead of whole paragraphs is in progress.</p>
+    <h3>Signature dialog</h3>
+    <p>A modal with three tabs: <b>Draw</b> (a canvas with Clear), <b>Type</b> (enter your name, then pick one of three script styles: Brush, Chancery, Casual), and <b>Upload</b> (PNG or JPG up to 2 MB). A "Remember this signature" checkbox saves it in this browser only, with Use saved and Forget. Actions: Cancel, Add signature.</p>
+    <h3>Note popover</h3>
+    <p>A 220px card attached to the note: text area, Delete, Done.</p>
+
+    <h2 id="panel">Right panel</h2>
+    <p>Three top-level tabs: <b>AI</b>, <b>Search</b>, <b>Voice</b>. Voice is selected by default and shows a pulsing red dot on its tab while a session is live.</p>
+
+    <h3>Voice tab (headline feature)</h3>
+    <ul>
+      <li>Intro: "Talk with an assistant about the open document. It answers only from the document's text and cites pages."</li>
+      <li>Disclosure: microphone audio goes to ElevenLabs, relevant passages go to ElevenLabs and Anthropic, recordings aren't kept, about $0.10 a minute, 30 minutes a day.</li>
+      <li>Primary button <b>Start voice session</b> → "Connecting…" → live controls <b>Mute/Unmute</b> and <b>End</b>.</li>
+      <li>A live captions area showing what you said and what the assistant said, with page citations you can click; "Searching the document…" while it looks things up.</li>
+      <li>Quiet note when falling back to keyword matching; error text with Retry.</li>
+      <li>Sessions last up to 10 minutes and end after 2 minutes of silence.</li>
+    </ul>
+    <div class="callout"><p>Today Voice looks like a form with a button and a text box. It is the feature we want people to remember, so it needs a real visual identity: a listening state, a speaking state, a clear sense of "live", and captions that read like a conversation.</p></div>
+
+    <h3>AI tab</h3>
+    <p>At the top: a dismissible notice ("Text from this document is sent to Claude to answer. The PDF file itself never leaves your browser." · Got it), a checkbox "Recognize text automatically", and a scope switch (Whole document / Selected pages). Then four sub-tabs:</p>
+    <div class="tablewrap"><table>
+      <thead><tr><th>Sub-tab</th><th>Contents</th></tr></thead>
+      <tbody>
+        <tr><td>Summarize</td><td>One button; streams a formatted summary with page links; Copy.</td></tr>
+        <tr><td>Ask</td><td>Chat thread (your questions right-aligned in tinted bubbles, answers as formatted text with page links), input "Ask about this document", Send, and a "Use search" checkbox.</td></tr>
+        <tr><td>Rewrite</td><td>Shows the text you selected on the page. Actions: Simplify, Make formal, Explain, Translate (with a Language field). Result has Copy and <b>Insert into PDF</b>, which replaces the text on the page.</td></tr>
+        <tr><td>Extract</td><td>"Extract key facts" → a table of Label / Value / Page, with Copy as CSV.</td></tr>
+      </tbody>
+    </table></div>
+    <p>Footer: "17 requests left today", plus the reset time when the limit is reached.</p>
+
+    <h3>Search tab</h3>
+    <ul>
+      <li>First run: an explanation and an <b>Enable search</b> button (downloads a ~200 MB model once). Browsers without WebGPU get a note and an opt-in CPU mode.</li>
+      <li>Once enabled: a "Search by meaning" field, a short status list (model loading, indexing progress), and result cards showing the file name, page, a text snippet, and Open / Find similar.</li>
+      <li><b>Library</b> section: every document indexed on this device, each with Remove, plus Clear all.</li>
+    </ul>
+
+    <h2 id="system">System feedback</h2>
+    <ul>
+      <li><b>Banner</b> across the top for errors and OCR notices (amber background, dismiss ×), for example "Couldn't read report.pdf as a PDF."</li>
+      <li><b>Leave-page warning</b> when there are unsaved changes.</li>
+      <li><b>Disabled states</b> everywhere a control needs a selection.</li>
+      <li><b>Busy labels</b> such as "Summarizing…", "Building…", "Working…".</li>
+    </ul>
+
+    <h2 id="current">Current visual system</h2>
+    <p>It is essentially unstyled. System font, one blue accent, zinc greys, and automatic dark mode. There are no icons; every control is a text label in a bordered grey button.</p>
+    <div class="swatches">
+      <div class="sw"><div class="chip" style="background:#f4f4f5"></div><div>Background<span>#f4f4f5</span></div></div>
+      <div class="sw"><div class="chip" style="background:#ffffff"></div><div>Panel<span>#ffffff</span></div></div>
+      <div class="sw"><div class="chip" style="background:#d4d4d8"></div><div>Border<span>#d4d4d8</span></div></div>
+      <div class="sw"><div class="chip" style="background:#18181b"></div><div>Text<span>#18181b</span></div></div>
+      <div class="sw"><div class="chip" style="background:#2563eb"></div><div>Accent<span>#2563eb</span></div></div>
+      <div class="sw"><div class="chip" style="background:#dbeafe"></div><div>Accent soft<span>#dbeafe</span></div></div>
+      <div class="sw"><div class="chip" style="background:#dc2626"></div><div>Danger<span>#dc2626</span></div></div>
+      <div class="sw"><div class="chip" style="background:#fef3c7"></div><div>Banner<span>#fef3c7</span></div></div>
+    </div>
+    <p>Dark mode swaps to #18181b background, #27272a panels and a lighter blue (#60a5fa). Radii are 4–12px, used inconsistently. Type is <code>system-ui</code> at 12–16px.</p>
+
+    <h2 id="problems">What feels dated today</h2>
+    <ol class="pain">
+      <li>Two dense rows of identical text buttons; nothing is grouped visually and there is no hierarchy beyond the blue Download button.</li>
+      <li>No icons, so the toolbars are long and slow to scan.</li>
+      <li>The empty state is a dashed box and two lines of grey text; it doesn't sell the product.</li>
+      <li>Voice, the headline feature, has no distinct look or live feedback.</li>
+      <li>The right panel stacks a notice, a checkbox, a scope switch and two levels of tabs before any content.</li>
+      <li>Floating bars for text editing and OCR menus use their own one-off styles.</li>
+      <li>Privacy disclosures read as fine print instead of as a selling point.</li>
+      <li>Nothing works on phones: the right panel simply disappears below 700px.</li>
+    </ol>
+
+    <h2 id="ask">The ask</h2>
+    <p>A modern, calm, document-first look that makes PDF Studio feel like a polished product, with Voice as its signature moment. Specifically:</p>
+    <ul>
+      <li>A small design system: colour tokens for light and dark, a type scale, spacing, radii, an icon set, and button, tab, input, menu, badge, banner and dialog components.</li>
+      <li>Redesigned empty state that introduces the product and Voice.</li>
+      <li>Workspace layout: toolbar and tool palette (consider merging, grouping, icons with tooltips, a floating tool bar over the canvas), page sidebar, canvas, right panel.</li>
+      <li>Voice tab in idle, connecting, listening, speaking, searching, muted, ended and error states.</li>
+      <li>AI tab, Search tab and Library, including first-run and limit-reached states.</li>
+      <li>On-page editing UI: text edit box and its bars, annotation selection handles, note popover, signature dialog, OCR badges.</li>
+      <li>A consistent style for page citations, used across Voice, Ask, Search and Extract.</li>
+      <li>A plan for tablet and phone widths.</li>
+    </ul>
+    <div class="callout">
+      <p><b>Constraints.</b> Keep every privacy disclosure and usage limit visible. Fonts and icons must be self-hostable (no external font service required at runtime). Annotation colours are saved into the PDF, so the six colours can be refined but should stay distinct. The PDF pages themselves always render white.</p>
+    </div>
+  </main>
+</div>
