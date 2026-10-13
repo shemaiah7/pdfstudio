@@ -117,7 +117,28 @@ describe("POST /live with PAYWALL_ENABLED", () => {
     await env.QUOTA.put(`v:u:user_l2:${day}`, JSON.stringify({ seconds: 300, charged: { a: 300 }, admitted: {}, pending: {} }));
     const { res, json } = await liveAs({ vid: "u:user_l2", uid: "user_l2", plan: "free", exp: exp() });
     expect(res.status).toBe(429);
-    expect(json).toMatchObject({ error: "voice_limit", remainingSeconds: 0, sessionSeconds: 600 });
+    expect(json).toMatchObject({ error: "voice_limit", remainingSeconds: 0, sessionSeconds: 60, scope: "day" });
+  });
+  it("month allowance used up -> 429 voice_limit scope month with the month reset", async () => {
+    const d = new Date();
+    await env.QUOTA.put(`m:voice:u:user_l6:${d.toISOString().slice(0, 7)}`, String(7200 - 30));
+    const { res, json } = await liveAs({ vid: "u:user_l6", uid: "user_l6", plan: "trial", exp: exp() });
+    expect(res.status).toBe(429);
+    expect(json).toMatchObject({ error: "voice_limit", scope: "month", sessionSeconds: 60, resetAt: Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1) / 1000 });
+  });
+  it("a failed month-counter write does not fail the session (fail open)", async () => {
+    const failing = new Proxy(env.QUOTA, {
+      get(t, k) {
+        if (k === "put") return async (key: string, ...rest: unknown[]) => { if (key.startsWith("m:voice:")) throw new Error("kv down"); return (t.put as (...a: unknown[]) => Promise<void>)(key, ...rest); };
+        const v = Reflect.get(t, k);
+        return typeof v === "function" ? v.bind(t) : v;
+      },
+    }) as KVNamespace;
+    const tok = await signSession({ vid: "u:user_l7", uid: "user_l7", plan: "trial", exp: exp() }, env.SESSION_SECRET);
+    const res = await liveHandler(new Request("https://ai.example/live", { method: "POST", headers: { authorization: `Bearer ${tok}` } }), { ...on, QUOTA: failing }, okDeps());
+    expect(res.status).toBe(200);
+    const usage = await liveUsageHandler(new Request("https://ai.example/live/usage", { method: "POST", headers: { authorization: `Bearer ${tok}` }, body: JSON.stringify({ conversationId: "conv_1", seconds: 95 }) }), { ...on, QUOTA: failing }, okDeps());
+    expect(usage.status).toBe(200);
   });
   it("free user with 250 s used (< 60 s left would refuse; 50 s left) -> 429", async () => {
     await env.QUOTA.put(`v:u:user_l3:${day}`, JSON.stringify({ seconds: 250, charged: { a: 250 }, admitted: {}, pending: {} }));

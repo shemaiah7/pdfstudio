@@ -105,6 +105,19 @@ describe("/ocr with PAYWALL_ENABLED", () => {
     expect(res.status).toBe(429);
     expect(await res.json()).toMatchObject({ error: "monthly_limit", scope: "month" });
   });
+  it("pro response reports the plan's remaining pages, not the anonymous quota", async () => {
+    const tok = await signSession({ vid: "u:user_o4", uid: "user_o4", plan: "trial", exp: exp() }, env.SESSION_SECRET);
+    const res = await callOcr(on, tok, body); // 2 pages
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { remaining: { requests: number } }).remaining.requests).toBe(298);
+  });
+  it("over the daily token ceiling -> 429 daily_limit scope day", async () => {
+    await env.QUOTA.put(`q:u:user_o5:${new Date().toISOString().slice(0, 10)}`, JSON.stringify({ requests: 0, tokens: 1_000_000 }));
+    const tok = await signSession({ vid: "u:user_o5", uid: "user_o5", plan: "trial", exp: exp() }, env.SESSION_SECRET);
+    const res = await callOcr(on, tok, body);
+    expect(res.status).toBe(429);
+    expect(await res.json()).toMatchObject({ error: "daily_limit", scope: "day" });
+  });
   it("flag off: signed-in free user uses the old anonymous quota", async () => {
     const tok = await signSession({ vid: "u:user_o3", uid: "user_o3", plan: "free", exp: exp() }, env.SESSION_SECRET);
     expect((await callOcr(env, tok, body)).status).toBe(200);

@@ -1,21 +1,25 @@
 import type { Env } from "./env";
 
-const JWKS_TTL_MS = 10 * 60 * 1000;
+const JWKS_TTL_S = 10 * 60;
+const REFETCH_MIN_S = 60; // an unknown kid (key rotation) refetches the JWKS at most this often
 let jwksCache: { keys: JsonWebKey[]; at: number } | null = null;
+let lastRefetch = -Infinity;
 let jwksOverride: JsonWebKey[] | null = null;
-export function setJwksForTest(keys: JsonWebKey[] | null): void { jwksOverride = keys; jwksCache = null; }
+export function setJwksForTest(keys: JsonWebKey[] | null): void { jwksOverride = keys; jwksCache = null; lastRefetch = -Infinity; }
+const trimSlash = (s: string) => s.replace(/\/+$/, "");
 
 const fromB64u = (s: string) => Uint8Array.from(atob(s.replace(/-/g, "+").replace(/_/g, "/") + "=".repeat((4 - (s.length % 4)) % 4)), (c) => c.charCodeAt(0));
 const json = (s: string) => JSON.parse(new TextDecoder().decode(fromB64u(s))) as Record<string, unknown>;
 
-async function jwks(env: Env, fetchFn: typeof fetch): Promise<JsonWebKey[]> {
+async function jwks(env: Env, fetchFn: typeof fetch, now: number, refetch = false): Promise<JsonWebKey[]> {
   if (jwksOverride) return jwksOverride;
-  if (jwksCache && Date.now() - jwksCache.at < JWKS_TTL_MS) return jwksCache.keys;
+  if (jwksCache && now - jwksCache.at < JWKS_TTL_S && !refetch) return jwksCache.keys;
+  if (refetch) lastRefetch = now;
   try {
-    const res = await fetchFn(`${env.CLERK_ISSUER.replace(/\/$/, "")}/.well-known/jwks.json`);
+    const res = await fetchFn(`${trimSlash(env.CLERK_ISSUER)}/.well-known/jwks.json`);
     if (!res.ok) throw new Error(String(res.status));
     const body = (await res.json()) as { keys: JsonWebKey[] };
-    jwksCache = { keys: body.keys, at: Date.now() };
+    jwksCache = { keys: body.keys, at: now };
   } catch {
     if (!jwksCache) return []; // no keys yet: every token fails
     // keep serving the stale cache on fetch failure (spec: Error handling)
@@ -30,7 +34,10 @@ export async function verifyClerkJwt(token: string, env: Env, now = Date.now() /
   let header: Record<string, unknown>, payload: Record<string, unknown>;
   try { header = json(parts[0]); payload = json(parts[1]); } catch { return null; }
   if (header.alg !== "RS256" || typeof header.kid !== "string") return null;
-  const jwk = (await jwks(env, fetchFn)).find((k) => (k as { kid?: string }).kid === header.kid);
+  const byKid = (keys: JsonWebKey[]) => keys.find((k) => (k as { kid?: string }).kid === header.kid);
+  let jwk = byKid(await jwks(env, fetchFn, now));
+  // Unknown kid with a fresh cache: Clerk may have rotated keys, so refetch once (rate-limited).
+  if (!jwk && !jwksOverride && now - lastRefetch >= REFETCH_MIN_S) jwk = byKid(await jwks(env, fetchFn, now, true));
   if (!jwk) return null;
   let ok = false;
   try {
@@ -39,7 +46,7 @@ export async function verifyClerkJwt(token: string, env: Env, now = Date.now() /
   } catch { return null; }
   if (!ok) return null;
   const skew = 5;
-  if (payload.iss !== env.CLERK_ISSUER) return null;
+  if (typeof payload.iss !== "string" || trimSlash(payload.iss) !== trimSlash(env.CLERK_ISSUER)) return null;
   if (typeof payload.exp !== "number" || payload.exp + skew <= now) return null;
   if (typeof payload.nbf === "number" && payload.nbf - skew > now) return null;
   if (typeof payload.sub !== "string" || !payload.sub.startsWith("user_")) return null;

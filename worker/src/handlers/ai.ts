@@ -1,7 +1,7 @@
 import type { Env } from "../env";
 import { json } from "../cors";
-import { verifySession, utcDay } from "../session";
-import { gateFor, checkUsage } from "../limits";
+import { verifySession } from "../session";
+import { gateFor, checkUsage, TOKEN_DAY } from "../limits";
 import { validateAiBody } from "../validate";
 import { buildRequest } from "../request";
 import { checkQuota, recordTokens, DAILY_REQUESTS, DAILY_TOKENS, type QuotaState } from "../quota";
@@ -34,9 +34,9 @@ export async function aiHandler(request: Request, env: Env, ctx: ExecutionContex
   if (gate === "account_unavailable") return json({ error: "account_unavailable" }, 503, env);
   let quota;
   if (gate) {
-    const u = await checkUsage(env.QUOTA, session.vid, gate.plan, "ai", 1, gate.mk, now);
-    if (!u.ok) return json({ error: u.error, resetAt: u.resetAt, scope: u.scope }, u.error === "pro_required" ? 403 : 429, env);
-    quota = { ok: true as const, day: utcDay(now), resetAt: u.resetAt, charged: { requests: 0, tokens: 0 }, remaining: { requests: 0, tokens: 0 } };
+    const u = await checkUsage(env.QUOTA, session.vid, gate.plan, "ai", 1, gate.month, now, estimate);
+    if (!u.ok) return json({ error: u.error, resetAt: u.resetAt, ...(u.scope ? { scope: u.scope } : {}) }, u.error === "pro_required" ? 403 : 429, env);
+    quota = u;
   } else {
     quota = await checkQuota(env.QUOTA, session.vid, now, estimate);
     if (!quota.ok) return json({ error: quota.reason, resetAt: quota.resetAt }, 429, env);
@@ -58,7 +58,7 @@ export async function aiHandler(request: Request, env: Env, ctx: ExecutionContex
   const record = (u: { inputTokens: number; outputTokens: number }) =>
     (recorded ??= (async () => {
       const delta = Math.max(0, u.inputTokens + u.outputTokens - estimate);
-      return delta === 0 || gate ? quota.charged : recordTokens(env.QUOTA, vid, day, delta);
+      return delta === 0 ? quota.charged : recordTokens(env.QUOTA, vid, day, delta);
     })());
   let finished!: () => void;
   ctx.waitUntil(new Promise<void>((resolve) => { finished = resolve; }));
@@ -94,7 +94,9 @@ export async function aiHandler(request: Request, env: Env, ctx: ExecutionContex
       send("done", {
         usage: { input: f.inputTokens, output: f.outputTokens },
         stop: f.stop,
-        remaining: { requests: Math.max(0, DAILY_REQUESTS - state.requests), tokens: Math.max(0, DAILY_TOKENS - state.tokens) },
+        remaining: gate
+          ? { requests: quota.remaining.requests, tokens: Math.max(0, TOKEN_DAY[gate.plan] - state.tokens) }
+          : { requests: Math.max(0, DAILY_REQUESTS - state.requests), tokens: Math.max(0, DAILY_TOKENS - state.tokens) },
         resetAt,
       });
     } finally {

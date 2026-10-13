@@ -2,7 +2,7 @@ import type { Env } from "../env";
 import { json } from "../cors";
 import { verifySession, utcDay, type SessionPayload } from "../session";
 import { createConversationToken, getConversationDuration, ElevenLabsError } from "../elevenlabs";
-import { gateFor, voiceAllowance, addVoiceMonth } from "../limits";
+import { gateFor, voiceAllowance, voiceMonthLeft, addVoiceMonth } from "../limits";
 import { admitVoice, chargeVoice, reconcileVoice, readVoice, ADMISSION_SECONDS } from "../voiceQuota";
 
 const MIN_GATED_SESSION_SECONDS = 60;
@@ -13,6 +13,13 @@ const defaultDeps: LiveDeps = { createToken: createConversationToken, getDuratio
 export function dailyVoiceSeconds(env: Env): number {
   const n = Number(env.VOICE_DAILY_SECONDS ?? "1800");
   return Number.isFinite(n) && n > 0 ? n : 1800;
+}
+
+/** Month accounting must never fail an admitted or settled session (fail open, like the day counter). */
+async function addMonthSafe(env: Env, vid: string, mk: string, delta: number): Promise<void> {
+  try { await addVoiceMonth(env.QUOTA, vid, mk, delta); } catch (err) {
+    console.log(JSON.stringify({ task: "live", vid, status: "month_counter_error", error: String(err) }));
+  }
 }
 
 async function authed(request: Request, env: Env): Promise<SessionPayload | null> {
@@ -28,13 +35,17 @@ export async function liveHandler(request: Request, env: Env, deps: LiveDeps = d
   const gate = await gateFor(env, session, now);
   if (gate === "account_required") return json({ error: "account_required" }, 403, env);
   if (gate === "account_unavailable") return json({ error: "account_unavailable" }, 503, env);
-  const limit = gate ? await voiceAllowance(env.QUOTA, session.vid, gate.plan, gate.mk, now) : dailyVoiceSeconds(env);
+  const limit = gate ? await voiceAllowance(env.QUOTA, session.vid, gate.plan, gate.month.key, now) : dailyVoiceSeconds(env);
   // A gated caller with less than a full session left but at least a minute is admitted for what remains (the app ends the call at maxSeconds).
   const admit = await admitVoice(env.QUOTA, session.vid, limit, now, gate ? MIN_GATED_SESSION_SECONDS : ADMISSION_SECONDS);
   if (!admit.ok) {
     // Report what is left and what a session reserves, so the app can say "needs 10 free minutes" when time remains.
     const used = (await readVoice(env.QUOTA, session.vid, utcDay())).seconds;
-    return json({ error: "voice_limit", resetAt: admit.resetAt, remainingSeconds: Math.max(0, limit - used), sessionSeconds: ADMISSION_SECONDS }, 429, env);
+    const remainingSeconds = Math.max(0, limit - used);
+    if (!gate) return json({ error: "voice_limit", resetAt: admit.resetAt, remainingSeconds, sessionSeconds: ADMISSION_SECONDS }, 429, env);
+    // Gated callers start with a minute or more; when the month allowance is what blocks, point at the month reset.
+    const monthBlocks = (await voiceMonthLeft(env.QUOTA, session.vid, gate.plan, gate.month.key)) < MIN_GATED_SESSION_SECONDS;
+    return json({ error: "voice_limit", resetAt: monthBlocks ? gate.month.resetAt : admit.resetAt, remainingSeconds, sessionSeconds: MIN_GATED_SESSION_SECONDS, scope: monthBlocks ? "month" : "day" }, 429, env);
   }
   let minted: { token: string; conversationId: string };
   try {
@@ -44,7 +55,7 @@ export async function liveHandler(request: Request, env: Env, deps: LiveDeps = d
     return json({ error: "voice_unavailable" }, 502, env);
   }
   const state = await chargeVoice(env.QUOTA, session.vid, admit.day, minted.conversationId, admit.reserve, now);
-  if (gate) await addVoiceMonth(env.QUOTA, session.vid, gate.mk, admit.reserve);
+  if (gate) await addMonthSafe(env, session.vid, gate.month.key, admit.reserve);
   console.log(JSON.stringify({ task: "live", vid: session.vid, status: "admitted" }));
   return json({ conversationId: minted.conversationId, token: minted.token, remainingSeconds: Math.max(0, limit - state.seconds), maxSeconds: admit.reserve, resetAt: admit.resetAt }, 200, env);
 }
@@ -68,8 +79,8 @@ export async function liveUsageHandler(request: Request, env: Env, deps: LiveDep
   const actual = duration ?? b.seconds;
   const state = await reconcileVoice(env.QUOTA, session.vid, day, b.conversationId, actual, now, verified);
   if (!state) return json({ error: "unknown_conversation" }, 404, env);
-  if (gate && state.delta !== 0) await addVoiceMonth(env.QUOTA, session.vid, gate.mk, state.delta);
+  if (gate && state.delta !== 0) await addMonthSafe(env, session.vid, gate.month.key, state.delta);
   console.log(JSON.stringify({ task: "live", vid: session.vid, status: "reconciled", seconds: Math.round(actual) }));
-  const limit = gate ? await voiceAllowance(env.QUOTA, session.vid, gate.plan, gate.mk, now) : dailyVoiceSeconds(env);
+  const limit = gate ? await voiceAllowance(env.QUOTA, session.vid, gate.plan, gate.month.key, now) : dailyVoiceSeconds(env);
   return json({ remainingSeconds: Math.max(0, limit - state.seconds) }, 200, env);
 }

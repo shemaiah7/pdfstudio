@@ -183,6 +183,28 @@ describe("/ai with PAYWALL_ENABLED", () => {
     expect(res.status).toBe(429);
     expect(await res.json()).toMatchObject({ error: "daily_limit", scope: "day" });
   });
+  it("done event reports plan-aware remaining requests and tokens, and reconciles tokens", async () => {
+    const tok = await signSession({ vid: "u:user_f3", uid: "user_f3", plan: "trial", exp: exp() }, env.SESSION_SECRET);
+    const res = await callAi(on, tok, doc);
+    const text = await res.text();
+    expect(text).toContain('"remaining":{"requests":99,"tokens":998950}');
+    expect(await env.QUOTA.get(`q:u:user_f3:${new Date().toISOString().slice(0, 10)}`, "json")).toEqual({ requests: 0, tokens: 1050 });
+  });
+  it("free user over the daily token ceiling -> 429 daily_limit scope day", async () => {
+    await env.QUOTA.put(`q:u:user_f4:${new Date().toISOString().slice(0, 10)}`, JSON.stringify({ requests: 0, tokens: 100_000 }));
+    const tok = await signSession({ vid: "u:user_f4", uid: "user_f4", plan: "free", exp: exp() }, env.SESSION_SECRET);
+    const res = await callAi(on, tok, doc);
+    expect(res.status).toBe(429);
+    expect(await res.json()).toMatchObject({ error: "daily_limit", scope: "day" });
+  });
+  it("10 requests already this minute -> 429 too_fast", async () => {
+    const minute = Math.floor(Date.now() / 60000);
+    for (const m of [minute, minute + 1]) await env.QUOTA.put(`b:u:user_f5:${m}`, "10");
+    const tok = await signSession({ vid: "u:user_f5", uid: "user_f5", plan: "trial", exp: exp() }, env.SESSION_SECRET);
+    const res = await callAi(on, tok, doc);
+    expect(res.status).toBe(429);
+    expect(await res.json()).toMatchObject({ error: "too_fast" });
+  });
   it("flag off: signed-in user uses the old anonymous quota (unchanged behaviour)", async () => {
     const tok = await signSession({ vid: "u:user_f2", uid: "user_f2", plan: "free", exp: exp() }, env.SESSION_SECRET);
     expect((await callAi(env, tok, doc)).status).toBe(200);

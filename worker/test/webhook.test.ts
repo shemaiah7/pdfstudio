@@ -53,6 +53,19 @@ describe("/billing/webhook", () => {
     expect((await send(ev)).status).toBe(200);
     expect((await getUser(env.DB, "user_w2"))!.subscription_status).toBe("active");
   });
+  it("cancel_at_period_end on an active subscription is stored as canceled, keeping the period end (Pro until then)", async () => {
+    await ensureUser(env.DB, "user_w9", "w@x.y", 1);
+    await env.DB.prepare("UPDATE users SET stripe_customer_id='cus_w9' WHERE id='user_w9'").run();
+    sub = { id: "sub_9", status: "active", cancel_at_period_end: true, current_period_end: 2_000_000_000, customer: "cus_w9" };
+    expect((await send({ id: "evt_cape", type: "customer.subscription.updated", data: { object: { id: "sub_9" } } })).status).toBe(200);
+    const u = (await getUser(env.DB, "user_w9"))!;
+    expect(u).toMatchObject({ subscription_status: "canceled", current_period_end: 2_000_000_000 });
+    expect(planOf(u, 1_999_999_000)).toBe("pro");
+    // Resumed in the portal: back to active.
+    sub = { ...sub, cancel_at_period_end: false };
+    await send({ id: "evt_cape2", type: "customer.subscription.updated", data: { object: { id: "sub_9" } } });
+    expect((await getUser(env.DB, "user_w9"))!.subscription_status).toBe("active");
+  });
   it("invoice.payment_failed sets past_due_since when null", async () => {
     await ensureUser(env.DB, "user_w5", "w@x.y", 1);
     await env.DB.prepare("UPDATE users SET stripe_customer_id='cus_w5' WHERE id='user_w5'").run();

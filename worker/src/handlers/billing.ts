@@ -4,6 +4,7 @@ import { json } from "../cors";
 import { verifySession } from "../session";
 import { getUser, getUserByCustomer, updateUser } from "../users";
 import { stripeFetch, setStripeFetch, verifyStripeSignature } from "../stripe";
+import { planOf } from "../plan";
 
 export function configureBillingDeps(p: { fetch?: typeof fetch }): void { if (p.fetch) setStripeFetch(p.fetch); }
 
@@ -18,6 +19,8 @@ export async function checkoutHandler(request: Request, env: Env): Promise<Respo
   let u;
   try { u = await user(request, env); } catch { return json({ error: "account_unavailable" }, 503, env); }
   if (!u) return json({ error: "unauthorized" }, 401, env);
+  // A second checkout would start a second subscription; Pro users (including cancel-at-period-end and grace) use the portal.
+  if (planOf(u, Date.now() / 1000) === "pro") return json({ error: "already_subscribed" }, 409, env);
   let interval: unknown;
   try { interval = ((await request.json()) as { interval?: unknown }).interval; } catch { /* invalid */ }
   const price = interval === "month" ? env.STRIPE_PRICE_MONTHLY : interval === "year" ? env.STRIPE_PRICE_YEARLY : null;
@@ -50,20 +53,23 @@ export async function portalHandler(request: Request, env: Env): Promise<Respons
   } catch { return json({ error: "billing_unavailable" }, 502, env); }
 }
 
-type Sub = { id: string; status: string; current_period_end?: number; items?: { data: { current_period_end?: number }[] }; customer: string; ended_at?: number | null };
+type Sub = { id: string; status: string; cancel_at_period_end?: boolean; current_period_end?: number; items?: { data: { current_period_end?: number }[] }; customer: string; ended_at?: number | null };
 
 async function applySubscription(env: Env, subId: string, deleted = false): Promise<void> {
   const s = await stripeFetch<Sub>(`/subscriptions/${encodeURIComponent(subId)}`, env);
   const u = await getUserByCustomer(env.DB, s.customer);
   if (!u) return;
-  const status = deleted ? "canceled" : s.status;
+  // Cancelled in the portal but paid to period end: Stripe keeps "active", we store "canceled" so the app says "Ends" (planOf keeps Pro until then).
+  const raw = deleted ? "canceled" : s.status;
+  const ending = s.cancel_at_period_end === true && (raw === "active" || raw === "trialing");
+  const status = ending ? "canceled" : raw;
   const now = Math.floor(Date.now() / 1000);
   const patch: Parameters<typeof updateUser>[2] = { subscription_status: status };
   let periodEnd = s.current_period_end ?? s.items?.data?.[0]?.current_period_end;
   if (deleted) periodEnd = Math.min(periodEnd ?? Infinity, s.ended_at ?? now);
   if (typeof periodEnd === "number" && Number.isFinite(periodEnd)) patch.current_period_end = periodEnd;
-  if (status === "active" || status === "trialing") patch.past_due_since = null;
-  if ((status === "past_due" || status === "unpaid") && u.past_due_since === null) patch.past_due_since = now;
+  if (raw === "active" || raw === "trialing") patch.past_due_since = null;
+  if ((raw === "past_due" || raw === "unpaid") && u.past_due_since === null) patch.past_due_since = now;
   await updateUser(env.DB, u.id, patch);
 }
 

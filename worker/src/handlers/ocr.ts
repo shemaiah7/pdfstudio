@@ -1,7 +1,7 @@
 import type { Env } from "../env";
 import { json } from "../cors";
-import { verifySession, utcDay } from "../session";
-import { gateFor, checkUsage } from "../limits";
+import { verifySession } from "../session";
+import { gateFor, checkUsage, TOKEN_DAY } from "../limits";
 import { validateOcrBody } from "../validate";
 import { checkQuota, recordTokens, DAILY_REQUESTS, DAILY_TOKENS } from "../quota";
 import { ocrWithSdk, mapError, type OcrFn } from "../claude";
@@ -28,9 +28,9 @@ export async function ocrHandler(request: Request, env: Env, ctx: ExecutionConte
   if (gate === "account_unavailable") return json({ error: "account_unavailable" }, 503, env);
   let quota;
   if (gate) {
-    const u = await checkUsage(env.QUOTA, session.vid, gate.plan, "ocr", pages.length, gate.mk, now);
-    if (!u.ok) return json({ error: u.error, resetAt: u.resetAt, scope: u.scope }, u.error === "pro_required" ? 403 : 429, env);
-    quota = { ok: true as const, day: utcDay(now), resetAt: u.resetAt, charged: { requests: 0, tokens: 0 }, remaining: { requests: 0, tokens: 0 } };
+    const u = await checkUsage(env.QUOTA, session.vid, gate.plan, "ocr", pages.length, gate.month, now, TOKENS_PER_PAGE * pages.length);
+    if (!u.ok) return json({ error: u.error, resetAt: u.resetAt, ...(u.scope ? { scope: u.scope } : {}) }, u.error === "pro_required" ? 403 : 429, env);
+    quota = u;
   } else {
     quota = await checkQuota(env.QUOTA, session.vid, now, TOKENS_PER_PAGE * pages.length, pages.length);
     if (!quota.ok) return json({ error: quota.reason, resetAt: quota.resetAt }, 429, env);
@@ -49,7 +49,10 @@ export async function ocrHandler(request: Request, env: Env, ctx: ExecutionConte
       failed.push(p.page);
     }
   }
-  const state = extra > 0 && !gate ? await recordTokens(env.QUOTA, session.vid, quota.day, extra) : quota.charged;
+  const state = extra > 0 ? await recordTokens(env.QUOTA, session.vid, quota.day, extra) : quota.charged;
   console.log(JSON.stringify({ task: "ocr", vid: session.vid, pages: pages.length, failed: failed.length }));
-  return json({ pages: out, failed, remaining: { requests: Math.max(0, DAILY_REQUESTS - state.requests), tokens: Math.max(0, DAILY_TOKENS - state.tokens) }, resetAt: quota.resetAt }, 200, env);
+  const remaining = gate
+    ? { requests: quota.remaining.requests, tokens: Math.max(0, TOKEN_DAY[gate.plan] - state.tokens) }
+    : { requests: Math.max(0, DAILY_REQUESTS - state.requests), tokens: Math.max(0, DAILY_TOKENS - state.tokens) };
+  return json({ pages: out, failed, remaining, resetAt: quota.resetAt }, 200, env);
 }
