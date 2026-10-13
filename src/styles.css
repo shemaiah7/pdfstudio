@@ -499,3 +499,4 @@ body { background: var(--bg); color: var(--text); font: var(--text-body); }
   .sheet-peek .voice-controls { flex: none; gap: 8px; padding: 0; }
   .sheet-peek .voice-controls button { flex: none; height: 44px; min-width: 44px; padding: 0 12px; border-radius: 12px; }
 }
+.deep-ocr-page { font-size: 12px; color: var(--color-ink-2); }

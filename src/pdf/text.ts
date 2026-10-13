@@ -120,6 +120,13 @@ export async function extractPageText(source: SourceFile, pageIndex: number): Pr
         fontName: (i as { fontName?: string }).fontName ?? "",
       }));
       const text = linesFromItems(raw);
+      if (text.trim().length > 0 && source.hash) {
+        // A typed page that also went through Deep OCR (handwriting): search/AI/voice read the full transcription; the text layer keeps the real PDF items.
+        try {
+          const deep = await lookupOcr(source.hash, pageIndex);
+          if (deep?.engine === "claude") return withEdits({ text: ocrPageText(deep), items }, source.id, pageIndex);
+        } catch { /* fall back to the PDF text */ }
+      }
       if (text.trim().length > 0 || !source.hash) return withEdits({ text, items }, source.id, pageIndex);
       let ocr: Awaited<ReturnType<typeof ocrStore.get>>;
       try { ocr = await lookupOcr(source.hash, pageIndex); } catch { return withEdits({ text: "", items: [] }, source.id, pageIndex); }

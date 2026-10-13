@@ -48,7 +48,8 @@ export interface OcrState {
   setEnabled(on: boolean): void;
   acknowledgeDeepOcr(): void;
   scanSource(sourceId: SourceId): Promise<void>;
-  deepOcr(pageEntryIds: string[] | "all-scanned"): Promise<void>;
+  deepOcr(pageEntryIds: string[] | "all-scanned", opts?: { allowText?: boolean }): Promise<void>;
+  pagesWithText(pageEntryIds: string[]): Promise<string[]>;
   retryPage(sourceId: SourceId, pageIndex: number): void;
   retryEngine(): Promise<void>;
   cancelAll(): void;
@@ -65,6 +66,9 @@ const scanning = new Map<string, Promise<void>>(); // single-flight per source: 
 const deepPrev = new Map<string, OcrPageState>(); // Tesseract result kept while Deep OCR is in flight, restored if it fails
 const claudePending = new Set<string>(); // pageKeys with a Deep OCR job queued or running
 const scanned = new Set<string>(); // pageKeys known to have no pdf.js text
+const textPages = new Set<string>(); // pageKeys with real pdf.js text that were sent to Deep OCR (typed form + handwriting)
+/** True for a page with real text that went through Deep OCR; its transcription is for search/AI only and is not added to exports. */
+export const isTextPage = (key: string): boolean => textPages.has(key);
 let cancelEpoch = 0; // bumped on cancel so an in-flight scan stops enqueuing the rest of its pages
 const errorCopy = (code: string, cause?: unknown): string => {
   const resetAt = (cause as { resetAt?: unknown } | null | undefined)?.resetAt;
@@ -214,22 +218,53 @@ export const useOcrStore = create<OcrState>((set, get) => ({
       }
     }
   },
-  async deepOcr(target) {
+  async pagesWithText(ids) {
     const doc = useDocumentStore.getState();
-    const ids = target === "all-scanned" ? get().scannedPageEntries() : target;
+    const out: string[] = [];
     for (const id of ids) {
       const entry = doc.pages.find((p) => p.id === id);
+      const source = entry && doc.sources.get(entry.sourceId);
+      if (!entry || !source) continue;
+      try { if (await deps.hasText(source, entry.sourcePageIndex)) out.push(id); } catch { /* unreadable page: treat as no text */ }
+    }
+    return out;
+  },
+  async deepOcr(target, opts) {
+    const doc = useDocumentStore.getState();
+    const ids = target === "all-scanned" ? get().scannedPageEntries() : target;
+    const send: { sourceId: string; pageIndex: number }[] = [];
+    const sent: number[] = [], done: number[] = [], skipped: number[] = [];
+    for (const id of ids) {
+      const index = doc.pages.findIndex((p) => p.id === id);
+      const entry = doc.pages[index];
       if (!entry) continue;
       const k = pageKey(entry.sourceId, entry.sourcePageIndex);
+      const cur = get().pages[k];
+      if (cur?.state === "done" && cur.engine === "claude") { done.push(index + 1); continue; }
       if (target !== "all-scanned" && !scanned.has(k)) {
-        // Not scanned yet: decide from the page itself. Pages with real text are never sent.
+        // Not scanned yet: decide from the page itself. Pages with real text are sent only when the user allowed it.
         const source = doc.sources.get(entry.sourceId);
-        if (!source || await deps.hasText(source, entry.sourcePageIndex)) continue;
-        if (!useDocumentStore.getState().sources.has(entry.sourceId)) continue;
-        scanned.add(k);
+        if (!source) continue;
+        if (await deps.hasText(source, entry.sourcePageIndex)) {
+          if (!opts?.allowText) { skipped.push(index + 1); continue; }
+          if (!useDocumentStore.getState().sources.has(entry.sourceId)) continue;
+          textPages.add(k);
+        } else {
+          if (!useDocumentStore.getState().sources.has(entry.sourceId)) continue;
+          scanned.add(k);
+        }
       }
-      queue.enqueue({ sourceId: entry.sourceId, pageIndex: entry.sourcePageIndex, engine: "claude" });
+      send.push({ sourceId: entry.sourceId, pageIndex: entry.sourcePageIndex });
+      sent.push(index + 1);
     }
+    // One message per action, set before the jobs start so a job's error toast replaces it rather than the reverse.
+    const list = (nums: number[]) => `${nums.length === 1 ? "page" : "pages"} ${nums.join(", ")}`;
+    const parts: string[] = [];
+    if (sent.length) parts.push(sent.length === 1 ? `Deep OCR started on page ${sent[0]}.` : `Deep OCR started on ${sent.length} pages.`);
+    if (done.length) parts.push(done.length === 1 ? `Page ${done[0]} already has Deep OCR.` : `Pages ${done.join(", ")} already have Deep OCR.`);
+    if (skipped.length) parts.push(`Skipped ${list(skipped)}: ${skipped.length === 1 ? "it already has" : "they already have"} typed text.`);
+    set({ toast: parts.length ? parts.join(" ") : "No page to read." });
+    for (const j of send) queue.enqueue({ ...j, engine: "claude" });
   },
   cancelAll() {
     cancelEpoch++;
@@ -246,7 +281,7 @@ export const useOcrStore = create<OcrState>((set, get) => ({
     queue.cancelAll();
     await deps.store.clear();
     for (const k of scanned) { const i = k.lastIndexOf(":"); invalidatePageText(k.slice(0, i), Number(k.slice(i + 1))); }
-    scanned.clear(); deepPrev.clear(); claudePending.clear(); scanning.clear();
+    scanned.clear(); textPages.clear(); deepPrev.clear(); claudePending.clear(); scanning.clear();
     set({ pages: {}, toast: null, lastWriteFailed: false });
     // Open sources are re-scanned so badges and Deep OCR targets come back (and pages re-OCR if enabled).
     await Promise.all([...useDocumentStore.getState().sources.keys()].map((id) => get().scanSource(id)));
@@ -289,6 +324,7 @@ useDocumentStore.subscribe((s, prev) => {
     queue.cancelSource(id);
     useOcrStore.setState((st) => { const pages = { ...st.pages }; for (const k of Object.keys(pages)) if (k.startsWith(`${id}:`)) delete pages[k]; return { pages }; });
     for (const k of [...scanned]) if (k.startsWith(`${id}:`)) scanned.delete(k);
+    for (const k of [...textPages]) if (k.startsWith(`${id}:`)) textPages.delete(k);
     for (const k of [...deepPrev.keys()]) if (k.startsWith(`${id}:`)) deepPrev.delete(k);
     for (const k of [...claudePending]) if (k.startsWith(`${id}:`)) claudePending.delete(k);
   }
