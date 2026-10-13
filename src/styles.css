@@ -35,7 +35,7 @@ body { background: var(--bg); color: var(--text); font: var(--text-body); }
 .install-pill:hover { background: var(--color-fill-subtle); }
 .installDialog { width: 400px; }
 .installHelp { margin: 0; font-size: 15px; line-height: 1.5; color: var(--color-ink-2); }
-.empty-privacy { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: var(--radius-pill); background: var(--color-ok-soft); color: var(--color-ok); font-size: 13px; font-weight: 500; }
+.empty-privacy { white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: var(--radius-pill); background: var(--color-ok-soft); color: var(--color-ok); font-size: 13px; font-weight: 500; }
 .empty-main { width: 100%; max-width: 1240px; margin: 0 auto; display: flex; flex-wrap: wrap; align-items: center; gap: 56px; padding: 24px 28px 48px; }
 .empty-copy { flex: 1 1 440px; min-width: 0; }
 .empty-copy h1 { margin: 0; max-width: 12ch; font-size: 60px; line-height: 1.02; font-weight: 700; letter-spacing: var(--tracking-display); }
@@ -63,6 +63,11 @@ body { background: var(--bg); color: var(--text); font: var(--text-body); }
 .empty-limits { margin: 0; text-align: center; font-size: 12px; color: var(--color-ink-2); }
 @media (max-width: 700px) {
   .empty-top { padding: 16px; }
+  /* Phone: keep the top bar on one row — the install pill drops its label (still the accessible name), the privacy pill stays one line. */
+  .empty-top-right { gap: 8px; }
+  .install-pill { width: 36px; padding: 0; justify-content: center; }
+  .install-pill .install-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .empty-privacy { font-size: 12px; padding: 6px 10px; }
   .empty-main { padding: 16px; gap: 32px; }
   .empty-copy h1 { font-size: 40px; }
   .empty-drop { padding: 36px 20px; }

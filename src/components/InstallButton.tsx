@@ -27,7 +27,7 @@ export default function InstallButton({ className, label = true, iconOnly = fals
   return (
     <>
       <button type="button" className={className} data-testid="install-app" aria-label="Install app" title="Install app" onClick={onClick}>
-        <Icon name="download" size={iconOnly ? 18 : 16} />{label && !iconOnly ? <span>Install app</span> : null}
+        <Icon name="install" size={iconOnly ? 18 : 16} />{label && !iconOnly ? <span className="install-label">Install app</span> : null}
       </button>
       {open && hint !== "prompt" ? (
         <div className="sigBackdrop" data-testid="install-dialog-scrim" onClick={(e) => { if (e.target === e.currentTarget) setOpen(false); }}>
