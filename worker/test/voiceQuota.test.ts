@@ -79,7 +79,9 @@ describe("voice quota", () => {
   });
   it("resetAt points at the pending settlement that makes room", async () => {
     const v = vid();
-    const now = Date.now() / 1000;
+    // Noon UTC on the test's day: resetAt is the earlier of the settlement and midnight, so a real clock
+    // within SETTLE_WINDOW_S of midnight would make this test expect the wrong one.
+    const now = Date.parse(`${day}T12:00:00Z`) / 1000;
     await env.QUOTA.put(`v:${v}:${day}`, JSON.stringify({ seconds: 1800, charged: { a: 600, b: 600, c: 600 }, admitted: { a: now - 100, b: now - 90, c: now - 80 }, pending: { a: 30 } }));
     const r = await admitVoice(env.QUOTA, v, 2000, now);
     expect(r).toEqual({ ok: false, resetAt: now - 100 + SETTLE_WINDOW_S });

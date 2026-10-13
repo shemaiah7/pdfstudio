@@ -133,7 +133,7 @@ export default function Toolbar({ scale, setScale, onFiles, onTogglePages, pages
           : null}
       </div>
       <DeepOcrMenu />
-      <OcrPill />
+      {phone ? null : <OcrPill />}
       {phone ? zoom : null}
       </div>
       <div className="tb-right">
@@ -142,6 +142,8 @@ export default function Toolbar({ scale, setScale, onFiles, onTogglePages, pages
         <button type="button" data-testid="download" className="primary" disabled={s.pages.length === 0 || busy}
           onClick={() => exportPages(s.pages, "edited")}><Icon name="download" /><span className="tb-dl-label">{busy ? "Building…" : "Download"}</span></button>
       </div>
+      {/* On phones the actions live in the More menu; keep OCR progress visible under the bar instead. */}
+      {phone ? <OcrPill /> : null}
     </header>
   );
 }
