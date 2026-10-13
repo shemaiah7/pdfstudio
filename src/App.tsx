@@ -11,6 +11,19 @@ import RightPanel from "./components/search/RightPanel";
 import { useToolsStore } from "./store/tools";
 import { useAiStore } from "./store/ai";
 import { captureSelection } from "./pdf/selection";
+import { useAuth } from "@clerk/clerk-react";
+import { clerkEnabled } from "./account/clerk";
+import TermsDialog from "./components/account/TermsDialog";
+import UpgradeSheet from "./components/account/UpgradeSheet";
+import PaywallSheet from "./components/account/PaywallSheet";
+import ActivatingNotice from "./components/account/ActivatingNotice";
+import RolloutBanner from "./components/account/RolloutBanner";
+
+/** Needs ClerkProvider, so App only renders it when a Clerk key is configured. */
+function SignedInTerms() {
+  const { isSignedIn } = useAuth();
+  return <TermsDialog signedIn={!!isSignedIn} />;
+}
 
 async function toBytes(files: File[]) {
   return Promise.all(files.map(async (f) => ({ name: f.name, bytes: new Uint8Array(await f.arrayBuffer()) })));
@@ -117,8 +130,13 @@ export default function App() {
   const empty = !hasSources;
   return (
     <div className="app">
+      <RolloutBanner />
       <ErrorBanner />
       <OcrToast />
+      <ActivatingNotice />
+      {clerkEnabled() ? <SignedInTerms /> : null}
+      <UpgradeSheet />
+      <PaywallSheet />
       {empty ? <DropZone onFiles={handleFiles} empty /> : (
         <>
         <Toolbar scale={scale} setScale={setScale} onFiles={handleFiles} onTogglePages={() => setPagesOpen((o) => !o)} pagesOpen={pagesOpen} />

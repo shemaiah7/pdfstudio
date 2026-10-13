@@ -14,6 +14,8 @@ import ThemeToggle from "./ThemeToggle";
 import InstallButton from "./InstallButton";
 import { useInstallStore } from "../pwa/install";
 import { outputName, saveBlob } from "../pdf/download";
+import AccountEntry from "./account/AccountEntry";
+import { clerkEnabled } from "../account/clerk";
 
 interface Props { scale: number; setScale: (s: number) => void; onFiles: (files: File[], mode: "open" | "add") => void; onTogglePages: () => void; pagesOpen: boolean }
 
@@ -141,9 +143,11 @@ export default function Toolbar({ scale, setScale, onFiles, onTogglePages, pages
       {phone ? zoom : null}
       {phone ? <InstallButton className="tb-icon" iconOnly /> : null}
       {phone ? <ThemeToggle className="tb-icon" /> : null}
+      {phone && clerkEnabled() ? <AccountEntry className="in-more" /> : null}
       </div>
       <div className="tb-right">
         <button type="button" className="tb-icon tb-more" aria-label="More actions" title="More actions" aria-expanded={moreOpen} ref={moreRef} onClick={() => setMoreOpen((o) => !o)}><Icon name="dots" /></button>
+        {phone || !clerkEnabled() ? null : <AccountEntry />}
         {phone ? null : <div className="tb-group">{installHint === "prompt" ? <InstallButton className="tb-icon" iconOnly /> : null}<ThemeToggle className="tb-icon" /></div>}
         {phone ? null : zoom}
         <button type="button" data-testid="download" className="primary" disabled={s.pages.length === 0 || busy}
