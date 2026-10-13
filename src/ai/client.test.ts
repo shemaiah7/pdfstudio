@@ -123,3 +123,32 @@ describe("AiClient.runOcr", () => {
     await expect(client.runOcr([{ page: 1, image: "abc" }])).rejects.toMatchObject({ message: "daily_limit", resetAt: 5 });
   });
 });
+
+describe("AiClient accounts", () => {
+  it("uses the Clerk token for /session when signed in, Turnstile otherwise", async () => {
+    const fetchFn = vi.fn().mockImplementation(async () => json({ token: "s1", expiresAt: 9, plan: "trial" }, 200));
+    const c = new AiClient({ baseUrl: "https://ai.test", getTurnstileToken: async () => "ts", getAuthToken: async () => "clerk.jwt.x", fetchFn });
+    await c.ensureSession();
+    expect((fetchFn.mock.calls[0][1] as RequestInit).headers).toMatchObject({ authorization: "Bearer clerk.jwt.x" });
+    const c2 = new AiClient({ baseUrl: "https://ai.test", getTurnstileToken: async () => "ts", getAuthToken: async () => null, fetchFn });
+    await c2.ensureSession();
+    expect(JSON.parse(String((fetchFn.mock.calls[1][1] as RequestInit).body))).toEqual({ turnstileToken: "ts" });
+  });
+  it("checkout posts the interval and returns the url", async () => {
+    const fetchFn = vi.fn().mockResolvedValueOnce(json({ token: "s1" }, 200)).mockResolvedValueOnce(json({ url: "https://co" }, 200));
+    const c = new AiClient({ baseUrl: "https://ai.test", getTurnstileToken: async () => "ts", getAuthToken: async () => "j", fetchFn });
+    expect(await c.checkout("year")).toBe("https://co");
+    expect(JSON.parse(String((fetchFn.mock.calls[1][1] as RequestInit).body))).toEqual({ interval: "year" });
+  });
+  it("resetSession forces a new session on the next call", async () => {
+    const fetchFn = vi.fn().mockImplementation(async () => json({ token: "s1" }, 200));
+    const c = new AiClient({ baseUrl: "https://ai.test", getTurnstileToken: async () => "ts", fetchFn });
+    await c.ensureSession(); c.resetSession(); await c.ensureSession();
+    expect(fetchFn).toHaveBeenCalledTimes(2);
+  });
+  it("maps a 503 session to account_unavailable", async () => {
+    const fetchFn = vi.fn().mockResolvedValue(json({ error: "account_unavailable" }, 503));
+    const c = new AiClient({ baseUrl: "https://ai.test", getTurnstileToken: async () => "ts", getAuthToken: async () => "j", fetchFn });
+    await expect(c.ensureSession()).rejects.toThrow("account_unavailable");
+  });
+});

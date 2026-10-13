@@ -1,4 +1,5 @@
 import { createSseParser } from "./sse";
+import type { Plan } from "../account/capabilities";
 
 export interface AiRequest {
   task: "summarize" | "ask" | "rewrite" | "extract";
@@ -15,16 +16,30 @@ export interface Handlers { onDelta(text: string): void; onDone(d: DoneData): vo
 
 export interface OcrResponse { pages: { page: number; lines: string[] }[]; failed: number[]; remaining: { requests: number; tokens: number }; resetAt: number }
 
+export interface MeResponse {
+  plan: Plan;
+  paywall: boolean;
+  trialEndsAt?: number;
+  periodEnd?: number | null;
+  status?: string | null;
+  termsAccepted?: boolean;
+  termsVersion?: string;
+  usage?: { aiDay: number; aiMonth: number; voiceDaySec: number; voiceMonthSec: number; ocrMonth: number };
+  limits?: { aiDay: number; aiMonth: number; voiceDaySec: number; voiceMonthSec: number; ocrMonth: number; edit: boolean } | null;
+}
+
 export class AiClient {
   private token: string | null = null;
   private pending: Promise<string> | null = null;
   private baseUrl: string;
   private getTurnstileToken: () => Promise<string>;
+  private getAuthToken?: () => Promise<string | null>;
   private fetchFn: typeof fetch;
 
-  constructor(opts: { baseUrl: string; getTurnstileToken: () => Promise<string>; fetchFn?: typeof fetch }) {
+  constructor(opts: { baseUrl: string; getTurnstileToken: () => Promise<string>; getAuthToken?: () => Promise<string | null>; fetchFn?: typeof fetch }) {
     this.baseUrl = opts.baseUrl.replace(/\/$/, "");
     this.getTurnstileToken = opts.getTurnstileToken;
+    this.getAuthToken = opts.getAuthToken;
     this.fetchFn = opts.fetchFn ?? ((input, init) => fetch(input, init));
   }
 
@@ -37,15 +52,34 @@ export class AiClient {
   }
 
   private async fetchSession(): Promise<string> {
-    const turnstileToken = await this.getTurnstileToken();
-    const res = await this.fetchFn(`${this.baseUrl}/session`, {
-      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ turnstileToken }),
-    });
-    if (!res.ok) throw new Error("verification_failed");
+    const jwt = this.getAuthToken ? await this.getAuthToken().catch(() => null) : null;
+    const res = jwt
+      ? await this.fetchFn(`${this.baseUrl}/session`, { method: "POST", headers: { authorization: `Bearer ${jwt}` } })
+      : await this.fetchFn(`${this.baseUrl}/session`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ turnstileToken: await this.getTurnstileToken() }) });
+    if (!res.ok) throw new Error(res.status === 503 ? "account_unavailable" : "verification_failed");
     const body = (await res.json()) as { token: string };
     this.token = body.token;
     return this.token;
   }
+
+  /** Drop the cached session so the next request re-authenticates (call on sign-in and sign-out). */
+  resetSession(): void { this.token = null; }
+
+  private async post<T>(path: string, body?: unknown): Promise<T> {
+    let token = await this.ensureSession();
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const res = await this.fetchFn(`${this.baseUrl}${path}`, { method: "POST", headers: { authorization: `Bearer ${token}`, "content-type": "application/json" }, body: JSON.stringify(body ?? {}) });
+      if (res.status === 401 && attempt === 0) { token = await this.ensureSession(true); continue; }
+      if (!res.ok) { const e = (await res.json().catch(() => ({}))) as { error?: string }; throw new Error(e.error ?? "upstream"); }
+      return (await res.json()) as T;
+    }
+    throw new Error("upstream");
+  }
+  me() { return this.post<MeResponse>("/me"); }
+  async acceptTerms(version: string) { await this.post("/terms/accept", { version }); }
+  async checkout(interval: "month" | "year") { return (await this.post<{ url: string }>("/billing/checkout", { interval })).url; }
+  async portal() { return (await this.post<{ url: string }>("/billing/portal")).url; }
+  async deleteAccount() { await this.post("/account/delete"); }
 
   async runOcr(pages: { page: number; image: string }[], signal?: AbortSignal): Promise<OcrResponse> {
     let token: string;

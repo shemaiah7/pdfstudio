@@ -6,11 +6,22 @@ import '@fontsource-variable/geist'
 import '@fontsource-variable/geist-mono'
 import './tokens.css'
 import './styles.css'
+import { ClerkProvider } from '@clerk/clerk-react'
 import App from './App.tsx'
+import { ClerkBridge } from './account/ClerkBridge.tsx'
+
+const clerkKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY as string | undefined
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <App />
+    {clerkKey ? (
+      <ClerkProvider publishableKey={clerkKey} afterSignOutUrl="/">
+        <ClerkBridge />
+        <App />
+      </ClerkProvider>
+    ) : (
+      <App />
+    )}
   </StrictMode>,
 )
 
