@@ -9,4 +9,8 @@ describe("public/terms.html", () => {
   it("contains the verbatim checkbox sentence", () => { expect(html).toContain(TERMS_CHECKBOX); });
   it("shows the current terms version", () => { expect(html).toContain(TERMS_VERSION); });
   it("carries the draft marker comment", () => { expect(html).toContain("<!-- DRAFT — legal review recommended before launch -->"); });
+  it("describes Deep OCR as monthly and not on the free plan", () => {
+    expect(html).not.toContain("Deep OCR pages are limited each day");
+    expect(html).toContain("Deep OCR pages are limited each month and are not included on the free plan");
+  });
 });
