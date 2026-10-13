@@ -1,9 +1,11 @@
 // @vitest-environment jsdom
-import { describe, it, expect, afterEach, beforeEach } from "vitest";
+import { describe, it, expect, afterEach, beforeEach, vi } from "vitest";
 import { render, fireEvent, cleanup } from "@testing-library/react";
 import FormLayer from "./FormLayer";
 import { useDocumentStore } from "../store/document";
 import type { FieldDef } from "../pdf/forms";
+import { useAccount } from "../account/store";
+import { useSheets } from "./account/useGate";
 
 const meta = { widthPt: 300, heightPt: 400, scale: 1, rotation: 0 as const };
 const fields: FieldDef[] = [
@@ -17,7 +19,7 @@ const fields: FieldDef[] = [
 const val = (f: string) => useDocumentStore.getState().formValues.get("src")?.get(f);
 
 beforeEach(() => useDocumentStore.setState({ formValues: new Map() }));
-afterEach(cleanup);
+afterEach(() => { cleanup(); vi.unstubAllEnvs(); useAccount.setState({ me: null, loading: false }); useSheets.setState({ open: null }); });
 
 describe("FormLayer", () => {
   const setup = () => render(<FormLayer sourceId="src" sourcePageIndex={0} fields={fields} meta={meta} />);
@@ -71,6 +73,27 @@ describe("FormLayer", () => {
     document.body.addEventListener("keydown", () => (seen = true));
     fireEvent.keyDown(container.querySelector("[data-field=name]")!, { key: "Backspace" });
     expect(seen).toBe(false);
+  });
+  it("on a free plan the fields are read-only and a click opens the paywall", () => {
+    vi.stubEnv("VITE_PAYWALL_ENABLED", "true");
+    useAccount.setState({ me: { plan: "free", paywall: true } as never });
+    const { container } = setup();
+    const text = container.querySelector("[data-field=name]") as HTMLInputElement;
+    expect(text.readOnly).toBe(true);
+    fireEvent.mouseDown(text);
+    expect(useSheets.getState().open).toBe("paywall");
+    fireEvent.click(container.querySelector("[data-field=agree]")!);
+    expect(val("agree")).toBeUndefined();
+    fireEvent.change(container.querySelector("select[data-field=color]")!, { target: { value: "Blue" } });
+    expect(val("color")).toBeUndefined();
+  });
+  it("on a trial plan the fields are editable", () => {
+    vi.stubEnv("VITE_PAYWALL_ENABLED", "true");
+    useAccount.setState({ me: { plan: "trial", paywall: true } as never });
+    const { container } = setup();
+    fireEvent.change(container.querySelector("[data-field=name]")!, { target: { value: "Ann" } });
+    expect(val("name")).toBe("Ann");
+    expect(useSheets.getState().open).toBeNull();
   });
 });
 

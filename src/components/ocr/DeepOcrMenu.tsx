@@ -5,6 +5,7 @@ import { useDocumentStore } from "../../store/document";
 import { useAiStore } from "../../store/ai";
 import { Icon } from "../icons";
 import { currentPageId } from "../pageInView";
+import { useGate, useLocked } from "../account/useGate";
 export default function DeepOcrMenu() {
   const client = useAiStore((s) => s.client);
   const acknowledged = useOcrStore((s) => s.deepOcrAcknowledged);
@@ -33,7 +34,10 @@ export default function DeepOcrMenu() {
   const shownId = selected.length === 1 ? selected[0] : viewId;
   const shownIndex = shownId ? pages.findIndex((p) => p.id === shownId) : -1;
   const numbers = (ids: string[]) => ids.map((id) => pages.findIndex((p) => p.id === id) + 1).sort((a, b) => a - b);
+  const { require } = useGate();
+  const locked = useLocked("deepOcr");
   const run = async (target: string[] | "all-scanned") => {
+    if (!require("deepOcr")) return;
     const ids = target === "all-scanned" ? scanned : target;
     if (ids.length === 0) { useOcrStore.setState({ toast: "No page to read." }); return; }
     if (!acknowledged) {
@@ -54,7 +58,7 @@ export default function DeepOcrMenu() {
   const disabled = !client;
   return (
     <details className="deep-ocr" data-testid="deep-ocr" onToggle={(e) => setOpen(e.currentTarget.open)}>
-      <summary title={disabled ? "Deep OCR needs the AI service." : undefined}><Icon name="deep-ocr" />Deep OCR<Icon name="chevron-down" size={14} /></summary>
+      <summary className={locked ? "locked" : undefined} title={disabled ? "Deep OCR needs the AI service." : undefined}><Icon name="deep-ocr" />Deep OCR<Icon name="chevron-down" size={14} /></summary>
       <div className="deep-ocr-menu">
         <button disabled={disabled || pages.length === 0} onClick={() => { const id = thisPage(); void run(id ? [id] : []); }}>
           This page{shownIndex >= 0 && <span className="deep-ocr-page"> · p. {shownIndex + 1}</span>}

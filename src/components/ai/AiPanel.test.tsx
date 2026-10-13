@@ -3,11 +3,13 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, screen, fireEvent, cleanup } from "@testing-library/react";
 import AiPanel from "./AiPanel";
 import { useAiStore } from "../../store/ai";
+import { useAccount } from "../../account/store";
+import { useSheets } from "../account/useGate";
 
 vi.mock("../../ai/turnstile", () => ({ getTurnstileToken: async () => "tok" }));
 
 describe("AiPanel", () => {
-  afterEach(cleanup);
+  afterEach(() => { cleanup(); vi.unstubAllEnvs(); useAccount.setState({ me: null, loading: false }); useSheets.setState({ open: null }); useAiStore.setState({ limitedUntil: null, limitKind: null, remaining: null }); });
 
   it("shows the privacy notice once and the four tabs", () => {
     render(<AiPanel />);
@@ -41,5 +43,58 @@ describe("AiPanel", () => {
     expect(screen.queryByTestId("ai-run")).toBeNull();
     expect(useAiStore.getState().client).toBeNull();
     vi.unstubAllEnvs();
+  });
+
+  it("anonymous with the paywall on: Run opens the upgrade sheet and does not call the AI", () => {
+    vi.stubEnv("VITE_PAYWALL_ENABLED", "true");
+    const run = vi.fn(async () => {});
+    useAiStore.setState({ run });
+    render(<AiPanel />);
+    const btn = screen.getByTestId("ai-run") as HTMLButtonElement;
+    expect(btn.className).toContain("locked");
+    fireEvent.click(btn);
+    expect(useSheets.getState().open).toBe("upgrade");
+    expect(run).not.toHaveBeenCalled();
+  });
+  it("limit panel: free plan gets Upgrade to Pro; pro sees the reset and no button", () => {
+    vi.stubEnv("VITE_PAYWALL_ENABLED", "true");
+    useAiStore.setState({ limitedUntil: Math.floor(Date.now() / 1000) + 3600 });
+    useAccount.setState({ me: { plan: "free", paywall: true } as never });
+    const { unmount } = render(<AiPanel />);
+    fireEvent.click(screen.getByRole("button", { name: "Upgrade to Pro" }));
+    expect(useSheets.getState().open).toBe("paywall");
+    unmount();
+    useAccount.setState({ me: { plan: "pro", paywall: true } as never });
+    render(<AiPanel />);
+    expect(screen.getByTestId("ai-limit").textContent).toMatch(/Resets/);
+    expect(screen.queryByRole("button", { name: "Upgrade to Pro" })).toBeNull();
+  });
+
+  it("paywall off: a daily limit shows no limit panel and the old footer", () => {
+    const at = Math.floor(Date.now() / 1000) + 3600;
+    useAiStore.setState({ limitedUntil: at, limitKind: "daily" });
+    render(<AiPanel />);
+    expect(screen.queryByTestId("ai-limit")).toBeNull();
+    const time = new Date(at * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    expect(screen.getByTestId("ai-footer").textContent).toBe(`20 free requests per day · resets ${time}`);
+  });
+  it("paywall on: a monthly limit shows the reset date in the footer", () => {
+    vi.stubEnv("VITE_PAYWALL_ENABLED", "true");
+    const at = Math.floor(Date.now() / 1000) + 3600;
+    useAiStore.setState({ limitedUntil: at, limitKind: "monthly" });
+    useAccount.setState({ me: { plan: "pro", paywall: true } as never });
+    render(<AiPanel />);
+    const date = new Date(at * 1000).toLocaleDateString([], { month: "short", day: "numeric" });
+    expect(screen.getByTestId("ai-footer").textContent).toContain(`resets ${date}`);
+  });
+  it("paywall on: the footer uses the plan's limits, never the anonymous 20 per day", () => {
+    vi.stubEnv("VITE_PAYWALL_ENABLED", "true");
+    useAccount.setState({ me: { plan: "free", paywall: true, usage: { aiDay: 2, aiMonth: 2, voiceDaySec: 0, voiceMonthSec: 0, ocrMonth: 0 }, limits: { aiDay: 5, aiMonth: 155, voiceDaySec: 300, voiceMonthSec: 9300, ocrMonth: 0, edit: false } } as never });
+    const { unmount } = render(<AiPanel />);
+    expect(screen.getByTestId("ai-footer").textContent).toBe("3 requests left today");
+    unmount();
+    useAccount.setState({ me: null });
+    render(<AiPanel />);
+    expect(screen.getByTestId("ai-footer").textContent).not.toMatch(/20 free/);
   });
 });

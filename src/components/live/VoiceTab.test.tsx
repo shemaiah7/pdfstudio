@@ -5,9 +5,11 @@ import { render, screen, fireEvent, cleanup } from "@testing-library/react";
 import VoiceTab from "./VoiceTab";
 import { useLiveStore } from "../../store/live";
 import { useDocumentStore } from "../../store/document";
+import { useAccount } from "../../account/store";
+import { useSheets } from "../account/useGate";
 
 const start = vi.fn(async () => {}); const end = vi.fn(async () => {}); const setMuted = vi.fn(); const acknowledge = vi.fn(); const setMic = vi.fn();
-afterEach(() => { cleanup(); vi.restoreAllMocks(); });
+afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllEnvs(); useAccount.setState({ me: null, loading: false }); useSheets.setState({ open: null }); });
 beforeEach(() => {
   start.mockClear(); end.mockClear(); setMuted.mockClear(); acknowledge.mockClear(); setMic.mockClear();
   useLiveStore.setState({ status: "idle", error: null, captions: [], seconds: 0, remainingSeconds: null, unlimited: false, resetAt: null, muted: false, acknowledged: false, searching: false, keywordMode: false, conversationId: null, micId: null, mics: [], start, end, setMuted, acknowledge, setMic });
@@ -48,6 +50,15 @@ describe("VoiceTab", () => {
     expect(confirm).toHaveBeenCalledTimes(1);
     expect(start).toHaveBeenCalledTimes(2);
   });
+  it("paywall on with plan limits: the disclosure states the plan's voice minutes per day", () => {
+    vi.stubEnv("VITE_PAYWALL_ENABLED", "true");
+    useAccount.setState({ me: { plan: "free", paywall: true, limits: { aiDay: 5, aiMonth: 155, voiceDaySec: 300, voiceMonthSec: 9300, ocrMonth: 0, edit: false } } as never });
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    render(<VoiceTab />);
+    expect(screen.getByText(/About \$0\.10 per minute, 5 minutes per day\./)).toBeTruthy();
+    fireEvent.click(screen.getByTestId("voice-start"));
+    expect(confirm).toHaveBeenCalledWith(expect.stringMatching(/5 minutes per day\.$/));
+  });
   it("does not start when the disclosure is declined", () => {
     vi.spyOn(window, "confirm").mockReturnValue(false);
     render(<VoiceTab />);
@@ -87,6 +98,31 @@ describe("VoiceTab", () => {
     expect(screen.getByTestId("voice-error").textContent).toBe("Voice service unavailable right now.");
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     expect(start).toHaveBeenCalled();
+  });
+  it("anonymous with the paywall on: Start opens the upgrade sheet and does not start", () => {
+    vi.stubEnv("VITE_PAYWALL_ENABLED", "true");
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    render(<VoiceTab />);
+    const btn = screen.getByTestId("voice-start") as HTMLButtonElement;
+    expect(btn.className).toContain("locked");
+    expect(btn.disabled).toBe(false);
+    fireEvent.click(btn);
+    expect(useSheets.getState().open).toBe("upgrade");
+    expect(confirm).not.toHaveBeenCalled();
+    expect(start).not.toHaveBeenCalled();
+  });
+  it("limit error on a free plan offers Upgrade to Pro; on pro it shows no button", () => {
+    vi.stubEnv("VITE_PAYWALL_ENABLED", "true");
+    useLiveStore.setState({ status: "error", error: "Monthly limit reached. Resets Nov 1.", limited: true } as never);
+    useAccount.setState({ me: { plan: "free", paywall: true } as never });
+    const { unmount } = render(<VoiceTab />);
+    fireEvent.click(screen.getByRole("button", { name: "Upgrade to Pro" }));
+    expect(useSheets.getState().open).toBe("paywall");
+    unmount();
+    useAccount.setState({ me: { plan: "pro", paywall: true } as never });
+    render(<VoiceTab />);
+    expect(screen.getByTestId("voice-error").textContent).toBe("Monthly limit reached. Resets Nov 1.");
+    expect(screen.queryByRole("button", { name: "Upgrade to Pro" })).toBeNull();
   });
   it("lists System default plus devices and calls setMic on change", () => {
     useLiveStore.setState({ mics: [{ deviceId: "a", label: "MacBook Mic" }, { deviceId: "b", label: "iPhone Mic" }], micId: "a" });

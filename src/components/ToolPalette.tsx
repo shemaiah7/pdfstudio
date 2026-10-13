@@ -3,6 +3,7 @@ import { useToolsStore, COLORS, WIDTHS, type Tool } from "../store/tools";
 import { useDocumentStore } from "../store/document";
 import { Icon } from "./icons";
 import SignatureDialog from "./SignatureDialog";
+import { useGate, useLocked } from "./account/useGate";
 
 const WIDTH_BAR_PX: Record<string, number> = { thin: 2, medium: 4, thick: 7 };
 
@@ -14,7 +15,13 @@ const TOOLS: { id: Tool; label: string; title?: string }[] = [
 export default function ToolPalette() {
   const { tool, color, width, message, setTool, setColor, setWidth, setPendingSignature } = useToolsStore();
   const [signing, setSigning] = useState(false);
-  const chooseTool = (id: Tool) => { setTool(id); if (id === "sign") setSigning(true); };
+  const { require } = useGate();
+  const editLocked = useLocked("edit");
+  const chooseTool = (id: Tool) => {
+    if (id !== "select" && !require("edit")) return;
+    setTool(id);
+    if (id === "sign") setSigning(true);
+  };
   const selectedAnnotationId = useDocumentStore((s) => s.selectedAnnotationId);
   const updateAnnotation = useDocumentStore((s) => s.updateAnnotation);
   useEffect(() => {
@@ -24,11 +31,11 @@ export default function ToolPalette() {
     };
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") { setTool("select"); useDocumentStore.getState().selectAnnotation(null); }
-      else if (e.key === "e" && !e.metaKey && !e.ctrlKey && !e.altKey && !isEditing()) setTool("edit");
+      else if (e.key === "e" && !e.metaKey && !e.ctrlKey && !e.altKey && !isEditing() && require("edit")) setTool("edit");
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [setTool]);
+  }, [setTool, require]);
   const pickColor = (rgb: typeof color) => { setColor(rgb); if (selectedAnnotationId) updateAnnotation(selectedAnnotationId, { color: rgb }); };
   const pickWidth = (w: number) => {
     setWidth(w);
@@ -40,7 +47,7 @@ export default function ToolPalette() {
     <>
       <div className="palette" role="toolbar" aria-label="Tools">
         {TOOLS.map((t) => (
-          <button key={t.id} type="button" data-testid={`tool-${t.id}`} className={`tool ${tool === t.id ? "active" : ""}`}
+          <button key={t.id} type="button" data-testid={`tool-${t.id}`} className={`tool ${tool === t.id ? "active" : ""}${editLocked && t.id !== "select" ? " locked" : ""}`}
             aria-label={t.label} title={t.title ?? t.label} aria-pressed={tool === t.id} onClick={() => chooseTool(t.id)}>
             <Icon name={t.id} size={18} />
           </button>

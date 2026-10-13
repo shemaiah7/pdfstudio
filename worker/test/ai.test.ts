@@ -170,3 +170,87 @@ describe("POST /ai", () => {
     expect(await env.QUOTA.get(`b:vid-owner`)).toBeNull();
   });
 });
+
+async function callAi(e: typeof env, tok: string, body: unknown, stream: StreamFn = fakeStream(["ok"])) {
+  const req = new Request("https://ai.example/ai", { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${tok}` }, body: JSON.stringify(body) });
+  const ctx = createExecutionContext();
+  const res = await aiHandler(req, e, ctx, stream);
+  if (res.body) await res.clone().text();
+  await waitOnExecutionContext(ctx);
+  return res;
+}
+
+describe("/ai with PAYWALL_ENABLED", () => {
+  const on = { ...env, PAYWALL_ENABLED: "true" } as typeof env;
+  const exp = () => Math.floor(Date.now() / 1000) + 600;
+  it("anon -> 403 account_required", async () => {
+    const tok = await signSession({ vid: "anon1", exp: exp() }, env.SESSION_SECRET);
+    const res = await callAi(on, tok, doc);
+    expect(res.status).toBe(403);
+    expect(await res.json()).toMatchObject({ error: "account_required" });
+  });
+  it("free user over 5/day -> 429 daily_limit scope day", async () => {
+    const tok = await signSession({ vid: "u:user_f1", uid: "user_f1", plan: "free", exp: exp() }, env.SESSION_SECRET);
+    for (let i = 0; i < 5; i++) expect((await callAi(on, tok, doc)).status).toBe(200);
+    const res = await callAi(on, tok, doc);
+    expect(res.status).toBe(429);
+    expect(await res.json()).toMatchObject({ error: "daily_limit", scope: "day" });
+  });
+  it("done event reports plan-aware remaining requests and tokens, and reconciles tokens", async () => {
+    const tok = await signSession({ vid: "u:user_f3", uid: "user_f3", plan: "trial", exp: exp() }, env.SESSION_SECRET);
+    const res = await callAi(on, tok, doc);
+    const text = await res.text();
+    expect(text).toContain('"remaining":{"requests":99,"tokens":998950}');
+    expect(await env.QUOTA.get(`q:u:user_f3:${new Date().toISOString().slice(0, 10)}`, "json")).toEqual({ requests: 0, tokens: 1050 });
+  });
+  it("free user over the daily token ceiling -> 429 daily_limit scope day", async () => {
+    await env.QUOTA.put(`q:u:user_f4:${new Date().toISOString().slice(0, 10)}`, JSON.stringify({ requests: 0, tokens: 100_000 }));
+    const tok = await signSession({ vid: "u:user_f4", uid: "user_f4", plan: "free", exp: exp() }, env.SESSION_SECRET);
+    const res = await callAi(on, tok, doc);
+    expect(res.status).toBe(429);
+    expect(await res.json()).toMatchObject({ error: "daily_limit", scope: "day" });
+  });
+  it("10 requests already this minute -> 429 too_fast", async () => {
+    const minute = Math.floor(Date.now() / 60000);
+    for (const m of [minute, minute + 1]) await env.QUOTA.put(`b:u:user_f5:${m}`, "10");
+    const tok = await signSession({ vid: "u:user_f5", uid: "user_f5", plan: "trial", exp: exp() }, env.SESSION_SECRET);
+    const res = await callAi(on, tok, doc);
+    expect(res.status).toBe(429);
+    expect(await res.json()).toMatchObject({ error: "too_fast" });
+  });
+  it("flag off: signed-in user uses the old anonymous quota (unchanged behaviour)", async () => {
+    const tok = await signSession({ vid: "u:user_f2", uid: "user_f2", plan: "free", exp: exp() }, env.SESSION_SECRET);
+    expect((await callAi(env, tok, doc)).status).toBe(200);
+  });
+  it("owner anonymous session skips account_required and reports unlimited", async () => {
+    const tok = await signSession({ vid: "anon-owner", exp: exp(), owner: true }, env.SESSION_SECRET);
+    const res = await callAi(on, tok, doc);
+    expect(res.status).toBe(200);
+    const text = await res.text();
+    expect(text).toContain('"remaining":null');
+    expect(text).toContain('"unlimited":true');
+  });
+  it("owner free user bypasses daily, monthly, token and burst limits and writes no counters", async () => {
+    const day = new Date().toISOString().slice(0, 10), month = day.slice(0, 7), minute = Math.floor(Date.now() / 60000);
+    await env.QUOTA.put(`d:ai:u:user_o1:${day}`, "99");
+    await env.QUOTA.put(`m:ai:u:user_o1:${month}`, "999");
+    await env.QUOTA.put(`q:u:user_o1:${day}`, JSON.stringify({ requests: 0, tokens: 10_000_000 }));
+    for (const m of [minute, minute + 1]) await env.QUOTA.put(`b:u:user_o1:${m}`, "10");
+    const tok = await signSession({ vid: "u:user_o1", uid: "user_o1", plan: "free", exp: exp(), owner: true }, env.SESSION_SECRET);
+    for (let i = 0; i < 3; i++) {
+      const res = await callAi(on, tok, doc);
+      expect(res.status).toBe(200);
+      expect(await res.text()).toContain('"unlimited":true');
+    }
+    expect(await env.QUOTA.get(`d:ai:u:user_o1:${day}`)).toBe("99");
+    expect(await env.QUOTA.get(`m:ai:u:user_o1:${month}`)).toBe("999");
+  });
+  it("the same free user without owner is still limited", async () => {
+    const day = new Date().toISOString().slice(0, 10);
+    await env.QUOTA.put(`d:ai:u:user_o2:${day}`, "5");
+    const tok = await signSession({ vid: "u:user_o2", uid: "user_o2", plan: "free", exp: exp() }, env.SESSION_SECRET);
+    const res = await callAi(on, tok, doc);
+    expect(res.status).toBe(429);
+    expect(await res.json()).toMatchObject({ error: "daily_limit" });
+  });
+});

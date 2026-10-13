@@ -3,6 +3,14 @@ import { json } from "../cors";
 import { verifyTurnstile } from "../turnstile";
 import { signSession, utcDay, visitorId } from "../session";
 import { nextUtcMidnight } from "../quota";
+import { verifyClerkJwt, clerkUserEmail } from "../clerk";
+import { ensureUser, getUser } from "../users";
+import { planOf } from "../plan";
+
+export interface SessionDeps { userEmail(id: string, env: Env): Promise<string> }
+const deps: SessionDeps = { userEmail: (id, env) => clerkUserEmail(id, env) };
+export function configureSessionDeps(p: Partial<SessionDeps>): void { Object.assign(deps, p); }
+export const USER_SESSION_SECONDS = 600;
 
 const enc = new TextEncoder();
 
@@ -21,6 +29,28 @@ async function isOwnerKey(supplied: string, env: Env): Promise<boolean> {
 }
 
 export async function sessionHandler(request: Request, env: Env): Promise<Response> {
+  const auth = request.headers.get("authorization") ?? "";
+  if (auth.startsWith("Bearer ")) {
+    const claims = await verifyClerkJwt(auth.slice(7), env);
+    if (!claims) return json({ error: "unauthorized" }, 401, env);
+    const now = Math.floor(Date.now() / 1000);
+    let user;
+    try {
+      user = await getUser(env.DB, claims.sub);
+      if (!user) user = await ensureUser(env.DB, claims.sub, await deps.userEmail(claims.sub, env), now);
+    } catch { return json({ error: "account_unavailable" }, 503, env); }
+    const plan = planOf(user, now);
+    const exp = now + USER_SESSION_SECONDS;
+    let ownerKey = "";
+    try {
+      const body = (await request.json()) as { ownerKey?: unknown };
+      if (typeof body?.ownerKey === "string") ownerKey = body.ownerKey;
+    } catch { /* no body */ }
+    const owner = await isOwnerKey(ownerKey, env);
+    const payload = { vid: `u:${claims.sub}`, uid: claims.sub, plan, exp, ...(owner ? { owner: true as const } : {}) };
+    const token = await signSession(payload, env.SESSION_SECRET);
+    return json({ token, expiresAt: exp, plan, ...(owner ? { owner: true } : {}) }, 200, env);
+  }
   let token = "";
   let ownerKey = "";
   try {
@@ -35,5 +65,5 @@ export async function sessionHandler(request: Request, env: Env): Promise<Respon
   const vid = await visitorId(ip, env.SESSION_SECRET, utcDay(now));
   const owner = await isOwnerKey(ownerKey, env);
   const payload = owner ? { vid, exp, owner: true as const } : { vid, exp };
-  return json({ token: await signSession(payload, env.SESSION_SECRET), expiresAt: exp, ...(owner ? { owner: true } : {}) }, 200, env);
+  return json({ token: await signSession(payload, env.SESSION_SECRET), expiresAt: exp, plan: "anon", ...(owner ? { owner: true } : {}) }, 200, env);
 }

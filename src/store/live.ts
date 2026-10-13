@@ -18,6 +18,8 @@ export const RETRIEVE_BUDGET_MS = 2_500;
 export interface LiveState {
   status: "idle" | "connecting" | "live" | "ending" | "error";
   error: string | null;
+  /** The last start was refused by a usage limit (drives the Upgrade to Pro button). */
+  limited: boolean;
   captions: { role: "you" | "assistant"; text: string }[];
   seconds: number;
   remainingSeconds: number | null;
@@ -79,18 +81,25 @@ export async function openMicrophone(micId: string | null): Promise<void> {
 export function configureLiveDeps(partial: Partial<LiveDeps>): void { Object.assign(deps, partial); }
 
 const fmtTime = (unix: number) => new Date(unix * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-type LimitInfo = { resetAt?: number; remainingSeconds?: number; sessionSeconds?: number };
+const fmtDate = (unix: number) => new Date(unix * 1000).toLocaleDateString([], { month: "short", day: "numeric" });
+const LIMIT_CODES = new Set(["voice_limit", "monthly_limit"]);
+type LimitInfo = { resetAt?: number; remainingSeconds?: number; sessionSeconds?: number; scope?: "day" | "month" };
 function errorMessage(code: string, info: LimitInfo = {}): string {
   const at = info.resetAt ? fmtTime(info.resetAt) : "midnight UTC";
   switch (code) {
     case "voice_limit": {
+      if (info.scope === "month") return `Monthly voice minutes used; resets ${info.resetAt ? fmtDate(info.resetAt) : "next month"}.`;
       // A session reserves its full length up front, so a start can be refused while some minutes remain.
       const left = Math.floor((info.remainingSeconds ?? 0) / 60), need = Math.round((info.sessionSeconds ?? 0) / 60);
       if (left >= 1 && need > left) return `Voice sessions need ${need} free minutes to start — you have ${left}. More time frees up at ${at}.`;
       return `Voice allowance used for today; resets at ${at}.`;
     }
+    case "monthly_limit": return `Monthly limit reached. Resets ${info.resetAt ? fmtDate(info.resetAt) : "next month"}.`;
+    case "account_required": return "Create a free account to use this.";
+    case "pro_required": return "Deep OCR is part of Pro.";
     case "voice_unavailable": return "Voice service unavailable right now.";
     case "verification_failed": return "Couldn't verify you're human. Try again.";
+    case "signin_required": return "Please sign in again.";
     case "network": case "connect_timeout": return "Connection lost";
     default: return "Voice could not start.";
   }
@@ -98,13 +107,14 @@ function errorMessage(code: string, info: LimitInfo = {}): string {
 
 let client: LiveClient | null = null;
 let startedAt = 0;
+let sessionCapS = SESSION_CAP_S; // min(SESSION_CAP_S, the Worker's maxSeconds) for the current session
 let ticker: ReturnType<typeof setInterval> | null = null;
 let silence: ReturnType<typeof setTimeout> | null = null;
 const reportedClients = new WeakSet<LiveClient>();
 
 export const useLiveStore = create<LiveState>((set, get) => {
   const clearTimers = () => { if (ticker) clearInterval(ticker); ticker = null; if (silence) clearTimeout(silence); silence = null; };
-  const elapsed = () => (startedAt === 0 ? 0 : Math.min(SESSION_CAP_S, Math.round((deps.now() - startedAt) / 1000)));
+  const elapsed = () => (startedAt === 0 ? 0 : Math.min(sessionCapS, Math.round((deps.now() - startedAt) / 1000)));
   const armSilence = () => { if (silence) clearTimeout(silence); silence = setTimeout(() => { void get().end(); }, SILENCE_S * 1000); };
 
   const report = async (keepalive = false, secs?: number) => {
@@ -169,7 +179,7 @@ export const useLiveStore = create<LiveState>((set, get) => {
   };
 
   return {
-    status: "idle", error: null, captions: [], seconds: 0, remainingSeconds: null, unlimited: false, resetAt: null,
+    status: "idle", error: null, limited: false, captions: [], seconds: 0, remainingSeconds: null, unlimited: false, resetAt: null,
     muted: false, acknowledged: false, searching: false, keywordMode: false, conversationId: null,
     micId: getSavedMic(), mics: [],
     acknowledge: () => set({ acknowledged: true }),
@@ -185,13 +195,14 @@ export const useLiveStore = create<LiveState>((set, get) => {
       if (get().status !== "idle" && get().status !== "error") return;
       const api = useAiStore.getState().client;
       if (!api) { set({ status: "error", error: "Voice could not start." }); return; }
-      set({ status: "connecting", error: null, captions: [], seconds: 0, searching: false, keywordMode: false, conversationId: null });
+      set({ status: "connecting", error: null, limited: false, captions: [], seconds: 0, searching: false, keywordMode: false, conversationId: null });
       startedAt = 0;
+      sessionCapS = SESSION_CAP_S;
       try { await deps.getMedia(get().micId); } catch { set({ status: "error", error: "Microphone access is needed for voice." }); return; }
       await get().refreshMics(); // device labels are available now that permission was granted
       const inputDeviceId = resolveMic(get().micId, get().mics);
       const live = new LiveClient(
-        { createSession: async () => { const s = await api.createLiveSession(); set({ conversationId: s.conversationId, resetAt: s.resetAt ?? null }); return s; } },
+        { createSession: async () => { const s = await api.createLiveSession(); sessionCapS = Math.min(SESSION_CAP_S, s.maxSeconds ?? SESSION_CAP_S); set({ conversationId: s.conversationId, resetAt: s.resetAt ?? null }); return s; } },
         {
           onConnected: () => {}, // the overview is sent once start() resolves, when the SDK conversation exists
           onUserText: (text) => { armSilence(); set({ captions: [...get().captions, { role: "you", text }] }); },
@@ -223,7 +234,7 @@ export const useLiveStore = create<LiveState>((set, get) => {
         set({ status: "live", remainingSeconds, unlimited: unlimited === true, seconds: 0 });
         ticker = setInterval(() => {
           set({ seconds: elapsed() });
-          if (elapsed() >= SESSION_CAP_S) void get().end();
+          if (elapsed() >= sessionCapS) void get().end();
         }, 1000);
         armSilence();
       } catch (err) {
@@ -232,6 +243,7 @@ export const useLiveStore = create<LiveState>((set, get) => {
         const code = e.name === "NotAllowedError" || e.name === "NotFoundError" ? "mic" : e.message;
         if (get().conversationId) void report();
         finish("error", code === "mic" ? "Microphone access is needed for voice." : errorMessage(code, e));
+        if (LIMIT_CODES.has(code)) set({ limited: true });
       }
     },
 
