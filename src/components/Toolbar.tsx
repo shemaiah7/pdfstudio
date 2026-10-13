@@ -11,6 +11,8 @@ import DeepOcrMenu from "./ocr/DeepOcrMenu";
 import OcrPill from "./ocr/OcrPill";
 import { Icon, type IconName } from "./icons";
 import ThemeToggle from "./ThemeToggle";
+import InstallButton from "./InstallButton";
+import { useInstallStore } from "../pwa/install";
 import { outputName, saveBlob } from "../pdf/download";
 
 interface Props { scale: number; setScale: (s: number) => void; onFiles: (files: File[], mode: "open" | "add") => void; onTogglePages: () => void; pagesOpen: boolean }
@@ -29,6 +31,7 @@ export default function Toolbar({ scale, setScale, onFiles, onTogglePages, pages
   const [busy, setBusy] = useState(false);
   const phone = useSyncExternalStore(subscribePhone, isPhone, () => false);
   const [moreOpen, setMoreOpen] = useState(false);
+  const installHint = useInstallStore((st) => st.platformHint);
   const actionsRef = useRef<HTMLDivElement>(null);
   const moreRef = useRef<HTMLButtonElement>(null);
   const openInput = useRef<HTMLInputElement>(null);
@@ -136,11 +139,12 @@ export default function Toolbar({ scale, setScale, onFiles, onTogglePages, pages
       <DeepOcrMenu />
       {phone ? null : <OcrPill />}
       {phone ? zoom : null}
+      {phone ? <InstallButton className="tb-icon" iconOnly /> : null}
       {phone ? <ThemeToggle className="tb-icon" /> : null}
       </div>
       <div className="tb-right">
         <button type="button" className="tb-icon tb-more" aria-label="More actions" title="More actions" aria-expanded={moreOpen} ref={moreRef} onClick={() => setMoreOpen((o) => !o)}><Icon name="dots" /></button>
-        {phone ? null : <div className="tb-group"><ThemeToggle className="tb-icon" /></div>}
+        {phone ? null : <div className="tb-group">{installHint === "prompt" ? <InstallButton className="tb-icon" iconOnly /> : null}<ThemeToggle className="tb-icon" /></div>}
         {phone ? null : zoom}
         <button type="button" data-testid="download" className="primary" disabled={s.pages.length === 0 || busy}
           onClick={() => exportPages(s.pages, "edited")}><Icon name="download" /><span className="tb-dl-label">{busy ? "Building…" : "Download"}</span></button>

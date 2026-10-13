@@ -26,7 +26,19 @@ const writePreference = (p: ThemePreference) => {
   try { window.localStorage.setItem(KEY, p); } catch { /* storage unavailable (private mode etc.) */ }
 };
 
-const apply = (resolved: ResolvedTheme) => { document.documentElement.dataset.theme = resolved; };
+const THEME_COLOR: Record<ResolvedTheme, string> = { light: "#fbfaf8", dark: "#1d1d1b" };
+
+// index.html ships light/dark media variants; once JS has resolved the theme, a single meta without media reflects the app's choice (incl. overrides).
+const syncThemeColor = (resolved: ResolvedTheme) => {
+  const head = document.head;
+  if (!head) return;
+  head.querySelectorAll('meta[name="theme-color"][media]').forEach((m) => m.remove());
+  let meta = head.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
+  if (!meta) { meta = document.createElement("meta"); meta.name = "theme-color"; head.appendChild(meta); }
+  meta.content = THEME_COLOR[resolved];
+};
+
+const apply = (resolved: ResolvedTheme) => { document.documentElement.dataset.theme = resolved; syncThemeColor(resolved); };
 
 interface ThemeState { preference: ThemePreference; resolved: ResolvedTheme; setPreference(p: ThemePreference): void; cycle(): void }
 
