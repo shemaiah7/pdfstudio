@@ -314,6 +314,12 @@ body { background: var(--bg); color: var(--text); font: var(--text-body); }
 .voice-captions .caption.assistant { align-self: flex-start; line-height: 1.55; }
 .caption-avatar { flex: none; width: 26px; height: 26px; display: grid; place-items: center; border-radius: 50%; background: var(--color-primary); color: var(--color-on-primary); }
 .voice-idle .voice-captions { flex: none; padding: 0; }
+.voice-mic { display: flex; flex-direction: column; gap: 6px; }
+.voice-mic label { font-size: 12px; color: var(--color-ink-2); }
+.voice-mic select { width: 100%; height: 32px; padding: 0 28px 0 10px; border: 1px solid var(--color-line); border-radius: 8px; background: var(--color-surface) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23878680' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E") no-repeat right 9px center; color: var(--color-ink); font: inherit; font-size: 13px; appearance: none; -webkit-appearance: none; cursor: pointer; text-overflow: ellipsis; }
+.voice-mic select:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 0; }
+.voice-mic-hint { margin: 0; font-size: 12px; color: var(--color-ink-2); }
+.voice-live > .voice-mic { padding: 0 20px; }
 .voice-controls { display: flex; gap: 10px; padding: 14px 20px; }
 .voice-controls button { flex: 1; height: 48px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; border-radius: 12px; font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; }
 .voice-secondary { background: var(--color-surface); color: var(--color-ink); border: 1px solid var(--color-line); }
