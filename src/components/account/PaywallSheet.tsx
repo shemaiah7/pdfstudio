@@ -13,19 +13,24 @@ export default function PaywallSheet({ navigate = (url: string) => window.locati
   const close = useSheets((s) => s.close);
   const [interval, setInterval] = useState<Interval>("year");
   const [busy, setBusy] = useState(false);
-  const [failed, setFailed] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
   const plan = useAccount((s) => s.plan());
-  useEffect(() => { if (open) { setInterval("year"); setFailed(false); setBusy(false); } }, [open]);
+  useEffect(() => { if (open) { setInterval("year"); setFailed(null); setBusy(false); } }, [open]);
   if (!open) return null;
   const lede = plan === "free" ? "Your trial has ended. Pro brings back editing and full AI." : plan === "trial" ? "Keep editing and full AI after your trial ends." : "Pro brings editing and full AI.";
 
   const subscribe = async () => {
-    setBusy(true); setFailed(false);
+    setBusy(true); setFailed(null);
     try {
       const client = useAiStore.getState().client;
       if (!client) throw new Error("no client");
       navigate(await client.checkout(interval));
-    } catch { setFailed(true); setBusy(false); }
+    } catch (err) {
+      const already = (err as Error).message === "already_subscribed";
+      setFailed(already ? "You're already on Pro." : "Couldn't start checkout. Try again.");
+      setBusy(false);
+      if (already) void useAccount.getState().refresh();
+    }
   };
   const price = PRICE[interval];
   return (
@@ -43,7 +48,7 @@ export default function PaywallSheet({ navigate = (url: string) => window.locati
           <li>120 voice minutes a month</li>
           <li>300 Deep OCR pages a month</li>
         </ul>
-        {failed ? <div className="sigError" role="alert">Couldn't start checkout. Try again.</div> : null}
+        {failed ? <div className="sigError" role="alert">{failed}</div> : null}
       </div>
       <div className="sigActions acct-stack">
         <button type="button" className="sigPrimary acct-wide" disabled={busy} onClick={() => void subscribe()}>Subscribe</button>

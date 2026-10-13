@@ -14,3 +14,19 @@ for (const [plan, editable] of [["free", false], ["trial", true]] as const) {
     else await expect(page.getByRole("dialog", { name: /Pro/ })).toBeVisible();
   });
 }
+
+test("back from Checkout on the empty state: Activating Pro, then Pro is active", async ({ page }) => {
+  // No Clerk key in dev: the session comes from a stubbed Turnstile and a mocked /session.
+  await page.route("https://challenges.cloudflare.com/**", (r) => r.abort());
+  await page.addInitScript(() => {
+    (window as unknown as { turnstile: unknown }).turnstile = { render: (_el: unknown, o: { callback(t: string): void }) => { setTimeout(() => o.callback("tt"), 0); return "w"; }, remove: () => {} };
+  });
+  await page.route("**/session", (r) => r.fulfill({ json: { token: "t", expiresAt: 9999999999, plan: "free" } }));
+  let calls = 0;
+  await page.route("**/me", (r) => r.fulfill({ json: { plan: ++calls >= 2 ? "pro" : "free", paywall: true, termsAccepted: true } }));
+  await page.goto("/?paywall=1&checkout=success");
+  await expect(page.getByText("Activating Pro")).toBeVisible();
+  await expect(page.getByText("Pro is active")).toBeVisible({ timeout: 15_000 });
+  expect(calls).toBeGreaterThanOrEqual(2);
+  await expect(page).not.toHaveURL(/checkout=/);
+});

@@ -19,6 +19,7 @@ import PaywallSheet from "./components/account/PaywallSheet";
 import ActivatingNotice from "./components/account/ActivatingNotice";
 import RolloutBanner from "./components/account/RolloutBanner";
 import { requireFeature } from "./components/account/useGate";
+import { useAiClient } from "./components/ai/useAiClient";
 
 /** Needs ClerkProvider, so App only renders it when a Clerk key is configured. */
 function SignedInTerms() {
@@ -40,6 +41,9 @@ export default function App() {
   const [scale, setScale] = useState(() => (typeof window.matchMedia === "function" && window.matchMedia("(max-width: 700px)").matches ? 0.6 : 1.2));
   const [pagesOpen, setPagesOpen] = useState(false);
   const [dragging, setDragging] = useState(false);
+  // Create the AI client on every screen (not just with a document open): the account plan and
+  // the post-checkout "Activating Pro" poll both need it on the empty state.
+  useAiClient();
 
   useEffect(() => {
     const isEditing = () => {

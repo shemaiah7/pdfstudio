@@ -2,15 +2,13 @@ import { useEffect, useRef } from "react";
 import { useAuth } from "@clerk/clerk-react";
 import { useAiStore } from "../store/ai";
 import { useAccount } from "./store";
-
-let authTokenGetter: (() => Promise<string | null>) | null = null;
-export const setAuthTokenGetter = (fn: (() => Promise<string | null>) | null): void => { authTokenGetter = fn; };
-export const getAuthToken = (): Promise<string | null> => authTokenGetter?.() ?? Promise.resolve(null);
+import { setAuthTokenGetter, setSignedIn } from "./authState";
 
 /** Renders nothing; must be mounted inside <ClerkProvider>. Hands Clerk's token getter to the AI client, resets its session on sign-in/out, and keeps the account plan in step. */
 export function ClerkBridge(): null {
   const { getToken, isSignedIn } = useAuth();
   setAuthTokenGetter(() => getToken());
+  setSignedIn(!!isSignedIn);
   const signedIn = useRef<boolean | undefined>(undefined);
   const prevSignedIn = useRef<boolean | undefined>(undefined);
   useEffect(() => { useAccount.getState().setFromCache(); }, []);

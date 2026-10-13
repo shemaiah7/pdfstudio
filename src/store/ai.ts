@@ -88,6 +88,7 @@ export const useAiStore = create<AiState>((set, get) => ({
   errorMessage(code, extra) {
     switch (code) {
       case "verification_failed": return "Couldn't verify you're human. Try again.";
+      case "signin_required": return "Please sign in again.";
       case "daily_limit": return `Daily limit reached. Resets at ${fmtTime(Number(extra?.resetAt ?? 0))}.`;
       case "monthly_limit": return `Monthly limit reached. Resets ${fmtDate(Number(extra?.resetAt ?? 0))}.`;
       case "account_required": return "Create a free account to use this.";

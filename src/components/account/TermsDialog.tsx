@@ -17,7 +17,8 @@ export default function TermsDialog({ signedIn }: { signedIn: boolean }) {
   const [agreed, setAgreed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
-  if (!signedIn || !me || !me.paywall || me.termsAccepted !== false) return null;
+  // Shown whenever a signed-in user hasn't accepted the current terms, paywall on or off (rollout phase 1).
+  if (!signedIn || !me || me.termsAccepted !== false) return null;
 
   const accept = async () => {
     const client = useAiStore.getState().client;

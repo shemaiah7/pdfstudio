@@ -24,12 +24,17 @@ it("blocks Continue until the box is ticked, then accepts the current version", 
 it.each([
   ["signed out", false, { plan: "trial", paywall: true, termsAccepted: false }],
   ["accepted", true, { plan: "trial", paywall: true, termsAccepted: true }],
-  ["paywall off", true, { plan: "trial", paywall: false, termsAccepted: false }],
   ["no account yet", true, null],
 ] as const)("renders nothing when %s", (_n, signedIn, me) => {
   useAccount.setState({ me: me as never });
   const { container } = render(<TermsDialog signedIn={signedIn} />);
   expect(container.innerHTML).toBe("");
+});
+
+it("shows with the paywall off too (terms are part of sign-up, before launch)", () => {
+  useAccount.setState({ me: { plan: "trial", paywall: false, termsAccepted: false } as never });
+  render(<TermsDialog signedIn />);
+  expect(screen.getByRole("button", { name: "Continue" })).toBeTruthy();
 });
 
 it("cannot be dismissed with Escape", () => {

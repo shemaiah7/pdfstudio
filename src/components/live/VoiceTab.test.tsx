@@ -35,6 +35,15 @@ describe("VoiceTab", () => {
     expect(confirm).toHaveBeenCalledTimes(1);
     expect(start).toHaveBeenCalledTimes(2);
   });
+  it("paywall on with plan limits: the disclosure states the plan's voice minutes per day", () => {
+    vi.stubEnv("VITE_PAYWALL_ENABLED", "true");
+    useAccount.setState({ me: { plan: "free", paywall: true, limits: { aiDay: 5, aiMonth: 155, voiceDaySec: 300, voiceMonthSec: 9300, ocrMonth: 0, edit: false } } as never });
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    render(<VoiceTab />);
+    expect(screen.getByText(/About \$0\.10 per minute, 5 minutes per day\./)).toBeTruthy();
+    fireEvent.click(screen.getByTestId("voice-start"));
+    expect(confirm).toHaveBeenCalledWith(expect.stringMatching(/5 minutes per day\.$/));
+  });
   it("does not start when the disclosure is declined", () => {
     vi.spyOn(window, "confirm").mockReturnValue(false);
     render(<VoiceTab />);

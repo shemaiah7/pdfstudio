@@ -50,11 +50,12 @@ export function configureLiveDeps(partial: Partial<LiveDeps>): void { Object.ass
 const fmtTime = (unix: number) => new Date(unix * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 const fmtDate = (unix: number) => new Date(unix * 1000).toLocaleDateString([], { month: "short", day: "numeric" });
 const LIMIT_CODES = new Set(["voice_limit", "monthly_limit"]);
-type LimitInfo = { resetAt?: number; remainingSeconds?: number; sessionSeconds?: number };
+type LimitInfo = { resetAt?: number; remainingSeconds?: number; sessionSeconds?: number; scope?: "day" | "month" };
 function errorMessage(code: string, info: LimitInfo = {}): string {
   const at = info.resetAt ? fmtTime(info.resetAt) : "midnight UTC";
   switch (code) {
     case "voice_limit": {
+      if (info.scope === "month") return `Monthly voice minutes used; resets ${info.resetAt ? fmtDate(info.resetAt) : "next month"}.`;
       // A session reserves its full length up front, so a start can be refused while some minutes remain.
       const left = Math.floor((info.remainingSeconds ?? 0) / 60), need = Math.round((info.sessionSeconds ?? 0) / 60);
       if (left >= 1 && need > left) return `Voice sessions need ${need} free minutes to start — you have ${left}. More time frees up at ${at}.`;
@@ -65,6 +66,7 @@ function errorMessage(code: string, info: LimitInfo = {}): string {
     case "pro_required": return "Deep OCR is part of Pro.";
     case "voice_unavailable": return "Voice service unavailable right now.";
     case "verification_failed": return "Couldn't verify you're human. Try again.";
+    case "signin_required": return "Please sign in again.";
     case "network": case "connect_timeout": return "Connection lost";
     default: return "Voice could not start.";
   }

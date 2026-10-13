@@ -80,4 +80,14 @@ describe("AiPanel", () => {
     const date = new Date(at * 1000).toLocaleDateString([], { month: "short", day: "numeric" });
     expect(screen.getByTestId("ai-footer").textContent).toContain(`resets ${date}`);
   });
+  it("paywall on: the footer uses the plan's limits, never the anonymous 20 per day", () => {
+    vi.stubEnv("VITE_PAYWALL_ENABLED", "true");
+    useAccount.setState({ me: { plan: "free", paywall: true, usage: { aiDay: 2, aiMonth: 2, voiceDaySec: 0, voiceMonthSec: 0, ocrMonth: 0 }, limits: { aiDay: 5, aiMonth: 155, voiceDaySec: 300, voiceMonthSec: 9300, ocrMonth: 0, edit: false } } as never });
+    const { unmount } = render(<AiPanel />);
+    expect(screen.getByTestId("ai-footer").textContent).toBe("3 requests left today");
+    unmount();
+    useAccount.setState({ me: null });
+    render(<AiPanel />);
+    expect(screen.getByTestId("ai-footer").textContent).not.toMatch(/20 free/);
+  });
 });

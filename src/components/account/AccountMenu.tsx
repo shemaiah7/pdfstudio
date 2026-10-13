@@ -60,7 +60,9 @@ export default function AccountMenu({ onClose, navigate = (url) => window.locati
 
   const name = user?.fullName ?? user?.primaryEmailAddress?.emailAddress ?? "Your account";
   const email = user?.primaryEmailAddress?.emailAddress ?? "";
-  const hasBilling = !!me && (me.plan === "pro" || !!me.status);
+  // With the paywall off nothing is gated, so plan, usage and billing are hidden (identity, Sign out, Delete only).
+  const paywall = !!me?.paywall;
+  const hasBilling = paywall && !!me && (me.plan === "pro" || !!me.status);
 
   const billing = async () => {
     setError(null);
@@ -82,7 +84,7 @@ export default function AccountMenu({ onClose, navigate = (url) => window.locati
     try { await signOut(); } catch { reload(); }
   };
 
-  const plan = me ? planRow(me) : null;
+  const plan = me && paywall ? planRow(me) : null;
   return (
     <>
       <div className="acct-menu" role="dialog" aria-label="Account">
@@ -91,7 +93,7 @@ export default function AccountMenu({ onClose, navigate = (url) => window.locati
           <div className="acct-who-text"><strong>{name}</strong>{email && email !== name ? <span>{email}</span> : null}</div>
         </div>
         {plan ? <div className="acct-plan"><strong>{plan.name}</strong><span>{plan.detail}</span></div> : null}
-        {me ? bars(me).map((b) => (
+        {me && paywall ? bars(me).map((b) => (
           <div className="acct-usage" key={b.label}>
             <div><span>{b.label}</span><span className="mono">{b.value}</span></div>
             <div className="acct-bar" role="presentation"><div style={{ width: `${b.pct}%` }} /></div>

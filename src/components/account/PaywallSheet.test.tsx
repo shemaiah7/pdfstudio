@@ -67,3 +67,12 @@ it("resets to yearly and clears the error on reopen", async () => {
   expect(screen.getByRole("radio", { name: /Yearly/ }).getAttribute("aria-checked")).toBe("true");
   expect(screen.queryByText("Couldn't start checkout. Try again.")).toBeNull();
 });
+
+it("already subscribed: says so instead of a generic failure", async () => {
+  useAiStore.setState({ client: { checkout: vi.fn().mockRejectedValue(new Error("already_subscribed")), me: vi.fn().mockResolvedValue({ plan: "pro", paywall: true }), resetSession: vi.fn() } as never });
+  const navigate = vi.fn();
+  render(<PaywallSheet navigate={navigate} />);
+  fireEvent.click(screen.getByRole("button", { name: "Subscribe" }));
+  expect(await screen.findByText("You're already on Pro.")).toBeTruthy();
+  expect(navigate).not.toHaveBeenCalled();
+});

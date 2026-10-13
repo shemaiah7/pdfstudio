@@ -74,3 +74,16 @@ it("when deletion succeeded but signOut throws, reloads instead of showing an er
   expect(screen.queryByText(/Couldn't delete/)).toBeNull();
   expect(useAccount.getState().me).toBeNull();
 });
+
+it("paywall off: identity, Sign out and Delete only (no plan, usage or billing)", () => {
+  useAccount.setState({ me: { ...pro, paywall: false } as never });
+  render(<AccountMenu onClose={vi.fn()} />);
+  expect(screen.getByText("jordan@clinic.org")).toBeTruthy();
+  expect(screen.queryByText(/^Pro$/)).toBeNull();
+  expect(screen.queryByText(/Renews/)).toBeNull();
+  expect(screen.queryByText("312 / 1,000")).toBeNull();
+  expect(screen.queryByRole("button", { name: "Manage billing" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Upgrade to Pro" })).toBeNull();
+  expect(screen.getByRole("button", { name: "Sign out" })).toBeTruthy();
+  expect(screen.getByRole("button", { name: /Delete account/ })).toBeTruthy();
+});

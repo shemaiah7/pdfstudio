@@ -10,4 +10,10 @@ describe("checkProdEnv", () => {
   it("still requires the AI url and Turnstile key", () => {
     expect(checkProdEnv({ VITE_AI_URL: "http://localhost:8787", VITE_TURNSTILE_SITE_KEY: "" })).toEqual(["VITE_AI_URL", "VITE_TURNSTILE_SITE_KEY"]);
   });
+  it("rejects the paywall on without a Clerk key (nobody could sign in to pay)", () => {
+    expect(checkProdEnv({ ...base, VITE_PAYWALL_ENABLED: "true" })).toEqual(["VITE_CLERK_PUBLISHABLE_KEY"]);
+    expect(checkProdEnv({ ...base, VITE_PAYWALL_ENABLED: "true", VITE_CLERK_PUBLISHABLE_KEY: "" })).toEqual(["VITE_CLERK_PUBLISHABLE_KEY"]);
+    expect(checkProdEnv({ ...base, VITE_PAYWALL_ENABLED: "true", VITE_CLERK_PUBLISHABLE_KEY: "pk_live_x" })).toEqual([]);
+    expect(checkProdEnv({ ...base, VITE_PAYWALL_ENABLED: "false", VITE_CLERK_PUBLISHABLE_KEY: "" })).toEqual([]);
+  });
 });

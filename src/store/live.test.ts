@@ -67,6 +67,17 @@ describe("useLiveStore", () => {
     await useLiveStore.getState().start();
     expect(useLiveStore.getState().error).toMatch(/^Voice allowance used for today; resets at /);
   });
+  it("voice_limit with scope month says the monthly minutes are used, with the reset date", async () => {
+    client.createLiveSession.mockRejectedValueOnce(Object.assign(new Error("voice_limit"), { resetAt: 1_900_000_000, remainingSeconds: 0, sessionSeconds: 60, scope: "month" }));
+    await useLiveStore.getState().start();
+    const date = new Date(1_900_000_000 * 1000).toLocaleDateString([], { month: "short", day: "numeric" });
+    expect(useLiveStore.getState().error).toBe(`Monthly voice minutes used; resets ${date}.`);
+  });
+  it("signin_required asks the user to sign in again", async () => {
+    client.createLiveSession.mockRejectedValueOnce(new Error("signin_required"));
+    await useLiveStore.getState().start();
+    expect(useLiveStore.getState().error).toBe("Please sign in again.");
+  });
   it("voice_unavailable maps to its message", async () => {
     client.createLiveSession.mockRejectedValueOnce(new Error("voice_unavailable"));
     await useLiveStore.getState().start();

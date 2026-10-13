@@ -151,4 +151,45 @@ describe("AiClient accounts", () => {
     const c = new AiClient({ baseUrl: "https://ai.test", getTurnstileToken: async () => "ts", getAuthToken: async () => "j", fetchFn });
     await expect(c.ensureSession()).rejects.toThrow("account_unavailable");
   });
+  it("a session fetch started before resetSession never becomes the cached token", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((r) => { release = r; });
+    let n = 0;
+    const fetchFn = vi.fn().mockImplementation(async () => { const i = ++n; if (i === 1) await gate; return json({ token: `s${i}` }, 200); });
+    const c = new AiClient({ baseUrl: "https://ai.test", getTurnstileToken: async () => "ts", fetchFn });
+    const stale = c.ensureSession(); // anon session in flight
+    await Promise.resolve();
+    c.resetSession(); // e.g. the user just signed in
+    const fresh = await c.ensureSession();
+    expect(fresh).toBe("s2");
+    release();
+    expect(await stale).toBe("s1"); // its own awaiters still get a token
+    expect(await c.ensureSession()).toBe("s2"); // but it is not cached
+    expect(fetchFn).toHaveBeenCalledTimes(2);
+  });
+  it("never falls back to Turnstile while signed in: a null Clerk token is verification_failed", async () => {
+    const fetchFn = vi.fn();
+    const turnstile = vi.fn().mockResolvedValue("ts");
+    const c = new AiClient({ baseUrl: "https://ai.test", getTurnstileToken: turnstile, getAuthToken: async () => null, isSignedIn: () => true, fetchFn });
+    await expect(c.ensureSession()).rejects.toThrow("verification_failed");
+    expect(turnstile).not.toHaveBeenCalled();
+    expect(fetchFn).not.toHaveBeenCalled();
+  });
+  it("maps a 401 on the Clerk JWT path to signin_required (Turnstile path stays verification_failed)", async () => {
+    const fetchFn = vi.fn().mockImplementation(async () => json({ error: "unauthorized" }, 401));
+    const c = new AiClient({ baseUrl: "https://ai.test", getTurnstileToken: async () => "ts", getAuthToken: async () => "j", isSignedIn: () => true, fetchFn });
+    await expect(c.ensureSession()).rejects.toThrow("signin_required");
+    const onError = vi.fn();
+    await c.runTask({ task: "summarize", document: [] }, { onDelta: vi.fn(), onDone: vi.fn(), onError }).done;
+    expect(onError).toHaveBeenCalledWith("signin_required");
+    await expect(c.runOcr([])).rejects.toThrow("signin_required");
+    await expect(c.createLiveSession()).rejects.toThrow("signin_required");
+    const anon = new AiClient({ baseUrl: "https://ai.test", getTurnstileToken: async () => "ts", fetchFn: vi.fn().mockResolvedValue(json({ error: "verification_failed" }, 403)) });
+    await expect(anon.ensureSession()).rejects.toThrow("verification_failed");
+  });
+  it("createLiveSession carries the 429 scope", async () => {
+    const fetchFn = vi.fn().mockResolvedValueOnce(json({ token: "s1" }, 200)).mockResolvedValueOnce(json({ error: "voice_limit", scope: "month", resetAt: 5, remainingSeconds: 0, sessionSeconds: 60 }, 429));
+    const c = new AiClient({ baseUrl: "https://ai.test", getTurnstileToken: async () => "ts", fetchFn });
+    await expect(c.createLiveSession()).rejects.toMatchObject({ message: "voice_limit", scope: "month", resetAt: 5, sessionSeconds: 60 });
+  });
 });

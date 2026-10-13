@@ -47,6 +47,7 @@ describe("ai store", () => {
     const date = new Date(resetAt * 1000).toLocaleDateString([], { month: "short", day: "numeric" });
     expect(m("monthly_limit", { resetAt })).toBe(`Monthly limit reached. Resets ${date}.`);
     expect(m("daily_limit", { resetAt })).toMatch(/^Daily limit reached\. Resets at /);
+    expect(m("signin_required")).toBe("Please sign in again.");
   });
   it("monthly_limit also sets limitedUntil", async () => {
     await useDocumentStore.getState().openFiles([{ name: "three.pdf", bytes: loadFixture("three") }]);

@@ -11,6 +11,8 @@ import ScopeToggle from "./ScopeToggle";
 import { Icon } from "../icons";
 import { paywallEnabled } from "../../account/capabilities";
 import UpgradeProButton from "../account/UpgradeProButton";
+import { useAccount } from "../../account/store";
+import type { MeResponse } from "../../ai/client";
 
 /** Monthly limits reset on a date; daily ones at a time of day. */
 const resetLabel = (unix: number, monthly: boolean) => {
@@ -20,12 +22,22 @@ const resetLabel = (unix: number, monthly: boolean) => {
 
 type Tab = "summarize" | "ask" | "rewrite" | "extract";
 
+/** Footer before any request this session: the anonymous allowance, or (paywall on) what the plan has left today. */
+function idleFooter(paywall: boolean, me: MeResponse | null): string {
+  if (!paywall) return "20 free requests per day";
+  const l = me?.limits, u = me?.usage;
+  if (!l) return "";
+  if (!u) return `${l.aiDay} requests per day`;
+  return `${Math.max(0, Math.min(l.aiDay - u.aiDay, l.aiMonth - u.aiMonth))} requests left today`;
+}
+
 export default function AiPanel() {
   const [tab, setTab] = useState<Tab>("summarize");
   const { noticeDismissed, dismissNotice, remaining, limitedUntil, limitKind, resetForNewDocument } = useAiStore();
   const ocrEnabled = useOcrStore((s) => s.enabled);
   const setOcrEnabled = useOcrStore((s) => s.setEnabled);
   const sourcesKey = useDocumentStore((s) => [...s.sources.keys()].join(","));
+  const me = useAccount((s) => s.me);
 
   const configured = useAiClient();
 
@@ -63,7 +75,7 @@ export default function AiPanel() {
         </div>
       )}
       <div className="ai-footer" data-testid="ai-footer">
-        {remaining ? `${remaining.requests} requests left today` : "20 free requests per day"}
+        {remaining ? `${remaining.requests} requests left today` : idleFooter(paywall, me)}
         {limited && limitedUntil && ` · resets ${resetLabel(limitedUntil, paywall && limitKind === "monthly")}`}
       </div>
     </div>

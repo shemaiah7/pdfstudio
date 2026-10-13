@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { useAiStore } from "../../store/ai";
 import { AiClient } from "../../ai/client";
 import { getTurnstileToken } from "../../ai/turnstile";
-import { getAuthToken } from "../../account/ClerkBridge";
+import { getAuthToken, isSignedIn } from "../../account/authState";
 
 /** Creates the shared AI client once (idempotent) and returns whether AI is configured. */
 export function useAiClient(): boolean {
@@ -16,7 +16,7 @@ export function useAiClient(): boolean {
 
   useEffect(() => {
     if (client || !configured) return;
-    setClient(new AiClient({ baseUrl, getTurnstileToken: () => getTurnstileToken(siteKey), getAuthToken }));
+    setClient(new AiClient({ baseUrl, getTurnstileToken: () => getTurnstileToken(siteKey), getAuthToken, isSignedIn }));
   }, [client, setClient, configured, baseUrl, siteKey]);
 
   return configured;

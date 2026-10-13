@@ -4,8 +4,16 @@ import { useDocumentStore } from "../../store/document";
 import { Icon } from "../icons";
 import { useGate, useLocked } from "../account/useGate";
 import UpgradeProButton from "../account/UpgradeProButton";
+import { useAccount } from "../../account/store";
+import { paywallEnabled } from "../../account/capabilities";
+import type { MeResponse } from "../../ai/client";
 
 export const DISCLOSURE = "Voice sends your microphone audio to ElevenLabs and the passages of this document needed to answer each question to ElevenLabs and Anthropic. Recordings are not kept. About $0.10 per minute, 30 minutes per day.";
+/** With the paywall on and the plan known, the daily minutes are the plan's; otherwise the anonymous 30. */
+export function disclosureText(me: MeResponse | null, paywall: boolean = paywallEnabled()): string {
+  if (!paywall || !me?.limits) return DISCLOSURE;
+  return DISCLOSURE.replace("30 minutes per day.", `${Math.round(me.limits.voiceDaySec / 60)} minutes per day.`);
+}
 const mmss = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 
 export default function VoiceTab() {
@@ -13,11 +21,12 @@ export default function VoiceTab() {
   const hasDoc = useDocumentStore((d) => d.pages.length > 0);
   const { require } = useGate();
   const locked = useLocked("voice");
+  const disclosureCopy = disclosureText(useAccount((a) => a.me));
 
   const begin = () => {
     if (!require("voice")) return;
     if (!useLiveStore.getState().acknowledged) {
-      if (!window.confirm(DISCLOSURE)) return;
+      if (!window.confirm(disclosureCopy)) return;
       s.acknowledge();
     }
     void s.start();
@@ -32,7 +41,7 @@ export default function VoiceTab() {
     ))
   );
   const disclosure = (
-    <div className="voice-disclosure"><Icon name="lock" size={14} /><span>{DISCLOSURE}</span></div>
+    <div className="voice-disclosure"><Icon name="lock" size={14} /><span>{disclosureCopy}</span></div>
   );
   const meter = s.remainingSeconds !== null && (
     <div className="voice-meter" aria-hidden="true"><div className="voice-meter-fill" style={{ width: `${Math.min(100, Math.max(0, (s.remainingSeconds / 1800) * 100))}%` }} /></div>

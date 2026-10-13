@@ -28,42 +28,55 @@ export interface MeResponse {
   limits?: { aiDay: number; aiMonth: number; voiceDaySec: number; voiceMonthSec: number; ocrMonth: number; edit: boolean } | null;
 }
 
+/** Session failures surface as one of these codes; anything else (Turnstile errors, network) is "verification_failed". */
+const SESSION_ERRORS = new Set(["signin_required", "account_unavailable"]);
+const sessionError = (e: unknown): string => (e instanceof Error && SESSION_ERRORS.has(e.message) ? e.message : "verification_failed");
+
 export class AiClient {
   private token: string | null = null;
   private pending: Promise<string> | null = null;
   private baseUrl: string;
   private getTurnstileToken: () => Promise<string>;
   private getAuthToken?: () => Promise<string | null>;
+  private isSignedIn: () => boolean;
   private fetchFn: typeof fetch;
+  // Bumped by resetSession(); a session fetch from an older generation must not become the cached token.
+  private generation = 0;
 
-  constructor(opts: { baseUrl: string; getTurnstileToken: () => Promise<string>; getAuthToken?: () => Promise<string | null>; fetchFn?: typeof fetch }) {
+  constructor(opts: { baseUrl: string; getTurnstileToken: () => Promise<string>; getAuthToken?: () => Promise<string | null>; isSignedIn?: () => boolean; fetchFn?: typeof fetch }) {
     this.baseUrl = opts.baseUrl.replace(/\/$/, "");
     this.getTurnstileToken = opts.getTurnstileToken;
     this.getAuthToken = opts.getAuthToken;
+    this.isSignedIn = opts.isSignedIn ?? (() => false);
     this.fetchFn = opts.fetchFn ?? ((input, init) => fetch(input, init));
   }
 
   ensureSession(force = false): Promise<string> {
     if (this.token && !force) return Promise.resolve(this.token);
     if (!this.pending) {
-      this.pending = this.fetchSession().finally(() => { this.pending = null; });
+      const p: Promise<string> = this.fetchSession().finally(() => { if (this.pending === p) this.pending = null; });
+      this.pending = p;
     }
     return this.pending;
   }
 
   private async fetchSession(): Promise<string> {
+    const gen = this.generation;
+    const signedIn = this.isSignedIn();
     const jwt = this.getAuthToken ? await this.getAuthToken().catch(() => null) : null;
+    // Signed in but no Clerk token: never mint an anonymous session in the user's place.
+    if (!jwt && signedIn) throw new Error("verification_failed");
     const res = jwt
       ? await this.fetchFn(`${this.baseUrl}/session`, { method: "POST", headers: { authorization: `Bearer ${jwt}` } })
       : await this.fetchFn(`${this.baseUrl}/session`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ turnstileToken: await this.getTurnstileToken() }) });
-    if (!res.ok) throw new Error(res.status === 503 ? "account_unavailable" : "verification_failed");
+    if (!res.ok) throw new Error(res.status === 503 ? "account_unavailable" : jwt && res.status === 401 ? "signin_required" : "verification_failed");
     const body = (await res.json()) as { token: string };
-    this.token = body.token;
-    return this.token;
+    if (gen === this.generation) this.token = body.token;
+    return body.token;
   }
 
-  /** Drop the cached session so the next request re-authenticates (call on sign-in and sign-out). */
-  resetSession(): void { this.token = null; }
+  /** Drop the cached session (and any in-flight fetch) so the next request re-authenticates (call on sign-in, sign-out and plan change). */
+  resetSession(): void { this.token = null; this.pending = null; this.generation++; }
 
   private async post<T>(path: string, body?: unknown): Promise<T> {
     let token = await this.ensureSession();
@@ -83,13 +96,13 @@ export class AiClient {
 
   async runOcr(pages: { page: number; image: string }[], signal?: AbortSignal): Promise<OcrResponse> {
     let token: string;
-    try { token = await this.ensureSession(); } catch { throw new Error("verification_failed"); }
+    try { token = await this.ensureSession(); } catch (e) { throw new Error(sessionError(e)); }
     for (let attempt = 0; attempt < 2; attempt++) {
       let res: Response;
       try {
         res = await this.fetchFn(`${this.baseUrl}/ocr`, { method: "POST", signal, headers: { "content-type": "application/json", authorization: `Bearer ${token}` }, body: JSON.stringify({ task: "ocr", pages }) });
       } catch (err) { throw new Error((err as Error).name === "AbortError" ? "cancelled" : "network"); }
-      if (res.status === 401 && attempt === 0) { try { token = await this.ensureSession(true); continue; } catch { throw new Error("verification_failed"); } }
+      if (res.status === 401 && attempt === 0) { try { token = await this.ensureSession(true); continue; } catch (e) { throw new Error(sessionError(e)); } }
       if (!res.ok) { const err = (await res.json().catch(() => ({}))) as { error?: string; resetAt?: number }; throw Object.assign(new Error(err.error ?? "upstream"), { resetAt: err.resetAt }); }
       return (await res.json()) as OcrResponse;
     }
@@ -98,12 +111,12 @@ export class AiClient {
 
   async createLiveSession(): Promise<{ conversationId: string; token: string; remainingSeconds: number; resetAt: number; maxSeconds?: number }> {
     let token: string;
-    try { token = await this.ensureSession(); } catch { throw new Error("verification_failed"); }
+    try { token = await this.ensureSession(); } catch (e) { throw new Error(sessionError(e)); }
     for (let attempt = 0; attempt < 2; attempt++) {
       let res: Response;
       try { res = await this.fetchFn(`${this.baseUrl}/live`, { method: "POST", headers: { authorization: `Bearer ${token}` } }); } catch { throw new Error("network"); }
-      if (res.status === 401 && attempt === 0) { try { token = await this.ensureSession(true); continue; } catch { throw new Error("verification_failed"); } }
-      if (!res.ok) { const err = (await res.json().catch(() => ({}))) as { error?: string; resetAt?: number; remainingSeconds?: number; sessionSeconds?: number }; throw Object.assign(new Error(err.error ?? "upstream"), { resetAt: err.resetAt, remainingSeconds: err.remainingSeconds, sessionSeconds: err.sessionSeconds }); }
+      if (res.status === 401 && attempt === 0) { try { token = await this.ensureSession(true); continue; } catch (e) { throw new Error(sessionError(e)); } }
+      if (!res.ok) { const err = (await res.json().catch(() => ({}))) as { error?: string; resetAt?: number; remainingSeconds?: number; sessionSeconds?: number; scope?: "day" | "month" }; throw Object.assign(new Error(err.error ?? "upstream"), { resetAt: err.resetAt, remainingSeconds: err.remainingSeconds, sessionSeconds: err.sessionSeconds, scope: err.scope }); }
       return (await res.json()) as { conversationId: string; token: string; remainingSeconds: number; resetAt: number; maxSeconds?: number };
     }
     throw new Error("upstream");
@@ -123,7 +136,7 @@ export class AiClient {
     const controller = new AbortController();
     const done = (async () => {
       let token: string;
-      try { token = await this.ensureSession(); } catch { handlers.onError("verification_failed"); return; }
+      try { token = await this.ensureSession(); } catch (e) { handlers.onError(sessionError(e)); return; }
       for (let attempt = 0; attempt < 2; attempt++) {
         let res: Response;
         try {
@@ -137,7 +150,7 @@ export class AiClient {
           return;
         }
         if (res.status === 401 && attempt === 0) {
-          try { token = await this.ensureSession(true); continue; } catch { handlers.onError("verification_failed"); return; }
+          try { token = await this.ensureSession(true); continue; } catch (e) { handlers.onError(sessionError(e)); return; }
         }
         if (!res.ok) {
           const err = (await res.json().catch(() => ({}))) as { error?: string; resetAt?: number; maxChars?: number };
