@@ -2,7 +2,7 @@ import react from '@vitejs/plugin-react'
 import { readdirSync, readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { dirname, join } from 'node:path'
-import { defineConfig, type Plugin } from 'vite'
+import { defineConfig, loadEnv, type Plugin } from 'vite'
 
 // The ONNX runtime wasm/mjs exceed Cloudflare's 25 MiB asset cap; production loads them from the CDN (see embedWorker.ts).
 const dropOrtRuntime = (): Plugin => ({
@@ -47,9 +47,21 @@ const pdfjsWasm = (): Plugin => {
   }
 }
 
+// A production build without these ships with AI, Search and Voice silently disabled ("AI features are not configured"); fail instead.
+const REQUIRED_PROD_ENV = ['VITE_AI_URL', 'VITE_TURNSTILE_SITE_KEY'] as const
+export function checkProdEnv(env: Record<string, string>): string[] {
+  return REQUIRED_PROD_ENV.filter((k) => !env[k] || /localhost|127\.0\.0\.1|^1x0000/.test(env[k]))
+}
+
 // https://vite.dev/config/
-export default defineConfig({
-  plugins: [react(), dropOrtRuntime(), pdfjsWasm()],
-  optimizeDeps: { exclude: ["@huggingface/transformers"] },
-  worker: { format: "es" },
+export default defineConfig(({ command, mode }) => {
+  if (command === 'build' && mode === 'production') {
+    const bad = checkProdEnv(loadEnv(mode, process.cwd(), 'VITE_'))
+    if (bad.length) throw new Error(`[prod-env] missing or dev-only value for ${bad.join(', ')} (see .env.production)`)
+  }
+  return {
+    plugins: [react(), dropOrtRuntime(), pdfjsWasm()],
+    optimizeDeps: { exclude: ["@huggingface/transformers"] },
+    worker: { format: "es" },
+  }
 })
