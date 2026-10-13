@@ -21,6 +21,7 @@ export interface LiveState {
   captions: { role: "you" | "assistant"; text: string }[];
   seconds: number;
   remainingSeconds: number | null;
+  unlimited: boolean; // owner session: no voice allowance
   resetAt: number | null;
   muted: boolean;
   acknowledged: boolean;
@@ -112,7 +113,7 @@ export const useLiveStore = create<LiveState>((set, get) => {
     reportedClients.add(client);
     const api = useAiStore.getState().client;
     const r = await api?.reportLiveUsage(id, secs ?? elapsed(), keepalive);
-    if (r) set({ remainingSeconds: r.remainingSeconds });
+    if (r) set({ remainingSeconds: r.remainingSeconds, ...(r.unlimited ? { unlimited: true } : {}) });
   };
 
   // A session cancelled while connecting: tell the worker it never ran (best effort).
@@ -168,7 +169,7 @@ export const useLiveStore = create<LiveState>((set, get) => {
   };
 
   return {
-    status: "idle", error: null, captions: [], seconds: 0, remainingSeconds: null, resetAt: null,
+    status: "idle", error: null, captions: [], seconds: 0, remainingSeconds: null, unlimited: false, resetAt: null,
     muted: false, acknowledged: false, searching: false, keywordMode: false, conversationId: null,
     micId: getSavedMic(), mics: [],
     acknowledge: () => set({ acknowledged: true }),
@@ -190,7 +191,7 @@ export const useLiveStore = create<LiveState>((set, get) => {
       await get().refreshMics(); // device labels are available now that permission was granted
       const inputDeviceId = resolveMic(get().micId, get().mics);
       const live = new LiveClient(
-        { createSession: async () => { const s = await api.createLiveSession(); set({ conversationId: s.conversationId, resetAt: s.resetAt }); return s; } },
+        { createSession: async () => { const s = await api.createLiveSession(); set({ conversationId: s.conversationId, resetAt: s.resetAt ?? null }); return s; } },
         {
           onConnected: () => {}, // the overview is sent once start() resolves, when the SDK conversation exists
           onUserText: (text) => { armSilence(); set({ captions: [...get().captions, { role: "you", text }] }); },
@@ -214,12 +215,12 @@ export const useLiveStore = create<LiveState>((set, get) => {
       );
       client = live;
       try {
-        const { remainingSeconds } = await live.start(inputDeviceId);
+        const { remainingSeconds, unlimited } = await live.start(inputDeviceId);
         if (client !== live) { reportCancelled(live); void live.close(); return; }
         startedAt = deps.now();
         const doc = useDocumentStore.getState();
         live.sendContext(overview(doc.sources.get(doc.pages[0]?.sourceId ?? "")?.name ?? "document", doc.pages.length));
-        set({ status: "live", remainingSeconds, seconds: 0 });
+        set({ status: "live", remainingSeconds, unlimited: unlimited === true, seconds: 0 });
         ticker = setInterval(() => {
           set({ seconds: elapsed() });
           if (elapsed() >= SESSION_CAP_S) void get().end();

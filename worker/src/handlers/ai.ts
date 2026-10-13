@@ -27,26 +27,27 @@ export async function aiHandler(request: Request, env: Env, ctx: ExecutionContex
     (b.task === "rewrite" ? b.selection.length : 0) +
     (b.task === "ask" ? b.question.length : 0);
   const estimate = Math.ceil(chars / 3.5);
-  const quota = await checkQuota(env.QUOTA, session.vid, Date.now() / 1000, estimate);
-  if (!quota.ok) return json({ error: quota.reason, resetAt: quota.resetAt }, 429, env);
+  const owner = session.owner === true;
+  const own = owner ? { owner: true as const } : {};
+  const quota = owner ? null : await checkQuota(env.QUOTA, session.vid, Date.now() / 1000, estimate);
+  if (quota && !quota.ok) return json({ error: quota.reason, resetAt: quota.resetAt }, 429, env);
 
   let result;
   try {
     result = await stream(buildRequest(v.body), env);
   } catch (err) {
     const kind = mapError(err);
-    console.log(JSON.stringify({ task: v.body.task, vid: session.vid, status: "error", kind }));
+    console.log(JSON.stringify({ task: v.body.task, vid: session.vid, ...own, status: "error", kind }));
     return json({ error: kind }, kind === "busy" ? 503 : 502, env);
   }
 
-  const { day, resetAt } = quota;
   const vid = session.vid;
   let recorded: Promise<QuotaState> | undefined;
   // Admission already charged `estimate`; only write the (rare) excess, and skip the write otherwise.
   const record = (u: { inputTokens: number; outputTokens: number }) =>
-    (recorded ??= (async () => {
+    quota === null ? Promise.resolve(null) : (recorded ??= (async () => {
       const delta = Math.max(0, u.inputTokens + u.outputTokens - estimate);
-      return delta === 0 ? quota.charged : recordTokens(env.QUOTA, vid, day, delta);
+      return delta === 0 ? quota.charged : recordTokens(env.QUOTA, vid, quota.day, delta);
     })());
   let finished!: () => void;
   ctx.waitUntil(new Promise<void>((resolve) => { finished = resolve; }));
@@ -63,7 +64,7 @@ export async function aiHandler(request: Request, env: Env, ctx: ExecutionContex
           if (r === "aborted") {
             result.abort?.();
             void Promise.resolve(it.return?.()).catch(() => {});
-            console.log(JSON.stringify({ task: v.body.task, vid, status: "client_disconnected" }));
+            console.log(JSON.stringify({ task: v.body.task, vid, ...own, status: "client_disconnected" }));
             return;
           }
           if (r.done) break;
@@ -71,19 +72,21 @@ export async function aiHandler(request: Request, env: Env, ctx: ExecutionContex
         }
       } catch (err) {
         const kind = mapError(err);
-        console.log(JSON.stringify({ task: v.body.task, vid, status: "error", kind }));
+        console.log(JSON.stringify({ task: v.body.task, vid, ...own, status: "error", kind }));
         send("error", { error: kind });
         return;
       }
       const f = await result.final();
       const state = await record(f);
-      console.log(JSON.stringify({ task: v.body.task, vid, status: f.stop, tokens: f.inputTokens + f.outputTokens }));
+      console.log(JSON.stringify({ task: v.body.task, vid, ...own, status: f.stop, tokens: f.inputTokens + f.outputTokens }));
       if (f.stop === "refusal") { send("error", { error: "refused" }); return; }
-      send("done", {
-        usage: { input: f.inputTokens, output: f.outputTokens },
+      const usage = { input: f.inputTokens, output: f.outputTokens };
+      if (!state || !quota) send("done", { usage, stop: f.stop, remaining: null, unlimited: true });
+      else send("done", {
+        usage,
         stop: f.stop,
         remaining: { requests: Math.max(0, DAILY_REQUESTS - state.requests), tokens: Math.max(0, DAILY_TOKENS - state.tokens) },
-        resetAt,
+        resetAt: quota.resetAt,
       });
     } finally {
       // Runs on every exit path (completion, error, client disconnect): charge whatever was consumed.

@@ -1,4 +1,5 @@
 import { createSseParser } from "./sse";
+import { getOwnerKey } from "./owner";
 
 export interface AiRequest {
   task: "summarize" | "ask" | "rewrite" | "extract";
@@ -10,13 +11,15 @@ export interface AiRequest {
   language?: string;
   retrieved?: boolean;
 }
-export interface DoneData { usage: { input: number; output: number }; stop: string; remaining: { requests: number; tokens: number }; resetAt: number }
+export interface DoneData { usage: { input: number; output: number }; stop: string; remaining: { requests: number; tokens: number } | null; resetAt?: number; unlimited?: boolean }
 export interface Handlers { onDelta(text: string): void; onDone(d: DoneData): void; onError(code: string, extra?: Record<string, unknown>): void }
 
-export interface OcrResponse { pages: { page: number; lines: string[] }[]; failed: number[]; remaining: { requests: number; tokens: number }; resetAt: number }
+export interface OcrResponse { pages: { page: number; lines: string[] }[]; failed: number[]; remaining: { requests: number; tokens: number } | null; resetAt?: number; unlimited?: boolean }
 
 export class AiClient {
   private token: string | null = null;
+  /** True once /session reported an owner session (unlimited use). */
+  isOwner = false;
   private pending: Promise<string> | null = null;
   private baseUrl: string;
   private getTurnstileToken: () => Promise<string>;
@@ -38,11 +41,13 @@ export class AiClient {
 
   private async fetchSession(): Promise<string> {
     const turnstileToken = await this.getTurnstileToken();
+    const ownerKey = getOwnerKey();
     const res = await this.fetchFn(`${this.baseUrl}/session`, {
-      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ turnstileToken }),
+      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ turnstileToken, ...(ownerKey ? { ownerKey } : {}) }),
     });
     if (!res.ok) throw new Error("verification_failed");
-    const body = (await res.json()) as { token: string };
+    const body = (await res.json()) as { token: string; owner?: boolean };
+    this.isOwner = body.owner === true;
     this.token = body.token;
     return this.token;
   }
@@ -62,7 +67,7 @@ export class AiClient {
     throw new Error("upstream");
   }
 
-  async createLiveSession(): Promise<{ conversationId: string; token: string; remainingSeconds: number; resetAt: number }> {
+  async createLiveSession(): Promise<{ conversationId: string; token: string; remainingSeconds: number | null; resetAt?: number; unlimited?: boolean }> {
     let token: string;
     try { token = await this.ensureSession(); } catch { throw new Error("verification_failed"); }
     for (let attempt = 0; attempt < 2; attempt++) {
@@ -70,18 +75,18 @@ export class AiClient {
       try { res = await this.fetchFn(`${this.baseUrl}/live`, { method: "POST", headers: { authorization: `Bearer ${token}` } }); } catch { throw new Error("network"); }
       if (res.status === 401 && attempt === 0) { try { token = await this.ensureSession(true); continue; } catch { throw new Error("verification_failed"); } }
       if (!res.ok) { const err = (await res.json().catch(() => ({}))) as { error?: string; resetAt?: number; remainingSeconds?: number; sessionSeconds?: number }; throw Object.assign(new Error(err.error ?? "upstream"), { resetAt: err.resetAt, remainingSeconds: err.remainingSeconds, sessionSeconds: err.sessionSeconds }); }
-      return (await res.json()) as { conversationId: string; token: string; remainingSeconds: number; resetAt: number };
+      return (await res.json()) as { conversationId: string; token: string; remainingSeconds: number | null; resetAt?: number; unlimited?: boolean };
     }
     throw new Error("upstream");
   }
 
   /** Best effort: never throws. keepalive lets the report survive page unload. */
-  async reportLiveUsage(conversationId: string, seconds: number, keepalive = false): Promise<{ remainingSeconds: number } | null> {
+  async reportLiveUsage(conversationId: string, seconds: number, keepalive = false): Promise<{ remainingSeconds: number | null; unlimited?: boolean } | null> {
     try {
       const token = await this.ensureSession();
       const res = await this.fetchFn(`${this.baseUrl}/live/usage`, { method: "POST", keepalive, headers: { "content-type": "application/json", authorization: `Bearer ${token}` }, body: JSON.stringify({ conversationId, seconds: Math.max(0, Math.min(600, Math.round(seconds))) }) });
       if (!res.ok) return null;
-      return (await res.json()) as { remainingSeconds: number };
+      return (await res.json()) as { remainingSeconds: number | null; unlimited?: boolean };
     } catch { return null; }
   }
 

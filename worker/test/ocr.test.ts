@@ -73,4 +73,17 @@ describe("POST /ocr", () => {
     expect(puts.filter((k) => k.startsWith("q:"))).toHaveLength(1);
     expect(gets).toHaveLength(2);
   });
+
+  it("owner sessions bypass the daily limit for a batch", async () => {
+    const day = new Date().toISOString().slice(0, 10);
+    await env.QUOTA.put(`q:vid-ocr-owner:${day}`, JSON.stringify({ requests: 20, tokens: 10_000_000 }));
+    const tok = await signSession({ vid: "vid-ocr-owner", exp: Math.floor(Date.now() / 1000) + 3600, owner: true }, env.SESSION_SECRET);
+    const { res, json } = await post(body, tok);
+    expect(res.status).toBe(200);
+    expect(json.pages).toHaveLength(2);
+    expect(json.remaining).toBeNull();
+    expect(json.unlimited).toBe(true);
+    expect(json.resetAt).toBeUndefined();
+    expect(await env.QUOTA.get(`q:vid-ocr-owner:${day}`, "json")).toEqual({ requests: 20, tokens: 10_000_000 });
+  });
 });
