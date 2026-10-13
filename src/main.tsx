@@ -10,8 +10,12 @@ import { ClerkProvider } from '@clerk/clerk-react'
 import App from './App.tsx'
 import { ClerkBridge } from './account/ClerkBridge.tsx'
 import { clerkAppearance } from './account/clerkAppearance.ts'
+import { useAccount } from './account/store.ts'
 
 const clerkKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY as string | undefined
+
+// Dev without Clerk has no ClerkBridge to restore the cached plan; the e2e suite seeds it that way.
+if (import.meta.env.DEV && !clerkKey) useAccount.getState().setFromCache()
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

@@ -16,6 +16,7 @@ import { useInstallStore } from "../pwa/install";
 import { outputName, saveBlob } from "../pdf/download";
 import AccountEntry from "./account/AccountEntry";
 import { clerkEnabled } from "../account/clerk";
+import { useGate, useLocked } from "./account/useGate";
 
 interface Props { scale: number; setScale: (s: number) => void; onFiles: (files: File[], mode: "open" | "add") => void; onTogglePages: () => void; pagesOpen: boolean }
 
@@ -38,6 +39,8 @@ export default function Toolbar({ scale, setScale, onFiles, onTogglePages, pages
   const moreRef = useRef<HTMLButtonElement>(null);
   const openInput = useRef<HTMLInputElement>(null);
   const addInput = useRef<HTMLInputElement>(null);
+  const { require } = useGate();
+  const editLocked = useLocked("edit");
   const selected = [...s.selection];
   const hasSel = selected.length > 0;
   const firstName = s.pages[0] ? s.sources.get(s.pages[0].sourceId)!.name : "document.pdf";
@@ -91,8 +94,8 @@ export default function Toolbar({ scale, setScale, onFiles, onTogglePages, pages
       onChange={(e) => { onFiles(Array.from(e.target.files ?? []), mode); e.target.value = ""; }} />
   );
 
-  const ib = (testid: string, icon: IconName, label: string, onClick: () => void, disabled = false, title = label) => (
-    <button type="button" className="tb-icon" data-testid={testid} aria-label={label} title={title} disabled={disabled} onClick={onClick}>
+  const ib = (testid: string, icon: IconName, label: string, onClick: () => void, disabled = false, title = label, locked = false) => (
+    <button type="button" className={`tb-icon${locked ? " locked" : ""}`} data-testid={testid} aria-label={label} title={title} disabled={disabled} onClick={onClick}>
       <Icon name={icon} />
     </button>
   );
@@ -130,10 +133,10 @@ export default function Toolbar({ scale, setScale, onFiles, onTogglePages, pages
         {ib("redo", "redo", "Redo", s.redo, !s.canRedo(), "Redo (⌘⇧Z)")}
       </div>
       <div className="tb-group">
-        {ib("rotate-left", "rotate-left", "Rotate left", () => s.rotate(selected, -90), !hasSel)}
-        {ib("rotate-right", "rotate-right", "Rotate right", () => s.rotate(selected, 90), !hasSel)}
-        {ib("delete", "delete", "Delete pages", () => s.remove(selected), !hasSel)}
-        {ib("extract", "extract", "Extract selected pages", () => exportPages(s.pages.filter((p) => s.selection.has(p.id)), "pages"), !hasSel || busy)}
+        {ib("rotate-left", "rotate-left", "Rotate left", () => { if (require("edit")) s.rotate(selected, -90); }, !hasSel, "Rotate left", editLocked)}
+        {ib("rotate-right", "rotate-right", "Rotate right", () => { if (require("edit")) s.rotate(selected, 90); }, !hasSel, "Rotate right", editLocked)}
+        {ib("delete", "delete", "Delete pages", () => { if (require("edit")) s.remove(selected); }, !hasSel, "Delete pages", editLocked)}
+        {ib("extract", "extract", "Extract selected pages", () => { if (require("edit")) void exportPages(s.pages.filter((p) => s.selection.has(p.id)), "pages"); }, !hasSel || busy, "Extract selected pages", editLocked)}
         {firstSource && firstFields && firstFields.length > 0
           ? ib("clear-form", "clear-form", "Clear form", () => s.clearForm(firstSource.id, firstFields))
           : null}
@@ -150,8 +153,8 @@ export default function Toolbar({ scale, setScale, onFiles, onTogglePages, pages
         {phone || !clerkEnabled() ? null : <AccountEntry />}
         {phone ? null : <div className="tb-group">{installHint === "prompt" ? <InstallButton className="tb-icon" iconOnly /> : null}<ThemeToggle className="tb-icon" /></div>}
         {phone ? null : zoom}
-        <button type="button" data-testid="download" className="primary" disabled={s.pages.length === 0 || busy}
-          onClick={() => exportPages(s.pages, "edited")}><Icon name="download" /><span className="tb-dl-label">{busy ? "Building…" : "Download"}</span></button>
+        <button type="button" data-testid="download" className={`primary${editLocked && s.isDirty() ? " locked" : ""}`} disabled={s.pages.length === 0 || busy}
+          onClick={() => { if (s.isDirty() && !require("edit")) return; void exportPages(s.pages, "edited"); }}><Icon name="download" /><span className="tb-dl-label">{busy ? "Building…" : "Download"}</span></button>
       </div>
       {/* On phones the actions live in the More menu; keep OCR progress visible under the bar instead. */}
       {phone ? <OcrPill /> : null}

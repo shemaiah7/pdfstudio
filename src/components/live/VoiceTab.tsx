@@ -2,6 +2,8 @@
 import { useLiveStore } from "../../store/live";
 import { useDocumentStore } from "../../store/document";
 import { Icon } from "../icons";
+import { useGate, useLocked } from "../account/useGate";
+import UpgradeProButton from "../account/UpgradeProButton";
 
 export const DISCLOSURE = "Voice sends your microphone audio to ElevenLabs and the passages of this document needed to answer each question to ElevenLabs and Anthropic. Recordings are not kept. About $0.10 per minute, 30 minutes per day.";
 const mmss = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
@@ -9,8 +11,11 @@ const mmss = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, 
 export default function VoiceTab() {
   const s = useLiveStore();
   const hasDoc = useDocumentStore((d) => d.pages.length > 0);
+  const { require } = useGate();
+  const locked = useLocked("voice");
 
   const begin = () => {
+    if (!require("voice")) return;
     if (!useLiveStore.getState().acknowledged) {
       if (!window.confirm(DISCLOSURE)) return;
       s.acknowledge();
@@ -85,12 +90,12 @@ export default function VoiceTab() {
       </div>
       <div className="voice-body">
         {s.error && (isError
-          ? <p className="ai-error" data-testid="voice-error">{s.error}</p>
+          ? <><p className="ai-error" data-testid="voice-error">{s.error}</p>{s.limited && <UpgradeProButton />}</>
           : <p className="muted" data-testid="voice-notice">{s.error}</p>)}
         {s.captions.length > 0 && (
           <div className="voice-captions" data-testid="voice-captions">{captions}</div>
         )}
-        <button data-testid="voice-start" className="voice-start" onClick={begin} disabled={!hasDoc}><Icon name="mic" size={18} />{isError ? "Retry" : "Start voice session"}</button>
+        <button data-testid="voice-start" className={`voice-start${locked ? " locked" : ""}`} onClick={begin} disabled={!hasDoc}><Icon name="mic" size={18} />{isError ? "Retry" : "Start voice session"}</button>
         {!hasDoc && <p className="muted voice-hint">Open a document first.</p>}
         {s.remainingSeconds !== null && <><p className="muted voice-min">{Math.floor(s.remainingSeconds / 60)} min left today</p>{meter}</>}
       </div>

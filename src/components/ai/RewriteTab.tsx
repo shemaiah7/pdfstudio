@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { useAiStore, type RewriteMode } from "../../store/ai";
 import { useDocumentStore } from "../../store/document";
+import { useGate, useLocked } from "../account/useGate";
 import { layoutInBoxes } from "../../pdf/layout";
 import { normalizeFont } from "../../pdf/fonts";
 import { usePdfMeasure } from "../usePdfMeasure";
@@ -12,6 +13,8 @@ const MODES: { value: RewriteMode; label: string }[] = [
 
 export default function RewriteTab({ disabled }: { disabled: boolean }) {
   const { rewrite, setRewriteMode, setLanguage, setRewriteResult, run, setSelection } = useAiStore();
+  const { require } = useGate();
+  const locked = useLocked("ai");
   const pages = useDocumentStore((s) => s.pages);
   const addEdit = useDocumentStore((s) => s.addEdit);
   const clearSel = useDocumentStore((s) => s.clearSelection);
@@ -39,7 +42,7 @@ export default function RewriteTab({ disabled }: { disabled: boolean }) {
       <div className="ai-row">
         <select value={rewrite.mode} onChange={(e) => setRewriteMode(e.target.value as RewriteMode)}>{MODES.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}</select>
         {rewrite.mode === "translate" && <input placeholder="Language" value={rewrite.language} onChange={(e) => setLanguage(e.target.value)} />}
-        <button data-testid="ai-run" className="primary" disabled={disabled || !sel || !entry || rewrite.status === "running" || (rewrite.mode === "translate" && !rewrite.language.trim())} onClick={() => run("rewrite")}>
+        <button data-testid="ai-run" className={`primary${locked ? " locked" : ""}`} disabled={disabled || !sel || !entry || rewrite.status === "running" || (rewrite.mode === "translate" && !rewrite.language.trim())} onClick={() => { if (require("ai")) void run("rewrite"); }}>
           {rewrite.status === "running" ? "Working…" : "Run"}
         </button>
       </div>

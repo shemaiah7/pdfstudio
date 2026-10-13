@@ -72,7 +72,7 @@ const errorCopy = (code: string, cause?: unknown): string => {
   return code === "Page image too large" ? code : m;
 };
 // Errors that will hit every remaining page too, so the rest of the Deep OCR batch is dropped.
-const BATCH_FATAL = new Set(["daily_limit", "too_fast", "verification_failed", "network"]);
+const BATCH_FATAL = new Set(["daily_limit", "monthly_limit", "account_required", "pro_required", "too_fast", "verification_failed", "network"]);
 
 /** Cancels all Deep OCR jobs; their pages return to the Tesseract text if any, else fail with `code`. */
 function failClaudeJobs(code: string) {

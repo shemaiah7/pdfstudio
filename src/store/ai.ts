@@ -45,6 +45,7 @@ const aborts = new Map<AiRequest["task"], () => void>();
 let generation = 0;
 
 const fmtTime = (unix: number) => new Date(unix * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+const fmtDate = (unix: number) => new Date(unix * 1000).toLocaleDateString([], { month: "short", day: "numeric" });
 
 const initial = () => ({
   remaining: null, limitedUntil: null,
@@ -87,6 +88,9 @@ export const useAiStore = create<AiState>((set, get) => ({
     switch (code) {
       case "verification_failed": return "Couldn't verify you're human. Try again.";
       case "daily_limit": return `Daily limit reached. Resets at ${fmtTime(Number(extra?.resetAt ?? 0))}.`;
+      case "monthly_limit": return `Monthly limit reached. Resets ${fmtDate(Number(extra?.resetAt ?? 0))}.`;
+      case "account_required": return "Create a free account to use this.";
+      case "pro_required": return "Deep OCR is part of Pro.";
       case "too_fast": return "Slow down a little and try again in a few seconds.";
       case "document_too_large": return "Document is too large to send whole; select pages and try again.";
       case "busy": return "AI is busy, try again in a minute.";
@@ -202,7 +206,7 @@ async function runTask(task: AiRequest["task"], client: AiClient) {
       },
       onError: (code, extra) => {
         if (stale()) return;
-        if (code === "daily_limit") set({ limitedUntil: Number(extra?.resetAt ?? 0) });
+        if (code === "daily_limit" || code === "monthly_limit") set({ limitedUntil: Number(extra?.resetAt ?? 0) });
         if (task === "ask") set((s) => {
           const turns = s.chat.turns;
           const last = turns[turns.length - 1];

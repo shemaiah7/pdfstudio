@@ -7,8 +7,10 @@ import DeepOcrMenu from "./DeepOcrMenu";
 import { useOcrStore } from "../../store/ocr";
 import { useDocumentStore } from "../../store/document";
 import { useAiStore } from "../../store/ai";
+import { useAccount } from "../../account/store";
+import { useSheets } from "../account/useGate";
 
-afterEach(() => { cleanup(); vi.restoreAllMocks(); });
+afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllEnvs(); useAccount.setState({ me: null, loading: false }); useSheets.setState({ open: null }); });
 
 beforeEach(() => {
   useOcrStore.setState({ pages: {}, engineStatus: "idle", deepOcrAcknowledged: false, toast: null });
@@ -69,5 +71,19 @@ describe("DeepOcrMenu", () => {
     useAiStore.setState({ client: null });
     render(<DeepOcrMenu />);
     expect((screen.getByRole("button", { name: "This page" }) as HTMLButtonElement).disabled).toBe(true);
+  });
+  it("free plan: Deep OCR opens the paywall and does not run", () => {
+    vi.stubEnv("VITE_PAYWALL_ENABLED", "true");
+    useAccount.setState({ me: { plan: "free", paywall: true } as never });
+    useAiStore.setState({ client: {} as never });
+    const deep = vi.fn(async () => {});
+    useOcrStore.setState({ deepOcr: deep, scannedPageEntries: () => ["p0", "p1"] });
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    render(<DeepOcrMenu />);
+    expect(screen.getByTestId("deep-ocr").querySelector("summary")!.className).toContain("locked");
+    fireEvent.click(screen.getByRole("button", { name: "All scanned pages" }));
+    expect(useSheets.getState().open).toBe("paywall");
+    expect(confirm).not.toHaveBeenCalled();
+    expect(deep).not.toHaveBeenCalled();
   });
 });

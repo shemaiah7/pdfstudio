@@ -192,4 +192,32 @@ describe("useLiveStore", () => {
     expect(spy).toHaveBeenCalledWith(true);
     expect(useLiveStore.getState().muted).toBe(true);
   });
+  it("account_required maps to the sign-up message", async () => {
+    client.createLiveSession.mockRejectedValueOnce(new Error("account_required"));
+    await useLiveStore.getState().start();
+    expect(useLiveStore.getState().error).toBe("Create a free account to use this.");
+  });
+  it("monthly_limit maps to the reset date and flags a limit", async () => {
+    const resetAt = 1_900_000_000;
+    client.createLiveSession.mockRejectedValueOnce(Object.assign(new Error("monthly_limit"), { resetAt }));
+    await useLiveStore.getState().start();
+    const date = new Date(resetAt * 1000).toLocaleDateString([], { month: "short", day: "numeric" });
+    expect(useLiveStore.getState().error).toBe(`Monthly limit reached. Resets ${date}.`);
+    expect((useLiveStore.getState() as { limited?: boolean }).limited).toBe(true);
+  });
+  it("maxSeconds below the cap ends the session at maxSeconds", async () => {
+    client.createLiveSession.mockResolvedValue({ conversationId: "conv_1", token: "tok", remainingSeconds: 300, resetAt: 0, maxSeconds: 300 });
+    await useLiveStore.getState().start(); await flush();
+    for (let t = 0; t < 290; t += 10) { opts.onInterruption?.(); await vi.advanceTimersByTimeAsync(10_000); }
+    expect(useLiveStore.getState().status).toBe("live");
+    await vi.advanceTimersByTimeAsync(10_000); await flush();
+    expect(useLiveStore.getState().status).toBe("idle");
+    expect(client.reportLiveUsage).toHaveBeenCalledWith("conv_1", 300, false);
+  });
+  it("maxSeconds above the cap is clamped to SESSION_CAP_S", async () => {
+    client.createLiveSession.mockResolvedValue({ conversationId: "conv_1", token: "tok", remainingSeconds: 1200, resetAt: 0, maxSeconds: 9999 });
+    await useLiveStore.getState().start(); await flush();
+    for (let t = 0; t < SESSION_CAP_S - 10; t += 10) { opts.onInterruption?.(); await vi.advanceTimersByTimeAsync(10_000); }
+    expect(useLiveStore.getState().status).toBe("live");
+  });
 });

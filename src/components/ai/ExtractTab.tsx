@@ -1,4 +1,5 @@
 import { useAiStore } from "../../store/ai";
+import { useGate, useLocked } from "../account/useGate";
 import PageLink from "./PageLink";
 
 function toCsv(rows: { label: string; value: string; page: number }[]) {
@@ -8,9 +9,11 @@ function toCsv(rows: { label: string; value: string; page: number }[]) {
 
 export default function ExtractTab({ disabled }: { disabled: boolean }) {
   const { extract, run } = useAiStore();
+  const { require } = useGate();
+  const locked = useLocked("ai");
   return (
     <div className="ai-tab">
-      <button data-testid="ai-run" className="primary" disabled={disabled || extract.status === "running"} onClick={() => run("extract")}>
+      <button data-testid="ai-run" className={`primary${locked ? " locked" : ""}`} disabled={disabled || extract.status === "running"} onClick={() => { if (require("ai")) void run("extract"); }}>
         {extract.status === "running" ? "Extracting…" : "Extract key facts"}
       </button>
       {extract.error && <div className="ai-error">{extract.error}</div>}

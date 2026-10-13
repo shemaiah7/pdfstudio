@@ -96,7 +96,7 @@ export class AiClient {
     throw new Error("upstream");
   }
 
-  async createLiveSession(): Promise<{ conversationId: string; token: string; remainingSeconds: number; resetAt: number }> {
+  async createLiveSession(): Promise<{ conversationId: string; token: string; remainingSeconds: number; resetAt: number; maxSeconds?: number }> {
     let token: string;
     try { token = await this.ensureSession(); } catch { throw new Error("verification_failed"); }
     for (let attempt = 0; attempt < 2; attempt++) {
@@ -104,7 +104,7 @@ export class AiClient {
       try { res = await this.fetchFn(`${this.baseUrl}/live`, { method: "POST", headers: { authorization: `Bearer ${token}` } }); } catch { throw new Error("network"); }
       if (res.status === 401 && attempt === 0) { try { token = await this.ensureSession(true); continue; } catch { throw new Error("verification_failed"); } }
       if (!res.ok) { const err = (await res.json().catch(() => ({}))) as { error?: string; resetAt?: number; remainingSeconds?: number; sessionSeconds?: number }; throw Object.assign(new Error(err.error ?? "upstream"), { resetAt: err.resetAt, remainingSeconds: err.remainingSeconds, sessionSeconds: err.sessionSeconds }); }
-      return (await res.json()) as { conversationId: string; token: string; remainingSeconds: number; resetAt: number };
+      return (await res.json()) as { conversationId: string; token: string; remainingSeconds: number; resetAt: number; maxSeconds?: number };
     }
     throw new Error("upstream");
   }
