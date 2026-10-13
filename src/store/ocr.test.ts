@@ -226,6 +226,17 @@ describe("useOcrStore", () => {
     expect(useAiStore.getState().limitedUntil).toBe(777);
     useAiStore.setState({ remaining: null, limitedUntil: null });
   });
+  it("an owner (unlimited) Deep OCR response marks the AI store unlimited without limiting", async () => {
+    const api = { runOcr: async () => ({ pages: [{ page: 1, lines: ["deep"] }], failed: [], remaining: null, unlimited: true as const }) };
+    configureOcrDeps({ claude: () => createClaudeEngine(() => api, { onQuota: applyQuota }), rasterize: async () => ({ canvas: { width: 10, height: 10, toBlob: (cb: (b: Blob | null) => void) => cb(new Blob(["x"])) } as unknown as HTMLCanvasElement, meta: { widthPt: 300, heightPt: 400 }, scale: 1 }) });
+    useAiStore.setState({ remaining: null, limitedUntil: null, unlimited: false });
+    const id = await openScan(1);
+    await useOcrStore.getState().scanSource(id); await flush();
+    await useOcrStore.getState().deepOcr([`pg-${n - 1}-0`]); await flush(10);
+    expect(useOcrStore.getState().pages[pageKey(id, 0)]).toMatchObject({ state: "done", engine: "claude" });
+    expect(useAiStore.getState()).toMatchObject({ remaining: null, unlimited: true, limitedUntil: null });
+    useAiStore.setState({ remaining: null, limitedUntil: null, unlimited: false });
+  });
   it("a batch-fatal Deep OCR error cancels the remaining Deep OCR jobs, keeps Tesseract text, and toasts once", async () => {
     let calls = 0;
     configureOcrDeps({ claude: () => ({ recognize: async () => { calls++; throw new Error("too_fast"); } }) });

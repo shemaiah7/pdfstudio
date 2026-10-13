@@ -149,4 +149,88 @@ describe("POST /session with a Clerk JWT", () => {
     const res = await sessionHandler(new Request("https://ai.example/session", { method: "POST", headers: { authorization: `Bearer ${await sign({ ...good(), sub: "user_s2" })}` } }), env);
     expect(res.status).toBe(503);
   });
+  it("adds owner:true for a valid owner key sent alongside the Clerk JWT", async () => {
+    const OWNER = "owner-key-0123456789-abcdefghijklmnopqrstuvwxyz";
+    const e = { ...env, OWNER_KEY: OWNER } as typeof env;
+    configureSessionDeps({ userEmail: async () => "own@x.y" });
+    const res = await sessionHandler(new Request("https://ai.example/session", {
+      method: "POST", headers: { authorization: `Bearer ${await sign({ ...good(), sub: "user_own1" })}`, "content-type": "application/json" }, body: JSON.stringify({ ownerKey: OWNER }),
+    }), e);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { token: string; plan: string; owner?: true };
+    expect(body.owner).toBe(true);
+    expect(body.plan).toBe("trial");
+    expect(await verifySession(body.token, env.SESSION_SECRET)).toMatchObject({ vid: "u:user_own1", uid: "user_own1", plan: "trial", owner: true });
+  });
+  it("ignores an invalid or missing owner key on the Clerk path", async () => {
+    const OWNER = "owner-key-0123456789-abcdefghijklmnopqrstuvwxyz";
+    const e = { ...env, OWNER_KEY: OWNER } as typeof env;
+    configureSessionDeps({ userEmail: async () => "own2@x.y" });
+    for (const init of [{ body: JSON.stringify({ ownerKey: "wrong-key-wrong-key-wrong-key-wrong-key" }) }, { body: "not json" }, {}]) {
+      const res = await sessionHandler(new Request("https://ai.example/session", {
+        method: "POST", headers: { authorization: `Bearer ${await sign({ ...good(), sub: "user_own2" })}` }, ...init,
+      }), e);
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { token: string; owner?: true };
+      expect("owner" in body).toBe(false);
+      expect((await verifySession(body.token, env.SESSION_SECRET))?.owner).toBeUndefined();
+    }
+  });
+  it("rejects a signed token with a non-true owner value", async () => {
+    const t = await signSession({ vid: "abc", exp: 2_000_000_000, owner: "yes" as never }, "s");
+    expect(await verifySession(t, "s", 1_900_000_000)).toBeNull();
+  });
+});
+
+describe("POST /session owner key", () => {
+  const OWNER = "owner-key-0123456789-abcdefghijklmnopqrstuvwxyz";
+  const withOwner = (key?: string) => ({ ...env, ...(key === undefined ? {} : { OWNER_KEY: key }) }) as typeof env;
+  async function mint(e: typeof env, body: Record<string, unknown>) {
+    vi.stubGlobal("fetch", async () => new Response(JSON.stringify({ success: true, hostname: "localhost" })));
+    try {
+      const req = new Request("https://ai.example/session", { method: "POST", headers: { "content-type": "application/json", "cf-connecting-ip": "9.9.9.7" }, body: JSON.stringify({ turnstileToken: "tok", ...body }) });
+      const res = await worker.fetch(req, e, createExecutionContext());
+      return { res, json: (await res.json()) as { token: string; expiresAt: number; owner?: true } };
+    } finally { vi.unstubAllGlobals(); }
+  }
+  it("grants an owner session for the right key", async () => {
+    const { res, json } = await mint(withOwner(OWNER), { ownerKey: OWNER });
+    expect(res.status).toBe(200);
+    expect(json.owner).toBe(true);
+    expect(await verifySession(json.token, env.SESSION_SECRET)).toMatchObject({ owner: true });
+  });
+  it("gives a normal session for a wrong or missing key", async () => {
+    for (const body of [{ ownerKey: "wrong-key-wrong-key-wrong-key-wrong-key" }, {}, { ownerKey: 5 }, { ownerKey: "" }]) {
+      const { res, json } = await mint(withOwner(OWNER), body);
+      expect(res.status).toBe(200);
+      expect("owner" in json).toBe(false);
+      expect((await verifySession(json.token, env.SESSION_SECRET))?.owner).toBeUndefined();
+    }
+  });
+  it("never grants owner when OWNER_KEY is shorter than 32 characters", async () => {
+    const short = "short-key-1234567890";
+    const { json } = await mint(withOwner(short), { ownerKey: short });
+    expect("owner" in json).toBe(false);
+  });
+  it("never grants owner when OWNER_KEY is unset", async () => {
+    const { json } = await mint(withOwner(), { ownerKey: OWNER });
+    expect("owner" in json).toBe(false);
+    const empty = await mint(withOwner(""), { ownerKey: "" });
+    expect("owner" in empty.json).toBe(false);
+  });
+  it("still requires Turnstile for the owner", async () => {
+    vi.stubGlobal("fetch", async () => new Response(JSON.stringify({ success: false })));
+    const req = new Request("https://ai.example/session", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ turnstileToken: "tok", ownerKey: OWNER }) });
+    const res = await worker.fetch(req, withOwner(OWNER), createExecutionContext());
+    vi.unstubAllGlobals();
+    expect(res.status).toBe(403);
+  });
+  it("rejects a token whose payload was edited to add owner:true", async () => {
+    const t = await signSession({ vid: "abc", exp: 2_000_000_000 }, "s");
+    const sig = t.split(".")[1];
+    const forged = btoa(JSON.stringify({ vid: "abc", exp: 2_000_000_000, owner: true })).replace(/=+$/, "") + "." + sig;
+    expect(await verifySession(forged, "s", 1_900_000_000)).toBeNull();
+    const owner = await signSession({ vid: "abc", exp: 2_000_000_000, owner: true }, "s");
+    expect(await verifySession(owner, "s", 1_900_000_000)).toEqual({ vid: "abc", exp: 2_000_000_000, owner: true });
+  });
 });

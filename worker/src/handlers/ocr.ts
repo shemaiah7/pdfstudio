@@ -3,7 +3,7 @@ import { json } from "../cors";
 import { verifySession } from "../session";
 import { gateFor, checkUsage, TOKEN_DAY } from "../limits";
 import { validateOcrBody } from "../validate";
-import { checkQuota, recordTokens, DAILY_REQUESTS, DAILY_TOKENS } from "../quota";
+import { checkQuota, recordTokens, DAILY_REQUESTS, DAILY_TOKENS, type QuotaState } from "../quota";
 import { ocrWithSdk, mapError, type OcrFn } from "../claude";
 
 const TOKENS_PER_PAGE = 1_600; // ~1568px JPEG
@@ -23,17 +23,22 @@ export async function ocrHandler(request: Request, env: Env, ctx: ExecutionConte
   const pages = v.body.pages;
   const now = Date.now() / 1000;
   // Each page is one AI request: reserve the whole batch in a single quota call (one burst write, one day write).
+  // Owner sessions skip every limit (legacy quota and plan limits alike).
+  const owner = session.owner === true;
   const gate = await gateFor(env, session, now);
   if (gate === "account_required") return json({ error: "account_required" }, 403, env);
   if (gate === "account_unavailable") return json({ error: "account_unavailable" }, 503, env);
-  let quota;
-  if (gate) {
+  let quota: { day: string; resetAt: number; charged: QuotaState; remaining: { requests: number; tokens: number } } | null = null;
+  if (owner) {
+    // unlimited
+  } else if (gate) {
     const u = await checkUsage(env.QUOTA, session.vid, gate.plan, "ocr", pages.length, gate.month, now, TOKENS_PER_PAGE * pages.length);
     if (!u.ok) return json({ error: u.error, resetAt: u.resetAt, ...(u.scope ? { scope: u.scope } : {}) }, u.error === "pro_required" ? 403 : 429, env);
     quota = u;
   } else {
-    quota = await checkQuota(env.QUOTA, session.vid, now, TOKENS_PER_PAGE * pages.length, pages.length);
-    if (!quota.ok) return json({ error: quota.reason, resetAt: quota.resetAt }, 429, env);
+    const q = await checkQuota(env.QUOTA, session.vid, now, TOKENS_PER_PAGE * pages.length, pages.length);
+    if (!q.ok) return json({ error: q.reason, resetAt: q.resetAt }, 429, env);
+    quota = q;
   }
 
   const out: { page: number; lines: string[] }[] = [];
@@ -45,12 +50,13 @@ export async function ocrHandler(request: Request, env: Env, ctx: ExecutionConte
       out.push({ page: p.page, lines: r.text.split(/\r?\n/).map((l) => l.trim()).filter((l) => l.length > 0) });
       extra += Math.max(0, r.inputTokens + r.outputTokens - TOKENS_PER_PAGE);
     } catch (err) {
-      console.log(JSON.stringify({ task: "ocr", vid: session.vid, page: p.page, status: "error", kind: mapError(err) }));
+      console.log(JSON.stringify({ task: "ocr", vid: session.vid, ...(owner ? { owner: true } : {}), page: p.page, status: "error", kind: mapError(err) }));
       failed.push(p.page);
     }
   }
+  console.log(JSON.stringify({ task: "ocr", vid: session.vid, ...(owner ? { owner: true } : {}), pages: pages.length, failed: failed.length }));
+  if (!quota) return json({ pages: out, failed, remaining: null, unlimited: true }, 200, env);
   const state = extra > 0 ? await recordTokens(env.QUOTA, session.vid, quota.day, extra) : quota.charged;
-  console.log(JSON.stringify({ task: "ocr", vid: session.vid, pages: pages.length, failed: failed.length }));
   const remaining = gate
     ? { requests: quota.remaining.requests, tokens: Math.max(0, TOKEN_DAY[gate.plan] - state.tokens) }
     : { requests: Math.max(0, DAILY_REQUESTS - state.requests), tokens: Math.max(0, DAILY_TOKENS - state.tokens) };

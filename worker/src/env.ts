@@ -17,4 +17,5 @@ export interface Env {
   STRIPE_PRICE_MONTHLY: string;
   STRIPE_PRICE_YEARLY: string;
   APP_URL: string;
+  OWNER_KEY?: string; // secret; >= 32 chars unlocks unlimited owner sessions
 }

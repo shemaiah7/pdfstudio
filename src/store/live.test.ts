@@ -2,15 +2,15 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { useDocumentStore } from "./document";
 import { useAiStore } from "./ai";
-import { useLiveStore, configureLiveDeps, SESSION_CAP_S, SILENCE_S } from "./live";
+import { useLiveStore, configureLiveDeps, openMicrophone, SESSION_CAP_S, SILENCE_S } from "./live";
 import type { LiveConversation, StartSession } from "../live/liveClient";
 
 type Opts = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
 let opts: Opts = {};
-const conv: LiveConversation & { ended: boolean; context: string[] } = {
-  ended: false, context: [],
+const conv: LiveConversation & { ended: boolean; context: string[]; devices: string[] } = {
+  ended: false, context: [], devices: [],
   async endSession() { this.ended = true; queueMicrotask(() => opts.onDisconnect?.({ reason: "user" })); },
-  sendContextualUpdate(t) { this.context.push(t); }, setMicMuted() {}, getId: () => "conv_1",
+  sendContextualUpdate(t) { this.context.push(t); }, setMicMuted() {}, async changeInputDevice(o) { this.devices.push(o.inputDeviceId); }, getId: () => "conv_1",
 };
 const startSession: StartSession = async (o) => { opts = o; queueMicrotask(() => opts.onConnect?.()); return conv; };
 const client = { createLiveSession: vi.fn(), reportLiveUsage: vi.fn() };
@@ -23,14 +23,15 @@ function openDoc(id = "s1") {
 
 beforeEach(() => {
   vi.useFakeTimers();
-  conv.ended = false; conv.context = []; opts = {};
+  conv.ended = false; conv.context = []; conv.devices = []; opts = {};
   client.createLiveSession.mockReset().mockResolvedValue({ conversationId: "conv_1", token: "tok", remainingSeconds: 1200, resetAt: 0 });
   client.reportLiveUsage.mockReset().mockResolvedValue({ remainingSeconds: 1705 });
   retrieve.mockReset().mockResolvedValue([{ page: 2, text: "warfarin 5 mg nightly" }]);
   useAiStore.setState({ client: client as never });
-  configureLiveDeps({ retrieve: retrieve as never, documentText: async () => [{ page: 1, text: "Cardiology note. Troponin elevated." }, { page: 2, text: "warfarin 5 mg nightly" }], startSession, getMedia: async () => {}, now: () => Date.now() });
-  useLiveStore.setState({ status: "idle", error: null, captions: [], seconds: 0, remainingSeconds: null, resetAt: null, muted: false, acknowledged: true, searching: false, keywordMode: false, conversationId: null });
+  configureLiveDeps({ retrieve: retrieve as never, documentText: async () => [{ page: 1, text: "Cardiology note. Troponin elevated." }, { page: 2, text: "warfarin 5 mg nightly" }], startSession, getMedia: async () => {}, listMics: async () => [], now: () => Date.now() });
+  useLiveStore.setState({ status: "idle", error: null, captions: [], seconds: 0, remainingSeconds: null, unlimited: false, resetAt: null, muted: false, acknowledged: true, searching: false, keywordMode: false, conversationId: null, micId: null, mics: [] });
   openDoc();
+  configureLiveDeps({ isDeepOcr: () => false });
 });
 afterEach(() => { vi.useRealTimers(); });
 
@@ -43,6 +44,16 @@ describe("useLiveStore", () => {
     expect(s.conversationId).toBe("conv_1");
     expect(s.remainingSeconds).toBe(1200);
     expect(conv.context[0]).toBe("Document: note.pdf, 2 pages.");
+  });
+  it("owner sessions: remainingSeconds null, unlimited true", async () => {
+    client.createLiveSession.mockResolvedValue({ conversationId: "conv_1", token: "tok", remainingSeconds: null, unlimited: true, resetAt: undefined });
+    client.reportLiveUsage.mockResolvedValue({ remainingSeconds: null, unlimited: true });
+    await useLiveStore.getState().start();
+    await flush();
+    expect(useLiveStore.getState()).toMatchObject({ status: "live", remainingSeconds: null, unlimited: true });
+    await useLiveStore.getState().end();
+    expect(useLiveStore.getState()).toMatchObject({ status: "idle", remainingSeconds: null, unlimited: true });
+    useLiveStore.setState({ unlimited: false });
   });
   it("mic denied: error, no /live call, no usage report", async () => {
     configureLiveDeps({ getMedia: async () => { throw Object.assign(new Error("x"), { name: "NotAllowedError" }); } });
@@ -230,5 +241,121 @@ describe("useLiveStore", () => {
     await useLiveStore.getState().start(); await flush();
     for (let t = 0; t < SESSION_CAP_S - 10; t += 10) { opts.onInterruption?.(); await vi.advanceTimersByTimeAsync(10_000); }
     expect(useLiveStore.getState().status).toBe("live");
+  });
+
+  describe("search_document page lookup", () => {
+    const GARBLED = "Rsdnt fnd 0n flr ,, l/ wt~ pt c/o lft hp ;; || Hz rsdnt ntd 2 b hrt ~~ stmnt dd";
+    const pages4 = [
+      { page: 1, text: "Cardiology note. Troponin elevated." },
+      { page: 2, text: "warfarin 5 mg nightly" },
+      { page: 3, text: "" },
+      { page: 4, text: "Aide statement: the resident was found on the floor beside the bed this morning." },
+    ];
+    const live = async () => { await useLiveStore.getState().start(); await flush(); };
+    it("puts a named page first even when retrieval returns other pages", async () => {
+      configureLiveDeps({ documentText: async () => pages4 });
+      await live();
+      const out = await opts.clientTools.search_document({ query: "what does page 4 say" });
+      expect(out.startsWith("[p. 4] Aide statement")).toBe(true);
+      expect(out).toContain("[p. 2] warfarin 5 mg nightly");
+      expect(out).not.toContain("Note for the assistant");
+    });
+    it("skips duplicates of the named page and lists an empty one", async () => {
+      configureLiveDeps({ documentText: async () => pages4 });
+      retrieve.mockResolvedValue([{ page: 3, text: "dup" }, { page: 2, text: "warfarin 5 mg nightly" }]);
+      await live();
+      const out = await opts.clientTools.search_document({ query: "page 3" });
+      expect(out.startsWith("[p. 3] (no readable text on this page)")).toBe(true);
+      expect(out).not.toContain("dup");
+    });
+    it("trims each named page to 1500 chars", async () => {
+      configureLiveDeps({ documentText: async () => [{ page: 1, text: "word ".repeat(600) }] });
+      await live();
+      const out = await opts.clientTools.search_document({ query: "page 1" });
+      expect(out.split("\n\n")[0].length).toBeLessThanOrEqual(1500 + 8);
+    });
+    it("appends a Deep OCR note for a garbled named page", async () => {
+      configureLiveDeps({ documentText: async () => [...pages4.slice(0, 3), { page: 4, text: GARBLED }] });
+      await live();
+      const out = await opts.clientTools.search_document({ query: "page four" });
+      expect(out.endsWith("Note for the assistant: the text on p. 4 looks garbled, probably handwriting read by basic OCR. Tell the user the page may be unreadable and suggest running Deep OCR on it (toolbar \u2192 Deep OCR) for an accurate transcription.")).toBe(true);
+      expect(out.length).toBeLessThanOrEqual(4000);
+    });
+    it("adds no note when the page already has Deep OCR", async () => {
+      configureLiveDeps({ documentText: async () => [...pages4.slice(0, 3), { page: 4, text: GARBLED }], isDeepOcr: (p) => p === 4 });
+      await live();
+      expect(await opts.clientTools.search_document({ query: "page 4" })).not.toContain("Note for the assistant");
+    });
+    it("leaves queries without a page reference unchanged", async () => {
+      configureLiveDeps({ documentText: async () => pages4 });
+      await live();
+      expect(await opts.clientTools.search_document({ query: "warfarin" })).toBe("[p. 2] warfarin 5 mg nightly");
+    });
+  });
+
+  describe("microphone choice", () => {
+    let store: Record<string, string>;
+    beforeEach(() => {
+      store = {};
+      vi.stubGlobal("localStorage", { getItem: (k: string) => store[k] ?? null, setItem: (k: string, v: string) => { store[k] = v; }, removeItem: (k: string) => { delete store[k]; } });
+    });
+    afterEach(() => { vi.unstubAllGlobals(); });
+
+    it("setMic persists the preference and clears it for the system default", () => {
+      useLiveStore.getState().setMic("mic-a");
+      expect(useLiveStore.getState().micId).toBe("mic-a");
+      expect(store["pdfstudio.mic"]).toBe("mic-a");
+      useLiveStore.getState().setMic(null);
+      expect(useLiveStore.getState().micId).toBeNull();
+      expect("pdfstudio.mic" in store).toBe(false);
+    });
+    it("setMic switches the input device of a live session, 'default' for null", async () => {
+      await useLiveStore.getState().start(); await flush();
+      useLiveStore.getState().setMic("mic-a"); await flush();
+      useLiveStore.getState().setMic(null); await flush();
+      expect(conv.devices).toEqual(["mic-a", "default"]);
+    });
+    it("start passes the saved device to the session when it is plugged in, and the system default when not", async () => {
+      configureLiveDeps({ listMics: async () => [{ deviceId: "mic-a", label: "A" }] });
+      useLiveStore.setState({ micId: "mic-a" });
+      await useLiveStore.getState().start(); await flush();
+      expect(opts.inputDeviceId).toBe("mic-a");
+      expect(useLiveStore.getState().mics).toEqual([{ deviceId: "mic-a", label: "A" }]);
+      await useLiveStore.getState().end(); await flush();
+      useLiveStore.setState({ micId: "unplugged" });
+      await useLiveStore.getState().start(); await flush();
+      expect("inputDeviceId" in opts).toBe(false);
+    });
+    it("openMicrophone asks for the exact device and releases the stream", async () => {
+      const stop = vi.fn();
+      const getUserMedia = vi.fn(async () => ({ getTracks: () => [{ stop }] }) as unknown as MediaStream);
+      configureLiveDeps({ getUserMedia });
+      await openMicrophone("mic-a");
+      expect(getUserMedia).toHaveBeenCalledWith({ audio: { deviceId: { exact: "mic-a" } } });
+      await openMicrophone(null);
+      expect(getUserMedia).toHaveBeenLastCalledWith({ audio: true });
+      expect(stop).toHaveBeenCalledTimes(2);
+    });
+    it("openMicrophone retries once without exact on OverconstrainedError and clears the preference", async () => {
+      useLiveStore.getState().setMic("gone");
+      const getUserMedia = vi.fn()
+        .mockRejectedValueOnce(Object.assign(new Error("x"), { name: "OverconstrainedError" }))
+        .mockResolvedValueOnce({ getTracks: () => [] });
+      configureLiveDeps({ getUserMedia: getUserMedia as never });
+      await openMicrophone("gone");
+      expect(getUserMedia).toHaveBeenNthCalledWith(2, { audio: true });
+      expect(useLiveStore.getState().micId).toBeNull();
+      expect("pdfstudio.mic" in store).toBe(false);
+    });
+    it("openMicrophone also falls back on NotFoundError but not on NotAllowedError", async () => {
+      const getUserMedia = vi.fn().mockRejectedValueOnce(Object.assign(new Error("x"), { name: "NotFoundError" })).mockResolvedValueOnce({ getTracks: () => [] });
+      configureLiveDeps({ getUserMedia: getUserMedia as never });
+      await openMicrophone("gone");
+      expect(getUserMedia).toHaveBeenCalledTimes(2);
+      const denied = vi.fn().mockRejectedValue(Object.assign(new Error("x"), { name: "NotAllowedError" }));
+      configureLiveDeps({ getUserMedia: denied as never });
+      await expect(openMicrophone("mic-a")).rejects.toMatchObject({ name: "NotAllowedError" });
+      expect(denied).toHaveBeenCalledTimes(1);
+    });
   });
 });

@@ -95,9 +95,12 @@ export async function addVoiceMonth(kv: KVNamespace, sub: string, mk: string, de
   await kv.put(k, String(Math.max(0, (await num(kv, k)) + deltaSec)), { expirationTtl: TTL });
 }
 
-/** Resolves the caller's plan and month key when the paywall is on; null means "use legacy anonymous quotas". */
+/**
+ * Resolves the caller's plan and month key when the paywall is on; null means "no plan gating" (legacy anonymous
+ * quotas, or none at all for owner sessions — handlers skip every limit for `owner`).
+ */
 export async function gateFor(env: Env, s: SessionPayload, now: number): Promise<{ plan: Paid; month: MonthWindow } | "account_required" | "account_unavailable" | null> {
-  if (!paywallOn(env)) return null;
+  if (s.owner === true || !paywallOn(env)) return null;
   const plan = sessionPlan(s);
   if (plan === "anon" || !s.uid) return "account_required";
   let periodEnd: number | null = null;

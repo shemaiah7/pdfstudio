@@ -10,9 +10,9 @@ export interface LiveEvents {
   onError(message: string): void;
   onDisconnected(reason: "user" | "agent" | "error", message?: string): void;
 }
-export interface LiveTransport { createSession(): Promise<{ conversationId: string; token: string; remainingSeconds: number; resetAt: number }> }
+export interface LiveTransport { createSession(): Promise<{ conversationId: string; token: string; remainingSeconds: number | null; resetAt?: number; unlimited?: boolean }> }
 export type SearchTool = (query: string) => Promise<string>;
-export interface LiveConversation { endSession(): Promise<void>; sendContextualUpdate(text: string): void; setMicMuted(muted: boolean): void; getId(): string }
+export interface LiveConversation { endSession(): Promise<void>; sendContextualUpdate(text: string): void; setMicMuted(muted: boolean): void; getId(): string; changeInputDevice?(o: { inputDeviceId: string }): Promise<void> }
 export type StartSession = (opts: Record<string, unknown>) => Promise<LiveConversation>;
 
 export const TOOL_TIMEOUT_MS = 8_000;
@@ -46,7 +46,7 @@ export class LiveClient {
     this.closeTimeoutMs = deps.closeTimeoutMs ?? 5_000;
   }
 
-  async start(): Promise<{ remainingSeconds: number }> {
+  async start(inputDeviceId?: string): Promise<{ remainingSeconds: number | null; unlimited?: true }> {
     if (this.started) throw new Error("already_started");
     this.started = true;
     const session = await this.transport.createSession();
@@ -69,6 +69,7 @@ export class LiveClient {
       conversationToken: session.token,
       connectionType: "webrtc",
       clientTools: { search_document: tool },
+      ...(inputDeviceId ? { inputDeviceId } : {}),
       onConnect: () => { connected(); this.events.onConnected(); },
       onDisconnect: (d: { reason: "user" | "agent" | "error"; message?: string }) => {
         this.disconnected = true;
@@ -87,11 +88,18 @@ export class LiveClient {
     let timer: ReturnType<typeof setTimeout> | null = null;
     const timeout = new Promise<never>((_, rej) => { timer = setTimeout(() => rej(new Error("connect_timeout")), this.connectTimeoutMs); });
     try { await Promise.race([connectedP, timeout]); } catch (err) { await this.close(); throw err; } finally { if (timer) clearTimeout(timer); }
-    return { remainingSeconds: session.remainingSeconds };
+    return { remainingSeconds: session.remainingSeconds, ...(session.unlimited === true ? { unlimited: true as const } : {}) };
   }
 
   sendContext(text: string): void { this.conv?.sendContextualUpdate(text); }
   mute(on: boolean): void { this.conv?.setMicMuted(on); }
+  /** Switches the microphone of a live session; undefined means the system default. Failures go to onError. */
+  async setInputDevice(id: string | undefined): Promise<void> {
+    const conv = this.conv;
+    if (!conv?.changeInputDevice) return;
+    try { await conv.changeInputDevice({ inputDeviceId: id ?? "default" }); }
+    catch (err) { this.events.onError(err instanceof Error ? err.message : "Could not switch microphone."); }
+  }
 
   /** Ends the session; resolves when the SDK reports the disconnect or after closeTimeoutMs. */
   async close(): Promise<void> {

@@ -13,6 +13,8 @@ const idle = () => ({ status: "idle" as Status, error: null as string | null });
 export interface AiState {
   client: AiClient | null;
   remaining: { requests: number; tokens: number; resetAt: number } | null;
+  unlimited: boolean; // owner session: no daily quota
+  owner: boolean; // the last /session said owner (unlimited, never gated client-side)
   limitedUntil: number | null;
   limitKind: "daily" | "monthly" | null;
   scope: "all" | "selected";
@@ -59,6 +61,8 @@ const initial = () => ({
 
 export const useAiStore = create<AiState>((set, get) => ({
   client: null,
+  unlimited: false,
+  owner: false,
   useSearch: true,
   ocrTextStatus: "ok",
   noticeDismissed: (() => { try { return localStorage.getItem("ai-notice") === "1"; } catch { return false; } })(),
@@ -196,7 +200,8 @@ async function runTask(task: AiRequest["task"], client: AiClient) {
       },
       onDone: (d) => {
         if (stale()) return;
-        set({ remaining: { ...d.remaining, resetAt: d.resetAt } });
+        if (d.remaining) set({ remaining: { ...d.remaining, resetAt: d.resetAt ?? 0 } });
+        else if (d.unlimited) set({ remaining: null, unlimited: true });
         if (task === "extract") {
           try { setTask({ facts: (JSON.parse(buffer) as { facts: Fact[] }).facts, status: "done" }); }
           catch { setTask({ status: "error", error: "Couldn't read the extracted facts." }); }

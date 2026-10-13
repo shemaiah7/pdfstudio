@@ -1,15 +1,18 @@
 // src/store/live.ts
 import { create } from "zustand";
 import { LiveClient, type StartSession } from "../live/liveClient";
-import { formatPassages, keywordPassages, overview, NO_MATCH } from "../live/grounding";
+import { formatPassages, keywordPassages, overview, NO_MATCH, pagesNamed, looksGarbled } from "../live/grounding";
 import { retrievePassages } from "./search";
 import { documentText } from "../pdf/text";
 import { useDocumentStore } from "./document";
 import { useAiStore } from "./ai";
+import { useOcrStore, pageKey } from "./ocr";
+import { listMics, getSavedMic, saveMic, resolveMic, onDeviceChange, type Mic } from "../live/mics";
 
 export const SESSION_CAP_S = 600;
 export const SILENCE_S = 120;
 /** How long the voice search tool waits for on-device retrieval before answering from keyword matches (well under TOOL_TIMEOUT_MS). */
+const NAMED_PAGE_CHARS = 1500;
 export const RETRIEVE_BUDGET_MS = 2_500;
 
 export interface LiveState {
@@ -20,31 +23,61 @@ export interface LiveState {
   captions: { role: "you" | "assistant"; text: string }[];
   seconds: number;
   remainingSeconds: number | null;
+  unlimited: boolean; // owner session: no voice allowance
   resetAt: number | null;
   muted: boolean;
   acknowledged: boolean;
   searching: boolean;
   keywordMode: boolean;
   conversationId: string | null;
+  /** Chosen microphone deviceId; null means the system default. */
+  micId: string | null;
+  mics: Mic[];
   start(): Promise<void>;
   end(): Promise<void>;
   setMuted(on: boolean): void;
   acknowledge(): void;
+  setMic(id: string | null): void;
+  refreshMics(): Promise<void>;
 }
 
 export interface LiveDeps {
   retrieve: typeof retrievePassages;
   documentText: typeof documentText;
+  /** True when result page N (1-based) has a finished Deep OCR (Claude) transcription. */
+  isDeepOcr: (page: number) => boolean;
   startSession?: StartSession;
-  getMedia: () => Promise<void>;
+  getMedia: (micId: string | null) => Promise<void>;
+  getUserMedia: (c: MediaStreamConstraints) => Promise<MediaStream>;
+  listMics: () => Promise<Mic[]>;
   now: () => number;
 }
 const deps: LiveDeps = {
   retrieve: retrievePassages,
   documentText,
-  getMedia: async () => { const s = await navigator.mediaDevices.getUserMedia({ audio: true }); for (const t of s.getTracks()) t.stop(); },
+  isDeepOcr: (page) => {
+    const p = useDocumentStore.getState().pages[page - 1];
+    const st = p ? useOcrStore.getState().pages[pageKey(p.sourceId, p.sourcePageIndex)] : undefined;
+    return st?.state === "done" && st.engine === "claude";
+  },
+  getMedia: (micId) => openMicrophone(micId),
+  getUserMedia: (c) => navigator.mediaDevices.getUserMedia(c),
+  listMics,
   now: () => Date.now(),
 };
+/** Mic check: opens the chosen device (or the default) and releases it. A saved device that is gone falls back to the default and is forgotten. */
+export async function openMicrophone(micId: string | null): Promise<void> {
+  let stream: MediaStream;
+  try {
+    stream = await deps.getUserMedia({ audio: micId ? { deviceId: { exact: micId } } : true });
+  } catch (err) {
+    const name = (err as { name?: string })?.name;
+    if (!micId || (name !== "OverconstrainedError" && name !== "NotFoundError")) throw err;
+    stream = await deps.getUserMedia({ audio: true });
+    useLiveStore.getState().setMic(null);
+  }
+  for (const t of stream.getTracks()) t.stop();
+}
 export function configureLiveDeps(partial: Partial<LiveDeps>): void { Object.assign(deps, partial); }
 
 const fmtTime = (unix: number) => new Date(unix * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
@@ -90,7 +123,7 @@ export const useLiveStore = create<LiveState>((set, get) => {
     reportedClients.add(client);
     const api = useAiStore.getState().client;
     const r = await api?.reportLiveUsage(id, secs ?? elapsed(), keepalive);
-    if (r) set({ remainingSeconds: r.remainingSeconds });
+    if (r) set({ remainingSeconds: r.remainingSeconds, ...(r.unlimited ? { unlimited: true } : {}) });
   };
 
   // A session cancelled while connecting: tell the worker it never ran (best effort).
@@ -106,7 +139,8 @@ export const useLiveStore = create<LiveState>((set, get) => {
     set({ searching: true });
     // Keyword matching runs alongside retrieval: a slow on-device embed must not use up the tool's
     // TOOL_TIMEOUT_MS and answer "no match" for text that is plainly in the document.
-    const keyword = deps.documentText("all").then((pages) => keywordPassages(pages, query)).catch(() => []);
+    const allPages = deps.documentText("all").catch(() => [] as { page: number; text: string }[]);
+    const keyword = allPages.then((pages) => keywordPassages(pages, query));
     let timer: ReturnType<typeof setTimeout> | null = null;
     try {
       let passages: { page: number; text: string }[] | null = null;
@@ -119,7 +153,22 @@ export const useLiveStore = create<LiveState>((set, get) => {
         set({ keywordMode: true });
         passages = await keyword;
       }
-      return passages.length ? formatPassages(passages) : NO_MATCH;
+      const all = await allPages;
+      const named = pagesNamed(query, all.length);
+      if (named.length) {
+        const lead = named.map((n) => {
+          const text = (all.find((p) => p.page === n)?.text ?? "").trim().slice(0, NAMED_PAGE_CHARS);
+          return { page: n, text: text || "(no readable text on this page)" };
+        });
+        passages = [...lead, ...passages.filter((p) => !named.includes(p.page))];
+      }
+      if (!passages.length) return NO_MATCH;
+      const suspect = [...new Set(passages.filter((p) => looksGarbled(p.text) && !deps.isDeepOcr(p.page)).map((p) => p.page))];
+      if (!suspect.length) return formatPassages(passages);
+      const noteFor = (pgs: number[]) => `Note for the assistant: the text on p. ${pgs.join(", ")} looks garbled, probably handwriting read by basic OCR. Tell the user the page may be unreadable and suggest running Deep OCR on it (toolbar \u2192 Deep OCR) for an accurate transcription.`;
+      const body = formatPassages(passages, 4000 - noteFor(suspect).length - 2);
+      const shown = suspect.filter((n) => body.includes(`[p. ${n}] `));
+      return shown.length ? `${body}\n\n${noteFor(shown)}` : body;
     } finally { if (timer) clearTimeout(timer); set({ searching: false }); }
   };
 
@@ -130,10 +179,17 @@ export const useLiveStore = create<LiveState>((set, get) => {
   };
 
   return {
-    status: "idle", error: null, limited: false, captions: [], seconds: 0, remainingSeconds: null, resetAt: null,
+    status: "idle", error: null, limited: false, captions: [], seconds: 0, remainingSeconds: null, unlimited: false, resetAt: null,
     muted: false, acknowledged: false, searching: false, keywordMode: false, conversationId: null,
+    micId: getSavedMic(), mics: [],
     acknowledge: () => set({ acknowledged: true }),
     setMuted: (on) => { client?.mute(on); set({ muted: on }); },
+    setMic: (id) => {
+      saveMic(id);
+      set({ micId: id });
+      if (get().status === "live") void client?.setInputDevice(id ?? undefined);
+    },
+    refreshMics: async () => { set({ mics: await deps.listMics() }); },
 
     async start() {
       if (get().status !== "idle" && get().status !== "error") return;
@@ -142,9 +198,11 @@ export const useLiveStore = create<LiveState>((set, get) => {
       set({ status: "connecting", error: null, limited: false, captions: [], seconds: 0, searching: false, keywordMode: false, conversationId: null });
       startedAt = 0;
       sessionCapS = SESSION_CAP_S;
-      try { await deps.getMedia(); } catch { set({ status: "error", error: "Microphone access is needed for voice." }); return; }
+      try { await deps.getMedia(get().micId); } catch { set({ status: "error", error: "Microphone access is needed for voice." }); return; }
+      await get().refreshMics(); // device labels are available now that permission was granted
+      const inputDeviceId = resolveMic(get().micId, get().mics);
       const live = new LiveClient(
-        { createSession: async () => { const s = await api.createLiveSession(); sessionCapS = Math.min(SESSION_CAP_S, s.maxSeconds ?? SESSION_CAP_S); set({ conversationId: s.conversationId, resetAt: s.resetAt }); return s; } },
+        { createSession: async () => { const s = await api.createLiveSession(); sessionCapS = Math.min(SESSION_CAP_S, s.maxSeconds ?? SESSION_CAP_S); set({ conversationId: s.conversationId, resetAt: s.resetAt ?? null }); return s; } },
         {
           onConnected: () => {}, // the overview is sent once start() resolves, when the SDK conversation exists
           onUserText: (text) => { armSilence(); set({ captions: [...get().captions, { role: "you", text }] }); },
@@ -168,12 +226,12 @@ export const useLiveStore = create<LiveState>((set, get) => {
       );
       client = live;
       try {
-        const { remainingSeconds } = await live.start();
+        const { remainingSeconds, unlimited } = await live.start(inputDeviceId);
         if (client !== live) { reportCancelled(live); void live.close(); return; }
         startedAt = deps.now();
         const doc = useDocumentStore.getState();
         live.sendContext(overview(doc.sources.get(doc.pages[0]?.sourceId ?? "")?.name ?? "document", doc.pages.length));
-        set({ status: "live", remainingSeconds, seconds: 0 });
+        set({ status: "live", remainingSeconds, unlimited: unlimited === true, seconds: 0 });
         ticker = setInterval(() => {
           set({ seconds: elapsed() });
           if (elapsed() >= sessionCapS) void get().end();
@@ -201,6 +259,10 @@ export const useLiveStore = create<LiveState>((set, get) => {
     },
   };
 });
+
+// Plugging a microphone in or out refreshes the picker.
+onDeviceChange(() => { void useLiveStore.getState().refreshMics(); });
+void useLiveStore.getState().refreshMics();
 
 // Document change while live ends the session.
 useDocumentStore.subscribe((s, prev) => {

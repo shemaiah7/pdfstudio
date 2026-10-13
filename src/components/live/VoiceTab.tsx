@@ -43,7 +43,17 @@ export default function VoiceTab() {
   const disclosure = (
     <div className="voice-disclosure"><Icon name="lock" size={14} /><span>{disclosureCopy}</span></div>
   );
-  const meter = s.remainingSeconds !== null && (
+  const mic = (
+    <div className="voice-mic">
+      <label htmlFor="voice-mic-select">Microphone</label>
+      <select id="voice-mic-select" data-testid="voice-mic" value={s.micId ?? ""} onChange={(e) => s.setMic(e.target.value || null)}>
+        <option value="">System default</option>
+        {s.mics.map((m) => <option key={m.deviceId} value={m.deviceId}>{m.label}</option>)}
+      </select>
+      {s.mics.length === 0 && <p className="voice-mic-hint">Allow the microphone once to see your devices.</p>}
+    </div>
+  );
+  const meter = !s.unlimited && s.remainingSeconds !== null && (
     <div className="voice-meter" aria-hidden="true"><div className="voice-meter-fill" style={{ width: `${Math.min(100, Math.max(0, (s.remainingSeconds / 1800) * 100))}%` }} /></div>
   );
 
@@ -57,7 +67,7 @@ export default function VoiceTab() {
           <span className={`voice-label ${connecting ? "pending" : ""}`}><span className={`voice-dot ${connecting ? "" : "on"}`} aria-hidden="true" />{connecting ? "Starting" : "Live"}</span>
           <span className="voice-status" data-testid="voice-status">
             {s.status === "connecting" ? "Connecting…" : s.status === "ending" ? "Ending…" : mmss(s.seconds)}
-            {s.remainingSeconds !== null && ` · ${Math.floor(s.remainingSeconds / 60)} min left today`}
+            {s.unlimited ? " · Owner · unlimited" : s.remainingSeconds !== null && ` · ${Math.floor(s.remainingSeconds / 60)} min left today`}
           </span>
         </div>
         {meter}
@@ -78,6 +88,7 @@ export default function VoiceTab() {
           {captions}
           {s.searching && <p className="muted">Searching the document…</p>}
         </div>
+        {mic}
         <div className="voice-controls">
           <button data-testid="voice-mute" className="voice-secondary" onClick={() => s.setMuted(!s.muted)} disabled={s.status !== "live"}><Icon name={s.muted ? "mic-off" : "mic"} size={18} />{s.muted ? "Unmute" : "Mute"}</button>
           <button data-testid="voice-end" className="voice-end" onClick={() => void s.end()} disabled={s.status === "ending"}>End</button>
@@ -105,8 +116,9 @@ export default function VoiceTab() {
           <div className="voice-captions" data-testid="voice-captions">{captions}</div>
         )}
         <button data-testid="voice-start" className={`voice-start${locked ? " locked" : ""}`} onClick={begin} disabled={!hasDoc}><Icon name="mic" size={18} />{isError ? "Retry" : "Start voice session"}</button>
+        {mic}
         {!hasDoc && <p className="muted voice-hint">Open a document first.</p>}
-        {s.remainingSeconds !== null && <><p className="muted voice-min">{Math.floor(s.remainingSeconds / 60)} min left today</p>{meter}</>}
+        {s.unlimited ? <p className="muted voice-min">Owner · unlimited</p> : s.remainingSeconds !== null && <><p className="muted voice-min">{Math.floor(s.remainingSeconds / 60)} min left today</p>{meter}</>}
       </div>
       {disclosure}
     </div>

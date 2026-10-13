@@ -6,8 +6,9 @@ export const paywallEnabled = (): boolean => {
   if (!import.meta.env.DEV) return false;
   try { return new URLSearchParams(window.location.search).has("paywall"); } catch { return false; }
 };
-export function can(plan: Plan, feature: Feature, paywall: boolean = paywallEnabled()): boolean {
-  if (!paywall) return true;
+/** `owner`: the session is an owner session (unlimited); owners are never gated. */
+export function can(plan: Plan, feature: Feature, paywall: boolean = paywallEnabled(), owner = false): boolean {
+  if (owner || !paywall) return true;
   if (feature === "edit" || feature === "deepOcr") return plan === "trial" || plan === "pro";
   return plan !== "anon";
 }

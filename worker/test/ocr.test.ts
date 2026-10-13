@@ -73,6 +73,19 @@ describe("POST /ocr", () => {
     expect(puts.filter((k) => k.startsWith("q:"))).toHaveLength(1);
     expect(gets).toHaveLength(2);
   });
+
+  it("owner sessions bypass the daily limit for a batch", async () => {
+    const day = new Date().toISOString().slice(0, 10);
+    await env.QUOTA.put(`q:vid-ocr-owner:${day}`, JSON.stringify({ requests: 20, tokens: 10_000_000 }));
+    const tok = await signSession({ vid: "vid-ocr-owner", exp: Math.floor(Date.now() / 1000) + 3600, owner: true }, env.SESSION_SECRET);
+    const { res, json } = await post(body, tok);
+    expect(res.status).toBe(200);
+    expect(json.pages).toHaveLength(2);
+    expect(json.remaining).toBeNull();
+    expect(json.unlimited).toBe(true);
+    expect(json.resetAt).toBeUndefined();
+    expect(await env.QUOTA.get(`q:vid-ocr-owner:${day}`, "json")).toEqual({ requests: 20, tokens: 10_000_000 });
+  });
 });
 
 async function callOcr(e: typeof env, tok: string, b: unknown) {
@@ -121,5 +134,20 @@ describe("/ocr with PAYWALL_ENABLED", () => {
   it("flag off: signed-in free user uses the old anonymous quota", async () => {
     const tok = await signSession({ vid: "u:user_o3", uid: "user_o3", plan: "free", exp: exp() }, env.SESSION_SECRET);
     expect((await callOcr(env, tok, body)).status).toBe(200);
+  });
+  it("owner sessions skip account_required, pro_required and monthly limits and report unlimited", async () => {
+    const month = new Date().toISOString().slice(0, 7);
+    await env.QUOTA.put(`m:ocr:u:user_ow3:${month}`, "300");
+    const cases = [
+      { vid: "anon-ocr-owner", exp: exp(), owner: true as const },
+      { vid: "u:user_ow1", uid: "user_ow1", plan: "free" as const, exp: exp(), owner: true as const },
+      { vid: "u:user_ow3", uid: "user_ow3", plan: "pro" as const, exp: exp(), owner: true as const },
+    ];
+    for (const p of cases) {
+      const res = await callOcr(on, await signSession(p, env.SESSION_SECRET), body);
+      expect(res.status).toBe(200);
+      expect(await res.json()).toMatchObject({ remaining: null, unlimited: true });
+    }
+    expect(await env.QUOTA.get(`m:ocr:u:user_ow3:${month}`)).toBe("300");
   });
 });

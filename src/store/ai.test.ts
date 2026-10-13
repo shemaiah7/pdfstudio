@@ -30,6 +30,19 @@ describe("ai store", () => {
     expect(s().remaining).toEqual({ requests: 18, tokens: 5, resetAt: 99 });
   });
 
+  it("accepts remaining: null / unlimited: true from an owner session", async () => {
+    await useDocumentStore.getState().openFiles([{ name: "three.pdf", bytes: loadFixture("three") }]);
+    s().setClient({ runTask: (_b: unknown, h: { onDelta(t: string): void; onDone(d: unknown): void }) => { h.onDelta("x"); h.onDone({ usage: { input: 1, output: 1 }, stop: "end_turn", remaining: null, unlimited: true }); return { abort() {}, done: Promise.resolve() }; } } as never);
+    await s().run("summarize");
+    expect(s().summary).toMatchObject({ text: "x", status: "done" });
+    expect(s().remaining).toBeNull();
+    expect(s().unlimited).toBe(true);
+    expect(s().limitedUntil).toBeNull();
+    s().resetForNewDocument();
+    expect(s().unlimited).toBe(true);
+    useAiStore.setState({ unlimited: false });
+  });
+
   it("sets limitedUntil and a message on daily_limit", async () => {
     await useDocumentStore.getState().openFiles([{ name: "three.pdf", bytes: loadFixture("three") }]);
     s().setClient({ runTask: (_b: unknown, h: { onError(c: string, e?: unknown): void }) => { h.onError("daily_limit", { resetAt: 1_800_000_000 }); return { abort() {}, done: Promise.resolve() }; } } as never);

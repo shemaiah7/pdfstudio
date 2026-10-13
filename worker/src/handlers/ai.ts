@@ -29,17 +29,22 @@ export async function aiHandler(request: Request, env: Env, ctx: ExecutionContex
     (b.task === "ask" ? b.question.length : 0);
   const estimate = Math.ceil(chars / 3.5);
   const now = Date.now() / 1000;
+  const owner = session.owner === true;
+  const own = owner ? { owner: true as const } : {};
   const gate = await gateFor(env, session, now);
   if (gate === "account_required") return json({ error: "account_required" }, 403, env);
   if (gate === "account_unavailable") return json({ error: "account_unavailable" }, 503, env);
-  let quota;
-  if (gate) {
+  let quota: { day: string; resetAt: number; charged: QuotaState; remaining: { requests: number; tokens: number } } | null = null;
+  if (owner) {
+    // Owner sessions skip every limit (legacy quota and plan limits alike).
+  } else if (gate) {
     const u = await checkUsage(env.QUOTA, session.vid, gate.plan, "ai", 1, gate.month, now, estimate);
     if (!u.ok) return json({ error: u.error, resetAt: u.resetAt, ...(u.scope ? { scope: u.scope } : {}) }, u.error === "pro_required" ? 403 : 429, env);
     quota = u;
   } else {
-    quota = await checkQuota(env.QUOTA, session.vid, now, estimate);
-    if (!quota.ok) return json({ error: quota.reason, resetAt: quota.resetAt }, 429, env);
+    const q = await checkQuota(env.QUOTA, session.vid, now, estimate);
+    if (!q.ok) return json({ error: q.reason, resetAt: q.resetAt }, 429, env);
+    quota = q;
   }
 
   let result;
@@ -47,18 +52,17 @@ export async function aiHandler(request: Request, env: Env, ctx: ExecutionContex
     result = await stream(buildRequest(v.body), env);
   } catch (err) {
     const kind = mapError(err);
-    console.log(JSON.stringify({ task: v.body.task, vid: session.vid, status: "error", kind }));
+    console.log(JSON.stringify({ task: v.body.task, vid: session.vid, ...own, status: "error", kind }));
     return json({ error: kind }, kind === "busy" ? 503 : 502, env);
   }
 
-  const { day, resetAt } = quota;
   const vid = session.vid;
   let recorded: Promise<QuotaState> | undefined;
   // Admission already charged `estimate`; only write the (rare) excess, and skip the write otherwise.
   const record = (u: { inputTokens: number; outputTokens: number }) =>
-    (recorded ??= (async () => {
+    quota === null ? Promise.resolve(null) : (recorded ??= (async () => {
       const delta = Math.max(0, u.inputTokens + u.outputTokens - estimate);
-      return delta === 0 ? quota.charged : recordTokens(env.QUOTA, vid, day, delta);
+      return delta === 0 ? quota.charged : recordTokens(env.QUOTA, vid, quota.day, delta);
     })());
   let finished!: () => void;
   ctx.waitUntil(new Promise<void>((resolve) => { finished = resolve; }));
@@ -75,7 +79,7 @@ export async function aiHandler(request: Request, env: Env, ctx: ExecutionContex
           if (r === "aborted") {
             result.abort?.();
             void Promise.resolve(it.return?.()).catch(() => {});
-            console.log(JSON.stringify({ task: v.body.task, vid, status: "client_disconnected" }));
+            console.log(JSON.stringify({ task: v.body.task, vid, ...own, status: "client_disconnected" }));
             return;
           }
           if (r.done) break;
@@ -83,21 +87,23 @@ export async function aiHandler(request: Request, env: Env, ctx: ExecutionContex
         }
       } catch (err) {
         const kind = mapError(err);
-        console.log(JSON.stringify({ task: v.body.task, vid, status: "error", kind }));
+        console.log(JSON.stringify({ task: v.body.task, vid, ...own, status: "error", kind }));
         send("error", { error: kind });
         return;
       }
       const f = await result.final();
       const state = await record(f);
-      console.log(JSON.stringify({ task: v.body.task, vid, status: f.stop, tokens: f.inputTokens + f.outputTokens }));
+      console.log(JSON.stringify({ task: v.body.task, vid, ...own, status: f.stop, tokens: f.inputTokens + f.outputTokens }));
       if (f.stop === "refusal") { send("error", { error: "refused" }); return; }
-      send("done", {
-        usage: { input: f.inputTokens, output: f.outputTokens },
+      const usage = { input: f.inputTokens, output: f.outputTokens };
+      if (!state || !quota) send("done", { usage, stop: f.stop, remaining: null, unlimited: true });
+      else send("done", {
+        usage,
         stop: f.stop,
         remaining: gate
           ? { requests: quota.remaining.requests, tokens: Math.max(0, TOKEN_DAY[gate.plan] - state.tokens) }
           : { requests: Math.max(0, DAILY_REQUESTS - state.requests), tokens: Math.max(0, DAILY_TOKENS - state.tokens) },
-        resetAt,
+        resetAt: quota.resetAt,
       });
     } finally {
       // Runs on every exit path (completion, error, client disconnect): charge whatever was consumed.

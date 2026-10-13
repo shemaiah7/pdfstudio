@@ -55,6 +55,30 @@ describe("POST /live", () => {
   });
 });
 
+describe("owner sessions", () => {
+  const ownerToken = (vid: string) => signSession({ vid, exp: Math.floor(Date.now() / 1000) + 3600, owner: true }, env.SESSION_SECRET);
+  async function ownerCall(handler: typeof liveHandler, path: string, body: unknown, vid: string, deps: LiveDeps = okDeps()) {
+    const req = new Request(`https://ai.example${path}`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${await ownerToken(vid)}` }, body: body === undefined ? undefined : JSON.stringify(body) });
+    const res = await handler(req, env, deps);
+    return { res, json: (await res.json().catch(() => null)) as any }; // eslint-disable-line @typescript-eslint/no-explicit-any
+  }
+  it("skips admission and charging, still mints a token", async () => {
+    await env.QUOTA.put(`v:v-owner-1:${day}`, JSON.stringify({ seconds: 1800, charged: { a: 1800 }, admitted: {}, pending: {} }));
+    const { res, json } = await ownerCall(liveHandler, "/live", undefined, "v-owner-1");
+    expect(res.status).toBe(200);
+    expect(json).toMatchObject({ conversationId: "conv_1", token: "tok", remainingSeconds: null, unlimited: true });
+    expect(await env.QUOTA.get(`v:v-owner-1:${day}`, "json")).toMatchObject({ seconds: 1800, charged: { a: 1800 } });
+  });
+  it("/live/usage is a no-op success", async () => {
+    let asked = false;
+    const { res, json } = await ownerCall(liveUsageHandler, "/live/usage", { conversationId: "conv_1", seconds: 500 }, "v-owner-2", { ...okDeps(), getDuration: async () => { asked = true; return 1; } });
+    expect(res.status).toBe(200);
+    expect(json).toMatchObject({ remainingSeconds: null, unlimited: true });
+    expect(asked).toBe(false);
+    expect(await env.QUOTA.get(`v:v-owner-2:${day}`, "json")).toBeNull();
+  });
+});
+
 describe("POST /live/usage", () => {
   it("400 on an invalid body", async () => {
     expect((await call(liveUsageHandler, "/live/usage", { conversationId: 5 }, "v-use-0")).res.status).toBe(400);
@@ -148,6 +172,26 @@ describe("POST /live with PAYWALL_ENABLED", () => {
     const { res, json } = await liveAs({ vid: "u:user_l4", uid: "user_l4", plan: "trial", exp: exp() });
     expect(res.status).toBe(200);
     expect(json).toMatchObject({ maxSeconds: 600, remainingSeconds: 1200 });
+  });
+  it("owner sessions skip account_required and day/month allowances, reserve 600 s and charge nothing", async () => {
+    const month = new Date().toISOString().slice(0, 7);
+    await env.QUOTA.put(`v:u:user_lo2:${day}`, JSON.stringify({ seconds: 300, charged: { a: 300 }, admitted: {}, pending: {} }));
+    await env.QUOTA.put(`m:voice:u:user_lo2:${month}`, "9300");
+    for (const p of [
+      { vid: "anon-live-owner", exp: exp(), owner: true as const },
+      { vid: "u:user_lo2", uid: "user_lo2", plan: "free" as const, exp: exp(), owner: true as const },
+    ]) {
+      const { res, json } = await liveAs(p);
+      expect(res.status).toBe(200);
+      expect(json).toMatchObject({ remainingSeconds: null, unlimited: true, maxSeconds: 600 });
+    }
+    expect(await env.QUOTA.get(`v:anon-live-owner:${day}`)).toBeNull();
+    expect(await env.QUOTA.get(`v:u:user_lo2:${day}`, "json")).toMatchObject({ seconds: 300, charged: { a: 300 } });
+    expect(await env.QUOTA.get(`m:voice:u:user_lo2:${month}`)).toBe("9300");
+  });
+  it("the same free user without owner is still refused", async () => {
+    await env.QUOTA.put(`v:u:user_lo3:${day}`, JSON.stringify({ seconds: 300, charged: { a: 300 }, admitted: {}, pending: {} }));
+    expect((await liveAs({ vid: "u:user_lo3", uid: "user_lo3", plan: "free", exp: exp() })).res.status).toBe(429);
   });
   it("usage report adjusts the month counter by the settled delta", async () => {
     const payload = { vid: "u:user_l5", uid: "user_l5", plan: "trial" as const, exp: exp() };

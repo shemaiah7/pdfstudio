@@ -31,6 +31,20 @@ async function authed(request: Request, env: Env): Promise<SessionPayload | null
 export async function liveHandler(request: Request, env: Env, deps: LiveDeps = defaultDeps): Promise<Response> {
   const session = await authed(request, env);
   if (!session) return json({ error: "unauthorized" }, 401, env);
+  const owner = session.owner === true;
+  const own = owner ? { owner: true as const } : {};
+  // Owner sessions skip every limit (day, month, plan gate) and charging; the ElevenLabs token is still minted.
+  if (owner) {
+    let minted: { token: string; conversationId: string };
+    try {
+      minted = await deps.createToken(env.ELEVENLABS_API_KEY, env.ELEVENLABS_AGENT_ID);
+    } catch (err) {
+      console.log(JSON.stringify({ task: "live", vid: session.vid, ...own, status: "error", kind: err instanceof ElevenLabsError ? err.status : "unknown" }));
+      return json({ error: "voice_unavailable" }, 502, env);
+    }
+    console.log(JSON.stringify({ task: "live", vid: session.vid, ...own, status: "admitted" }));
+    return json({ conversationId: minted.conversationId, token: minted.token, remainingSeconds: null, unlimited: true, maxSeconds: ADMISSION_SECONDS }, 200, env);
+  }
   const now = Date.now() / 1000;
   const gate = await gateFor(env, session, now);
   if (gate === "account_required") return json({ error: "account_required" }, 403, env);
@@ -63,6 +77,7 @@ export async function liveHandler(request: Request, env: Env, deps: LiveDeps = d
 export async function liveUsageHandler(request: Request, env: Env, deps: LiveDeps = defaultDeps): Promise<Response> {
   const session = await authed(request, env);
   if (!session) return json({ error: "unauthorized" }, 401, env);
+  if (session.owner === true) return json({ remainingSeconds: null, unlimited: true }, 200, env); // nothing is charged for owners
   let raw: unknown;
   try { raw = await request.json(); } catch { return json({ error: "invalid_body" }, 400, env); }
   const b = raw as { conversationId?: unknown; seconds?: unknown };

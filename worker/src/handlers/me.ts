@@ -22,20 +22,21 @@ const n = async (kv: KVNamespace, k: string) => Number((await kv.get(k)) ?? "0")
 export async function meHandler(request: Request, env: Env): Promise<Response> {
   const s = await authed(request, env);
   if (!s) return json({ error: "unauthorized" }, 401, env);
-  if (sessionPlan(s) === "anon" || !s.uid) return json({ plan: "anon", paywall: paywallOn(env) }, 200, env);
+  const own = s.owner === true ? { owner: true } : {};
+  if (sessionPlan(s) === "anon" || !s.uid) return json({ plan: "anon", paywall: paywallOn(env), ...own }, 200, env);
   const now = Date.now() / 1000;
   let user;
   try { user = await getUser(env.DB, s.uid); } catch { return json({ error: "account_unavailable" }, 503, env); }
   if (!user) return json({ error: "unauthorized" }, 401, env);
   const plan = planOf(user, now);
-  if (plan === "anon") return json({ plan: "anon", paywall: paywallOn(env) }, 200, env);
+  if (plan === "anon") return json({ plan: "anon", paywall: paywallOn(env), ...own }, 200, env);
   const mk = monthKey(plan, user.current_period_end, now), day = utcDay(now);
   const usage = {
     aiDay: await n(env.QUOTA, `d:ai:${s.vid}:${day}`), aiMonth: await n(env.QUOTA, `m:ai:${s.vid}:${mk}`),
     voiceDaySec: (await readVoice(env.QUOTA, s.vid, day)).seconds, voiceMonthSec: await n(env.QUOTA, `m:voice:${s.vid}:${mk}`),
     ocrMonth: await n(env.QUOTA, `m:ocr:${s.vid}:${mk}`),
   };
-  return json({ plan, trialEndsAt: user.trial_ends_at, periodEnd: user.current_period_end, status: user.subscription_status, termsAccepted: user.terms_version === TERMS_VERSION, termsVersion: TERMS_VERSION, paywall: paywallOn(env), usage, limits: LIMITS[plan] }, 200, env);
+  return json({ plan, trialEndsAt: user.trial_ends_at, periodEnd: user.current_period_end, status: user.subscription_status, termsAccepted: user.terms_version === TERMS_VERSION, termsVersion: TERMS_VERSION, paywall: paywallOn(env), usage, limits: LIMITS[plan], ...own }, 200, env);
 }
 
 export async function termsHandler(request: Request, env: Env): Promise<Response> {

@@ -7,6 +7,9 @@ describe("can", () => {
     ["trial", "edit", true], ["pro", "deepOcr", true], ["free", "voice", true],
   ] as const)("%s %s → %s (paywall on)", (plan, f, ok) => { expect(can(plan, f, true)).toBe(ok); });
   it("paywall off: everything allowed", () => { expect(can("anon", "edit", false)).toBe(true); });
+  it.each(["anon", "free", "trial", "pro"] as const)("owner session (%s): every feature allowed with the paywall on", (plan) => {
+    for (const f of ["edit", "ai", "voice", "deepOcr"] as const) expect(can(plan, f, true, true)).toBe(true);
+  });
 });
 
 describe("paywallEnabled", () => {

@@ -1,5 +1,6 @@
 import { createSseParser } from "./sse";
 import type { Plan } from "../account/capabilities";
+import { getOwnerKey } from "./owner";
 
 export interface AiRequest {
   task: "summarize" | "ask" | "rewrite" | "extract";
@@ -11,10 +12,10 @@ export interface AiRequest {
   language?: string;
   retrieved?: boolean;
 }
-export interface DoneData { usage: { input: number; output: number }; stop: string; remaining: { requests: number; tokens: number }; resetAt: number }
+export interface DoneData { usage: { input: number; output: number }; stop: string; remaining: { requests: number; tokens: number } | null; resetAt?: number; unlimited?: boolean }
 export interface Handlers { onDelta(text: string): void; onDone(d: DoneData): void; onError(code: string, extra?: Record<string, unknown>): void }
 
-export interface OcrResponse { pages: { page: number; lines: string[] }[]; failed: number[]; remaining: { requests: number; tokens: number }; resetAt: number }
+export interface OcrResponse { pages: { page: number; lines: string[] }[]; failed: number[]; remaining: { requests: number; tokens: number } | null; resetAt?: number; unlimited?: boolean }
 
 export interface MeResponse {
   plan: Plan;
@@ -26,6 +27,8 @@ export interface MeResponse {
   termsVersion?: string;
   usage?: { aiDay: number; aiMonth: number; voiceDaySec: number; voiceMonthSec: number; ocrMonth: number };
   limits?: { aiDay: number; aiMonth: number; voiceDaySec: number; voiceMonthSec: number; ocrMonth: number; edit: boolean } | null;
+  /** Present (true) only for an owner session: every limit and gate is lifted. */
+  owner?: boolean;
 }
 
 /** Session failures surface as one of these codes; anything else (Turnstile errors, network) is "verification_failed". */
@@ -34,21 +37,25 @@ const sessionError = (e: unknown): string => (e instanceof Error && SESSION_ERRO
 
 export class AiClient {
   private token: string | null = null;
+  /** True once /session reported an owner session (unlimited use). */
+  isOwner = false;
   private pending: Promise<string> | null = null;
   private baseUrl: string;
   private getTurnstileToken: () => Promise<string>;
   private getAuthToken?: () => Promise<string | null>;
   private isSignedIn: () => boolean;
   private fetchFn: typeof fetch;
+  private onSession?: (info: { owner: boolean }) => void;
   // Bumped by resetSession(); a session fetch from an older generation must not become the cached token.
   private generation = 0;
 
-  constructor(opts: { baseUrl: string; getTurnstileToken: () => Promise<string>; getAuthToken?: () => Promise<string | null>; isSignedIn?: () => boolean; fetchFn?: typeof fetch }) {
+  constructor(opts: { baseUrl: string; getTurnstileToken: () => Promise<string>; getAuthToken?: () => Promise<string | null>; isSignedIn?: () => boolean; fetchFn?: typeof fetch; onSession?: (info: { owner: boolean }) => void }) {
     this.baseUrl = opts.baseUrl.replace(/\/$/, "");
     this.getTurnstileToken = opts.getTurnstileToken;
     this.getAuthToken = opts.getAuthToken;
     this.isSignedIn = opts.isSignedIn ?? (() => false);
     this.fetchFn = opts.fetchFn ?? ((input, init) => fetch(input, init));
+    this.onSession = opts.onSession;
   }
 
   ensureSession(force = false): Promise<string> {
@@ -66,12 +73,17 @@ export class AiClient {
     const jwt = this.getAuthToken ? await this.getAuthToken().catch(() => null) : null;
     // Signed in but no Clerk token: never mint an anonymous session in the user's place.
     if (!jwt && signedIn) throw new Error("verification_failed");
+    const ownerKey = getOwnerKey();
+    const owner = ownerKey ? { ownerKey } : {};
     const res = jwt
-      ? await this.fetchFn(`${this.baseUrl}/session`, { method: "POST", headers: { authorization: `Bearer ${jwt}` } })
-      : await this.fetchFn(`${this.baseUrl}/session`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ turnstileToken: await this.getTurnstileToken() }) });
+      ? await this.fetchFn(`${this.baseUrl}/session`, { method: "POST", headers: { authorization: `Bearer ${jwt}`, "content-type": "application/json" }, body: JSON.stringify(owner) })
+      : await this.fetchFn(`${this.baseUrl}/session`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ turnstileToken: await this.getTurnstileToken(), ...owner }) });
     if (!res.ok) throw new Error(res.status === 503 ? "account_unavailable" : jwt && res.status === 401 ? "signin_required" : "verification_failed");
-    const body = (await res.json()) as { token: string };
+    const body = (await res.json()) as { token: string; owner?: boolean };
     if (gen === this.generation) this.token = body.token;
+    // The owner bit depends only on the stored owner key, so even a superseded session's answer is current.
+    this.isOwner = body.owner === true;
+    this.onSession?.({ owner: this.isOwner });
     return body.token;
   }
 
@@ -109,7 +121,7 @@ export class AiClient {
     throw new Error("upstream");
   }
 
-  async createLiveSession(): Promise<{ conversationId: string; token: string; remainingSeconds: number; resetAt: number; maxSeconds?: number }> {
+  async createLiveSession(): Promise<{ conversationId: string; token: string; remainingSeconds: number | null; resetAt?: number; maxSeconds?: number; unlimited?: boolean }> {
     let token: string;
     try { token = await this.ensureSession(); } catch (e) { throw new Error(sessionError(e)); }
     for (let attempt = 0; attempt < 2; attempt++) {
@@ -117,18 +129,18 @@ export class AiClient {
       try { res = await this.fetchFn(`${this.baseUrl}/live`, { method: "POST", headers: { authorization: `Bearer ${token}` } }); } catch { throw new Error("network"); }
       if (res.status === 401 && attempt === 0) { try { token = await this.ensureSession(true); continue; } catch (e) { throw new Error(sessionError(e)); } }
       if (!res.ok) { const err = (await res.json().catch(() => ({}))) as { error?: string; resetAt?: number; remainingSeconds?: number; sessionSeconds?: number; scope?: "day" | "month" }; throw Object.assign(new Error(err.error ?? "upstream"), { resetAt: err.resetAt, remainingSeconds: err.remainingSeconds, sessionSeconds: err.sessionSeconds, scope: err.scope }); }
-      return (await res.json()) as { conversationId: string; token: string; remainingSeconds: number; resetAt: number; maxSeconds?: number };
+      return (await res.json()) as { conversationId: string; token: string; remainingSeconds: number | null; resetAt?: number; maxSeconds?: number; unlimited?: boolean };
     }
     throw new Error("upstream");
   }
 
   /** Best effort: never throws. keepalive lets the report survive page unload. */
-  async reportLiveUsage(conversationId: string, seconds: number, keepalive = false): Promise<{ remainingSeconds: number } | null> {
+  async reportLiveUsage(conversationId: string, seconds: number, keepalive = false): Promise<{ remainingSeconds: number | null; unlimited?: boolean } | null> {
     try {
       const token = await this.ensureSession();
       const res = await this.fetchFn(`${this.baseUrl}/live/usage`, { method: "POST", keepalive, headers: { "content-type": "application/json", authorization: `Bearer ${token}` }, body: JSON.stringify({ conversationId, seconds: Math.max(0, Math.min(600, Math.round(seconds))) }) });
       if (!res.ok) return null;
-      return (await res.json()) as { remainingSeconds: number };
+      return (await res.json()) as { remainingSeconds: number | null; unlimited?: boolean };
     } catch { return null; }
   }
 

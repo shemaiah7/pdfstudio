@@ -16,8 +16,10 @@ export const pageKey = (sourceId: string, pageIndex: number) => `${sourceId}:${p
 export type OcrPageState = { state: OcrJobState; engine?: OcrEngineName; error?: string };
 
 /** Pushes the quota reported by a successful Deep OCR call into the AI store. */
-export function applyQuota(r: { remaining: { requests: number; tokens: number }; resetAt: number }): void {
-  useAiStore.setState({ remaining: { ...r.remaining, resetAt: r.resetAt }, ...(r.remaining.requests <= 0 ? { limitedUntil: r.resetAt } : {}) });
+export function applyQuota(r: { remaining: { requests: number; tokens: number } | null; resetAt?: number; unlimited?: boolean }): void {
+  if (!r.remaining) { useAiStore.setState({ remaining: null, unlimited: true }); return; } // owner session: no quota
+  const resetAt = r.resetAt ?? 0;
+  useAiStore.setState({ remaining: { ...r.remaining, resetAt }, ...(r.remaining.requests <= 0 ? { limitedUntil: resetAt } : {}) });
 }
 
 export interface OcrDeps {

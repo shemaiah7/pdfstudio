@@ -41,6 +41,15 @@ describe("/me", () => {
     const body = (await (await post(meHandler, await tok("user_me1"))).json()) as Record<string, unknown>;
     expect(body).toMatchObject({ plan: "trial", termsAccepted: false, termsVersion: TERMS_VERSION, usage: { aiDay: 0, aiMonth: 0, voiceDaySec: 0, voiceMonthSec: 0, ocrMonth: 0 } });
   });
+  it("owner sessions add owner: true (user and anonymous); non-owner has no owner field", async () => {
+    await ensureUser(env.DB, "user_me3", "m3@x.y", Math.floor(Date.now() / 1000));
+    const exp = Math.floor(Date.now() / 1000) + 600;
+    const u = await signSession({ vid: "u:user_me3", uid: "user_me3", plan: "trial", exp, owner: true }, env.SESSION_SECRET);
+    expect(await (await post(meHandler, u)).json()).toMatchObject({ plan: "trial", owner: true });
+    const a = await signSession({ vid: "x", exp, owner: true }, env.SESSION_SECRET);
+    expect(await (await post(meHandler, a)).json()).toEqual({ plan: "anon", paywall: false, owner: true });
+    expect("owner" in ((await (await post(meHandler, await tok("user_me3"))).json()) as object)).toBe(false);
+  });
   it("401 without a token", async () => { expect((await post(meHandler, null)).status).toBe(401); });
 });
 describe("/terms/accept", () => {

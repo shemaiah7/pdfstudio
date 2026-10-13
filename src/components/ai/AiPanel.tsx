@@ -33,7 +33,7 @@ function idleFooter(paywall: boolean, me: MeResponse | null): string {
 
 export default function AiPanel() {
   const [tab, setTab] = useState<Tab>("summarize");
-  const { noticeDismissed, dismissNotice, remaining, limitedUntil, limitKind, resetForNewDocument } = useAiStore();
+  const { noticeDismissed, dismissNotice, remaining, unlimited, limitedUntil, limitKind, resetForNewDocument } = useAiStore();
   const ocrEnabled = useOcrStore((s) => s.enabled);
   const setOcrEnabled = useOcrStore((s) => s.setEnabled);
   const sourcesKey = useDocumentStore((s) => [...s.sources.keys()].join(","));
@@ -75,7 +75,7 @@ export default function AiPanel() {
         </div>
       )}
       <div className="ai-footer" data-testid="ai-footer">
-        {remaining ? `${remaining.requests} requests left today` : idleFooter(paywall, me)}
+        {unlimited ? "Owner · unlimited" : remaining ? `${remaining.requests} requests left today` : idleFooter(paywall, me)}
         {limited && limitedUntil && ` · resets ${resetLabel(limitedUntil, paywall && limitKind === "monthly")}`}
       </div>
     </div>
