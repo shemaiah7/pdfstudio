@@ -1,6 +1,9 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeAll, afterEach } from "vitest";
 import { env, createExecutionContext, waitOnExecutionContext } from "cloudflare:test";
-import { signSession, verifySession, visitorId, utcDay } from "../src/session";
+import { signSession, verifySession, visitorId, utcDay, sessionPlan } from "../src/session";
+import { sessionHandler, configureSessionDeps } from "../src/handlers/session";
+import { setJwksForTest, clerkUserEmail } from "../src/clerk";
+import { makeSigner, good } from "./jwt-helpers";
 import { verifyTurnstile } from "../src/turnstile";
 import worker from "../src/index";
 
@@ -97,6 +100,85 @@ describe("POST /session", () => {
     vi.unstubAllGlobals();
     expect(res.status).toBe(403);
     expect(await res.json()).toEqual({ error: "verification_failed" });
+  });
+});
+
+describe("POST /session with a Clerk JWT", () => {
+  let sign: Awaited<ReturnType<typeof makeSigner>>["sign"];
+  beforeAll(async () => {
+    const s = await makeSigner();
+    sign = s.sign;
+    setJwksForTest([s.jwk]);
+  });
+  afterEach(() => {
+    configureSessionDeps({ userEmail: (id, e) => clerkUserEmail(id, e) });
+  });
+
+  it("creates the user, issues a 600 s token with plan trial", async () => {
+    configureSessionDeps({ userEmail: async () => "new@x.y" });
+    const res = await sessionHandler(new Request("https://ai.example/session", { method: "POST", headers: { authorization: `Bearer ${await sign({ ...good(), sub: "user_s1" })}` } }), env);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { token: string; expiresAt: number; plan: string };
+    expect(body.plan).toBe("trial");
+    const s = (await verifySession(body.token, env.SESSION_SECRET))!;
+    expect(s).toMatchObject({ vid: "u:user_s1", uid: "user_s1", plan: "trial" });
+    expect(body.expiresAt - Math.floor(Date.now() / 1000)).toBeLessThanOrEqual(600);
+  });
+  it("401 for an invalid Clerk JWT (never falls back to anonymous)", async () => {
+    const res = await sessionHandler(new Request("https://ai.example/session", { method: "POST", headers: { authorization: "Bearer a.b.c" } }), env);
+    expect(res.status).toBe(401);
+  });
+  it("legacy anonymous token without plan reads as anon", async () => {
+    expect(sessionPlan({ vid: "abc", exp: 1 })).toBe("anon");
+  });
+  it("rejects a signed token carrying an unknown plan", async () => {
+    const t = await signSession({ vid: "abc", exp: 2_000_000_000, plan: "root" as never }, "s");
+    expect(await verifySession(t, "s", 1_900_000_000)).toBeNull();
+  });
+  it("anonymous Turnstile response includes plan anon", async () => {
+    vi.stubGlobal("fetch", async () => new Response(JSON.stringify({ success: true, hostname: "localhost" })));
+    try {
+      const res = await sessionHandler(new Request("https://ai.example/session", {
+        method: "POST", headers: { "content-type": "application/json", "cf-connecting-ip": "9.9.9.7" }, body: JSON.stringify({ turnstileToken: "tok" }),
+      }), env);
+      expect(((await res.json()) as { plan: string }).plan).toBe("anon");
+    } finally { vi.unstubAllGlobals(); }
+  });
+  it("503 account_unavailable when Clerk email lookup fails for a new user", async () => {
+    configureSessionDeps({ userEmail: async () => { throw new Error("clerk_500"); } });
+    const res = await sessionHandler(new Request("https://ai.example/session", { method: "POST", headers: { authorization: `Bearer ${await sign({ ...good(), sub: "user_s2" })}` } }), env);
+    expect(res.status).toBe(503);
+  });
+  it("adds owner:true for a valid owner key sent alongside the Clerk JWT", async () => {
+    const OWNER = "owner-key-0123456789-abcdefghijklmnopqrstuvwxyz";
+    const e = { ...env, OWNER_KEY: OWNER } as typeof env;
+    configureSessionDeps({ userEmail: async () => "own@x.y" });
+    const res = await sessionHandler(new Request("https://ai.example/session", {
+      method: "POST", headers: { authorization: `Bearer ${await sign({ ...good(), sub: "user_own1" })}`, "content-type": "application/json" }, body: JSON.stringify({ ownerKey: OWNER }),
+    }), e);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { token: string; plan: string; owner?: true };
+    expect(body.owner).toBe(true);
+    expect(body.plan).toBe("trial");
+    expect(await verifySession(body.token, env.SESSION_SECRET)).toMatchObject({ vid: "u:user_own1", uid: "user_own1", plan: "trial", owner: true });
+  });
+  it("ignores an invalid or missing owner key on the Clerk path", async () => {
+    const OWNER = "owner-key-0123456789-abcdefghijklmnopqrstuvwxyz";
+    const e = { ...env, OWNER_KEY: OWNER } as typeof env;
+    configureSessionDeps({ userEmail: async () => "own2@x.y" });
+    for (const init of [{ body: JSON.stringify({ ownerKey: "wrong-key-wrong-key-wrong-key-wrong-key" }) }, { body: "not json" }, {}]) {
+      const res = await sessionHandler(new Request("https://ai.example/session", {
+        method: "POST", headers: { authorization: `Bearer ${await sign({ ...good(), sub: "user_own2" })}` }, ...init,
+      }), e);
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { token: string; owner?: true };
+      expect("owner" in body).toBe(false);
+      expect((await verifySession(body.token, env.SESSION_SECRET))?.owner).toBeUndefined();
+    }
+  });
+  it("rejects a signed token with a non-true owner value", async () => {
+    const t = await signSession({ vid: "abc", exp: 2_000_000_000, owner: "yes" as never }, "s");
+    expect(await verifySession(t, "s", 1_900_000_000)).toBeNull();
   });
 });
 

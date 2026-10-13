@@ -9,15 +9,35 @@ import RewriteTab from "./RewriteTab";
 import { useOcrStore } from "../../store/ocr";
 import ScopeToggle from "./ScopeToggle";
 import { Icon } from "../icons";
+import { paywallEnabled } from "../../account/capabilities";
+import UpgradeProButton from "../account/UpgradeProButton";
+import { useAccount } from "../../account/store";
+import type { MeResponse } from "../../ai/client";
+
+/** Monthly limits reset on a date; daily ones at a time of day. */
+const resetLabel = (unix: number, monthly: boolean) => {
+  const d = new Date(unix * 1000);
+  return monthly ? d.toLocaleDateString([], { month: "short", day: "numeric" }) : d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+};
 
 type Tab = "summarize" | "ask" | "rewrite" | "extract";
 
+/** Footer before any request this session: the anonymous allowance, or (paywall on) what the plan has left today. */
+function idleFooter(paywall: boolean, me: MeResponse | null): string {
+  if (!paywall) return "20 free requests per day";
+  const l = me?.limits, u = me?.usage;
+  if (!l) return "";
+  if (!u) return `${l.aiDay} requests per day`;
+  return `${Math.max(0, Math.min(l.aiDay - u.aiDay, l.aiMonth - u.aiMonth))} requests left today`;
+}
+
 export default function AiPanel() {
   const [tab, setTab] = useState<Tab>("summarize");
-  const { noticeDismissed, dismissNotice, remaining, unlimited, limitedUntil, resetForNewDocument } = useAiStore();
+  const { noticeDismissed, dismissNotice, remaining, unlimited, limitedUntil, limitKind, resetForNewDocument } = useAiStore();
   const ocrEnabled = useOcrStore((s) => s.enabled);
   const setOcrEnabled = useOcrStore((s) => s.setEnabled);
   const sourcesKey = useDocumentStore((s) => [...s.sources.keys()].join(","));
+  const me = useAccount((s) => s.me);
 
   const configured = useAiClient();
 
@@ -25,6 +45,7 @@ export default function AiPanel() {
 
   if (!configured) return <div className="ai-panel"><p className="muted">AI features are not configured.</p></div>;
 
+  const paywall = paywallEnabled();
   const limited = limitedUntil !== null && limitedUntil > Date.now() / 1000;
   const tabs: Tab[] = ["summarize", "ask", "rewrite", "extract"];
   return (
@@ -47,9 +68,15 @@ export default function AiPanel() {
       {tab === "ask" && <AskTab disabled={limited} />}
       {tab === "rewrite" && <RewriteTab disabled={limited} />}
       {tab === "extract" && <ExtractTab disabled={limited} />}
+      {paywall && limited && limitedUntil && (
+        <div className="limit-panel" data-testid="ai-limit">
+          <p>Limit reached. Resets {resetLabel(limitedUntil, limitKind === "monthly")}.</p>
+          <UpgradeProButton />
+        </div>
+      )}
       <div className="ai-footer" data-testid="ai-footer">
-        {unlimited ? "Owner · unlimited" : remaining ? `${remaining.requests} requests left today` : "20 free requests per day"}
-        {limited && limitedUntil && ` · resets ${new Date(limitedUntil * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`}
+        {unlimited ? "Owner · unlimited" : remaining ? `${remaining.requests} requests left today` : idleFooter(paywall, me)}
+        {limited && limitedUntil && ` · resets ${resetLabel(limitedUntil, paywall && limitKind === "monthly")}`}
       </div>
     </div>
   );

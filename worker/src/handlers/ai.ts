@@ -1,6 +1,7 @@
 import type { Env } from "../env";
 import { json } from "../cors";
 import { verifySession } from "../session";
+import { gateFor, checkUsage, TOKEN_DAY } from "../limits";
 import { validateAiBody } from "../validate";
 import { buildRequest } from "../request";
 import { checkQuota, recordTokens, DAILY_REQUESTS, DAILY_TOKENS, type QuotaState } from "../quota";
@@ -27,10 +28,24 @@ export async function aiHandler(request: Request, env: Env, ctx: ExecutionContex
     (b.task === "rewrite" ? b.selection.length : 0) +
     (b.task === "ask" ? b.question.length : 0);
   const estimate = Math.ceil(chars / 3.5);
+  const now = Date.now() / 1000;
   const owner = session.owner === true;
   const own = owner ? { owner: true as const } : {};
-  const quota = owner ? null : await checkQuota(env.QUOTA, session.vid, Date.now() / 1000, estimate);
-  if (quota && !quota.ok) return json({ error: quota.reason, resetAt: quota.resetAt }, 429, env);
+  const gate = await gateFor(env, session, now);
+  if (gate === "account_required") return json({ error: "account_required" }, 403, env);
+  if (gate === "account_unavailable") return json({ error: "account_unavailable" }, 503, env);
+  let quota: { day: string; resetAt: number; charged: QuotaState; remaining: { requests: number; tokens: number } } | null = null;
+  if (owner) {
+    // Owner sessions skip every limit (legacy quota and plan limits alike).
+  } else if (gate) {
+    const u = await checkUsage(env.QUOTA, session.vid, gate.plan, "ai", 1, gate.month, now, estimate);
+    if (!u.ok) return json({ error: u.error, resetAt: u.resetAt, ...(u.scope ? { scope: u.scope } : {}) }, u.error === "pro_required" ? 403 : 429, env);
+    quota = u;
+  } else {
+    const q = await checkQuota(env.QUOTA, session.vid, now, estimate);
+    if (!q.ok) return json({ error: q.reason, resetAt: q.resetAt }, 429, env);
+    quota = q;
+  }
 
   let result;
   try {
@@ -85,7 +100,9 @@ export async function aiHandler(request: Request, env: Env, ctx: ExecutionContex
       else send("done", {
         usage,
         stop: f.stop,
-        remaining: { requests: Math.max(0, DAILY_REQUESTS - state.requests), tokens: Math.max(0, DAILY_TOKENS - state.tokens) },
+        remaining: gate
+          ? { requests: quota.remaining.requests, tokens: Math.max(0, TOKEN_DAY[gate.plan] - state.tokens) }
+          : { requests: Math.max(0, DAILY_REQUESTS - state.requests), tokens: Math.max(0, DAILY_TOKENS - state.tokens) },
         resetAt: quota.resetAt,
       });
     } finally {

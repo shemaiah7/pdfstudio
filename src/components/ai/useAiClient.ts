@@ -2,6 +2,8 @@ import { useEffect } from "react";
 import { useAiStore } from "../../store/ai";
 import { AiClient } from "../../ai/client";
 import { getTurnstileToken } from "../../ai/turnstile";
+import { getAuthToken, isSignedIn } from "../../account/authState";
+import { getOwnerKey } from "../../ai/owner";
 
 /** Creates the shared AI client once (idempotent) and returns whether AI is configured. */
 export function useAiClient(): boolean {
@@ -15,7 +17,10 @@ export function useAiClient(): boolean {
 
   useEffect(() => {
     if (client || !configured) return;
-    setClient(new AiClient({ baseUrl, getTurnstileToken: () => getTurnstileToken(siteKey) }));
+    const c = new AiClient({ baseUrl, getTurnstileToken: () => getTurnstileToken(siteKey), getAuthToken, isSignedIn, onSession: ({ owner }) => useAiStore.setState({ owner }) });
+    setClient(c);
+    // With an owner key stored, mint a session now so the owner flag is known before the first gated click.
+    if (getOwnerKey()) void c.ensureSession().catch(() => {});
   }, [client, setClient, configured, baseUrl, siteKey]);
 
   return configured;

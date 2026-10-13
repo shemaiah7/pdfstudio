@@ -52,6 +52,24 @@ describe("ai store", () => {
     expect(s().summary.error).toMatch(/Daily limit reached/);
   });
 
+  it("maps the account and plan limit errors", () => {
+    const m = useAiStore.getState().errorMessage;
+    expect(m("account_required")).toBe("Create a free account to use this.");
+    expect(m("pro_required")).toBe("Deep OCR is part of Pro.");
+    const resetAt = 1_900_000_000;
+    const date = new Date(resetAt * 1000).toLocaleDateString([], { month: "short", day: "numeric" });
+    expect(m("monthly_limit", { resetAt })).toBe(`Monthly limit reached. Resets ${date}.`);
+    expect(m("daily_limit", { resetAt })).toMatch(/^Daily limit reached\. Resets at /);
+    expect(m("signin_required")).toBe("Please sign in again.");
+  });
+  it("monthly_limit also sets limitedUntil", async () => {
+    await useDocumentStore.getState().openFiles([{ name: "three.pdf", bytes: loadFixture("three") }]);
+    s().setClient({ runTask: (_b: unknown, h: { onError(c: string, e?: unknown): void }) => { h.onError("monthly_limit", { resetAt: 1_800_000_000 }); return { abort() {}, done: Promise.resolve() }; } } as never);
+    await s().run("summarize");
+    expect(s().limitedUntil).toBe(1_800_000_000);
+    expect(s().summary.error).toMatch(/^Monthly limit reached\. Resets /);
+  });
+
   it("ask appends turns and resets on new document", async () => {
     await useDocumentStore.getState().openFiles([{ name: "three.pdf", bytes: loadFixture("three") }]);
     s().setClient({ runTask: (_b: unknown, h: { onDelta(t: string): void; onDone(d: unknown): void }) => { h.onDelta("A1"); h.onDone({ usage: { input: 0, output: 0 }, stop: "end_turn", remaining: { requests: 1, tokens: 1 }, resetAt: 1 }); return { abort() {}, done: Promise.resolve() }; } } as never);

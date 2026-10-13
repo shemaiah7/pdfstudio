@@ -11,6 +11,21 @@ import RightPanel from "./components/search/RightPanel";
 import { useToolsStore } from "./store/tools";
 import { useAiStore } from "./store/ai";
 import { captureSelection } from "./pdf/selection";
+import { useAuth } from "@clerk/clerk-react";
+import { clerkEnabled } from "./account/clerk";
+import TermsDialog from "./components/account/TermsDialog";
+import UpgradeSheet from "./components/account/UpgradeSheet";
+import PaywallSheet from "./components/account/PaywallSheet";
+import ActivatingNotice from "./components/account/ActivatingNotice";
+import RolloutBanner from "./components/account/RolloutBanner";
+import { requireFeature } from "./components/account/useGate";
+import { useAiClient } from "./components/ai/useAiClient";
+
+/** Needs ClerkProvider, so App only renders it when a Clerk key is configured. */
+function SignedInTerms() {
+  const { isSignedIn } = useAuth();
+  return <TermsDialog signedIn={!!isSignedIn} />;
+}
 
 async function toBytes(files: File[]) {
   return Promise.all(files.map(async (f) => ({ name: f.name, bytes: new Uint8Array(await f.arrayBuffer()) })));
@@ -26,6 +41,9 @@ export default function App() {
   const [scale, setScale] = useState(() => (typeof window.matchMedia === "function" && window.matchMedia("(max-width: 700px)").matches ? 0.6 : 1.2));
   const [pagesOpen, setPagesOpen] = useState(false);
   const [dragging, setDragging] = useState(false);
+  // Create the AI client on every screen (not just with a document open): the account plan and
+  // the post-checkout "Activating Pro" poll both need it on the empty state.
+  useAiClient();
 
   useEffect(() => {
     const isEditing = () => {
@@ -38,7 +56,7 @@ export default function App() {
       if (mod && e.key === "z" && !e.shiftKey) { e.preventDefault(); st.undo(); }
       else if (mod && (e.key === "y" || (e.key === "z" && e.shiftKey))) { e.preventDefault(); st.redo(); }
       else if ((e.key === "Delete" || e.key === "Backspace") && st.selectedAnnotationId && !isEditing()) { e.preventDefault(); st.removeAnnotation(st.selectedAnnotationId); }
-      else if ((e.key === "Delete" || e.key === "Backspace") && st.selection.size && !isEditing()) { e.preventDefault(); st.remove([...st.selection]); }
+      else if ((e.key === "Delete" || e.key === "Backspace") && st.selection.size && !isEditing()) { e.preventDefault(); if (requireFeature("edit")) st.remove([...st.selection]); }
     };
     const onUnload = (e: BeforeUnloadEvent) => {
       if (useDocumentStore.getState().isDirty()) { e.preventDefault(); e.returnValue = ""; }
@@ -117,8 +135,13 @@ export default function App() {
   const empty = !hasSources;
   return (
     <div className="app">
+      <RolloutBanner />
       <ErrorBanner />
       <OcrToast />
+      <ActivatingNotice />
+      {clerkEnabled() ? <SignedInTerms /> : null}
+      <UpgradeSheet />
+      <PaywallSheet />
       {empty ? <DropZone onFiles={handleFiles} empty /> : (
         <>
         <Toolbar scale={scale} setScale={setScale} onFiles={handleFiles} onTogglePages={() => setPagesOpen((o) => !o)} pagesOpen={pagesOpen} />

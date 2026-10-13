@@ -24,7 +24,8 @@ async function navigate(request) {
   const cache = await caches.open(SHELL);
   try {
     const res = await fetch(request);
-    if (res.ok) await cache.put("/", res.clone());
+    // Only the app itself is the offline shell; other pages (e.g. /terms.html) must not replace it.
+    if (res.ok && new URL(request.url).pathname === "/") await cache.put("/", res.clone());
     return res;
   } catch (err) {
     const cached = await cache.match("/");
