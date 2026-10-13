@@ -10,7 +10,7 @@ export interface LiveEvents {
   onError(message: string): void;
   onDisconnected(reason: "user" | "agent" | "error", message?: string): void;
 }
-export interface LiveTransport { createSession(): Promise<{ conversationId: string; token: string; remainingSeconds: number; resetAt: number }> }
+export interface LiveTransport { createSession(): Promise<{ conversationId: string; token: string; remainingSeconds: number | null; resetAt?: number; unlimited?: boolean }> }
 export type SearchTool = (query: string) => Promise<string>;
 export interface LiveConversation { endSession(): Promise<void>; sendContextualUpdate(text: string): void; setMicMuted(muted: boolean): void; getId(): string; changeInputDevice?(o: { inputDeviceId: string }): Promise<void> }
 export type StartSession = (opts: Record<string, unknown>) => Promise<LiveConversation>;
@@ -46,7 +46,7 @@ export class LiveClient {
     this.closeTimeoutMs = deps.closeTimeoutMs ?? 5_000;
   }
 
-  async start(inputDeviceId?: string): Promise<{ remainingSeconds: number }> {
+  async start(inputDeviceId?: string): Promise<{ remainingSeconds: number | null; unlimited?: true }> {
     if (this.started) throw new Error("already_started");
     this.started = true;
     const session = await this.transport.createSession();
@@ -88,7 +88,7 @@ export class LiveClient {
     let timer: ReturnType<typeof setTimeout> | null = null;
     const timeout = new Promise<never>((_, rej) => { timer = setTimeout(() => rej(new Error("connect_timeout")), this.connectTimeoutMs); });
     try { await Promise.race([connectedP, timeout]); } catch (err) { await this.close(); throw err; } finally { if (timer) clearTimeout(timer); }
-    return { remainingSeconds: session.remainingSeconds };
+    return { remainingSeconds: session.remainingSeconds, ...(session.unlimited === true ? { unlimited: true as const } : {}) };
   }
 
   sendContext(text: string): void { this.conv?.sendContextualUpdate(text); }

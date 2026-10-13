@@ -15,6 +15,13 @@ Proxy between the PDF Studio app and the Claude API.
 3. `wrangler.jsonc` `vars` hold the production `ALLOWED_ORIGIN` and `TURNSTILE_HOSTNAMES`; `.dev.vars` overrides them for local dev (the dev list includes `example.com`, the hostname Turnstile's test keys report).
 4. `npm run deploy`.
 
+## Owner key
+Gives the site owner unlimited AI, Deep OCR and voice minutes (Turnstile still applies).
+1. Generate a key: `openssl rand -base64 48` (must be at least 32 characters, otherwise owner mode stays off).
+2. Set it as a secret from `worker/`: `npx wrangler secret put OWNER_KEY`.
+3. Unlock a browser by opening `https://<site>/#owner=<key>` once; the app stores the key and removes it from the address bar.
+4. Clear a browser with `https://<site>/#owner=`.
+
 ## Protocol
-POST /session { turnstileToken } → { token, expiresAt }
+POST /session { turnstileToken, ownerKey? } → { token, expiresAt, owner? }
 POST /ai (Bearer token) { task, document, ... } → SSE: delta / done / error

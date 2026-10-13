@@ -25,6 +25,13 @@ describe("AiPanel", () => {
     useAiStore.setState({ limitedUntil: null, remaining: null });
   });
 
+  it("shows Owner · unlimited in the footer for unlimited sessions", () => {
+    useAiStore.setState({ unlimited: true, remaining: null });
+    render(<AiPanel />);
+    expect(screen.getByTestId("ai-footer").textContent).toBe("Owner · unlimited");
+    useAiStore.setState({ unlimited: false });
+  });
+
   it("shows a not-configured message in production without VITE_AI_URL", () => {
     vi.stubEnv("DEV", false);
     vi.stubEnv("VITE_AI_URL", "");

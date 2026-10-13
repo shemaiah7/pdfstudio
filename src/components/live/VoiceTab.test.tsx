@@ -10,11 +10,26 @@ const start = vi.fn(async () => {}); const end = vi.fn(async () => {}); const se
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 beforeEach(() => {
   start.mockClear(); end.mockClear(); setMuted.mockClear(); acknowledge.mockClear(); setMic.mockClear();
-  useLiveStore.setState({ status: "idle", error: null, captions: [], seconds: 0, remainingSeconds: null, resetAt: null, muted: false, acknowledged: false, searching: false, keywordMode: false, conversationId: null, micId: null, mics: [], start, end, setMuted, acknowledge, setMic });
+  useLiveStore.setState({ status: "idle", error: null, captions: [], seconds: 0, remainingSeconds: null, unlimited: false, resetAt: null, muted: false, acknowledged: false, searching: false, keywordMode: false, conversationId: null, micId: null, mics: [], start, end, setMuted, acknowledge, setMic });
   useDocumentStore.setState({ ...useDocumentStore.getState(), sources: new Map([["s", { id: "s", name: "a.pdf", bytes: new Uint8Array(), pageCount: 1, hash: "h" }]]), pages: [{ id: "p0", sourceId: "s", sourcePageIndex: 0, rotation: 0 }] });
 });
 
 describe("VoiceTab", () => {
+  it("shows Owner · unlimited instead of the minutes meter", () => {
+    useLiveStore.setState({ unlimited: true, remainingSeconds: null });
+    const { container } = render(<VoiceTab />);
+    expect(screen.getByText("Owner · unlimited")).toBeTruthy();
+    expect(container.querySelector(".voice-meter")).toBeNull();
+    expect(screen.queryByText(/min left today/)).toBeNull();
+    useLiveStore.setState({ unlimited: false });
+  });
+  it("shows Owner · unlimited while live", () => {
+    useLiveStore.setState({ status: "live", unlimited: true, remainingSeconds: null, seconds: 5 });
+    const { container } = render(<VoiceTab />);
+    expect(screen.getByTestId("voice-status").textContent).toContain("Owner · unlimited");
+    expect(container.querySelector(".voice-meter")).toBeNull();
+    useLiveStore.setState({ unlimited: false });
+  });
   it("is disabled without a document", () => {
     useDocumentStore.setState({ ...useDocumentStore.getState(), sources: new Map(), pages: [] });
     render(<VoiceTab />);

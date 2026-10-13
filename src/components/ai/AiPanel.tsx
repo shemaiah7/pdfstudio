@@ -14,7 +14,7 @@ type Tab = "summarize" | "ask" | "rewrite" | "extract";
 
 export default function AiPanel() {
   const [tab, setTab] = useState<Tab>("summarize");
-  const { noticeDismissed, dismissNotice, remaining, limitedUntil, resetForNewDocument } = useAiStore();
+  const { noticeDismissed, dismissNotice, remaining, unlimited, limitedUntil, resetForNewDocument } = useAiStore();
   const ocrEnabled = useOcrStore((s) => s.enabled);
   const setOcrEnabled = useOcrStore((s) => s.setEnabled);
   const sourcesKey = useDocumentStore((s) => [...s.sources.keys()].join(","));
@@ -48,7 +48,7 @@ export default function AiPanel() {
       {tab === "rewrite" && <RewriteTab disabled={limited} />}
       {tab === "extract" && <ExtractTab disabled={limited} />}
       <div className="ai-footer" data-testid="ai-footer">
-        {remaining ? `${remaining.requests} requests left today` : "20 free requests per day"}
+        {unlimited ? "Owner · unlimited" : remaining ? `${remaining.requests} requests left today` : "20 free requests per day"}
         {limited && limitedUntil && ` · resets ${new Date(limitedUntil * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`}
       </div>
     </div>
