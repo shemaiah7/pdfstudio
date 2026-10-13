@@ -2,7 +2,7 @@
 
 This is the one-time setup for sign-in (Clerk), billing (Stripe) and the accounts database (Cloudflare D1), plus the rollout order.
 
-> **Do not merge or deploy the `feat/accounts` branch until the D1 `database_id` placeholder in `worker/wrangler.jsonc` (`REPLACE_WITH_ID_FROM_wrangler_d1_create`) has been replaced with the real id from step 3 below.** Deploying the Worker with the placeholder fails. Until you finish this setup, nothing here is live and `PAYWALL_ENABLED` stays `"false"`.
+> **D1 is already set up:** the `pdfstudio` database (`c8f49593-1c4f-438f-92c0-04dcdd1879fd`) was created on 2026-10-13, its id is in `worker/wrangler.jsonc`, and migration `0001_accounts.sql` has been applied remotely. Until you finish the rest of this setup, nothing here is live and `PAYWALL_ENABLED` stays `"false"`.
 
 The terms page at `public/terms.html` is a draft. Fill in `[REFUND POLICY — owner to decide]` and `[CONTACT EMAIL — owner to fill in]` and get it legally reviewed before launch.
 
@@ -37,11 +37,7 @@ Run these in one terminal, one at a time. The first command changes into `worker
 cd worker
 ```
 
-```bash
-npx wrangler d1 create pdfstudio
-```
-
-Paste the printed `database_id` into `worker/wrangler.jsonc` (`d1_databases[0].database_id`).
+The D1 database already exists and is migrated (see the note at the top). Only re-run this after adding a new migration:
 
 ```bash
 npx wrangler d1 migrations apply pdfstudio --remote
