@@ -18,6 +18,7 @@ import UpgradeSheet from "./components/account/UpgradeSheet";
 import PaywallSheet from "./components/account/PaywallSheet";
 import ActivatingNotice from "./components/account/ActivatingNotice";
 import RolloutBanner from "./components/account/RolloutBanner";
+import DefaultAppPrompt from "./components/DefaultAppPrompt";
 import { requireFeature } from "./components/account/useGate";
 import { useAiClient } from "./components/ai/useAiClient";
 
@@ -136,6 +137,7 @@ export default function App() {
   return (
     <div className="app">
       <RolloutBanner />
+      <DefaultAppPrompt />
       <ErrorBanner />
       <OcrToast />
       <ActivatingNotice />
