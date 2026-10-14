@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, afterEach, vi } from "vitest";
-import { desktopOs, promptDone, markPromptDone } from "./defaultApp";
+import { desktopOs, promptDone, markPromptDone, DEFAULT_STEPS } from "./defaultApp";
 
 const MAC_CHROME = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36";
 const MAC_SAFARI = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Safari/605.1.15";
@@ -34,5 +34,15 @@ describe("prompt storage", () => {
     vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => { throw new Error("blocked"); });
     expect(promptDone()).toBe(false);
     expect(() => markPromptDone()).not.toThrow();
+  });
+});
+
+describe("DEFAULT_STEPS", () => {
+  it("covers the browser and iCloud confirmations", () => {
+    expect(DEFAULT_STEPS.mac).toHaveLength(5);
+    expect(DEFAULT_STEPS.mac.some((s) => s.includes("Remember my choice"))).toBe(true);
+    expect(DEFAULT_STEPS.mac.some((s) => s.includes("iCloud Drive"))).toBe(true);
+    expect(DEFAULT_STEPS.windows).toHaveLength(4);
+    expect(DEFAULT_STEPS.windows.some((s) => s.includes("Remember my choice"))).toBe(true);
   });
 });
