@@ -44,7 +44,7 @@ async function handleOwnerLink(link: string): Promise<void> {
     if (response === 0) {
       // A query change forces a full navigation; a fragment-only change would not reload the page.
       const target = new URL(url);
-      target.searchParams.set("owner-link", "1");
+      target.searchParams.set("owner-link", String(Date.now())); // unique each time, so a repeat link also reloads
       target.hash = `owner=${encodeURIComponent(key)}`;
       void win?.loadURL(target.toString()).catch(() => {});
     }
