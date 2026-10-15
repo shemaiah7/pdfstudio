@@ -28,6 +28,6 @@ Never paste any of these values into chat. Enter them only on the pages named be
 
 1. Bump `version` in `desktop/package.json`.
 2. Merge that change to `main`.
-3. Tag the merge commit `desktop-vX.Y.Z` (matching the version) and push the tag.
-4. Wait for the Desktop workflow to finish on both macOS and Windows.
+3. Tag the merge commit `desktop-vX.Y.Z` and push the tag. The tag must equal `desktop-v` plus the `desktop/package.json` version exactly, or the workflow stops before building.
+4. The Desktop workflow creates a draft GitHub Release, builds on macOS and Windows and uploads into the draft. After both builds succeed it publishes the release automatically (if either build fails, the draft stays unpublished; delete it and the tag before retrying).
 5. Open the new GitHub Release and check it has `SentinelPDF-mac.dmg`, `SentinelPDF-mac.zip`, `SentinelPDF-windows.exe`, `latest-mac.yml` and `latest.yml`.

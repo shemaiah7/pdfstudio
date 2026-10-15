@@ -19,7 +19,7 @@ import PaywallSheet from "./components/account/PaywallSheet";
 import ActivatingNotice from "./components/account/ActivatingNotice";
 import RolloutBanner from "./components/account/RolloutBanner";
 import DefaultAppPrompt from "./components/DefaultAppPrompt";
-import { subscribeDesktopFiles } from "./desktop/bridge";
+import { subscribeDesktopFiles, batchFiles, openDesktopBatch } from "./desktop/bridge";
 import { requireFeature } from "./components/account/useGate";
 import { useAiClient } from "./components/ai/useAiClient";
 
@@ -118,7 +118,13 @@ export default function App() {
   }, [handleFiles]);
 
   // Desktop app: PDFs opened from Finder/Explorer arrive through the Electron preload bridge.
-  useEffect(() => subscribeDesktopFiles((files) => { void handleFiles(files, "open"); }), [handleFiles]);
+  useEffect(() => {
+    const batch = batchFiles<File>((files) => {
+      openDesktopBatch(files, useDocumentStore.getState().isDirty(), (m) => window.confirm(m), (f) => { void handleFiles(f, "open"); });
+    }, 300);
+    const off = subscribeDesktopFiles((files) => files.forEach(batch.add));
+    return () => { off(); batch.cancel(); };
+  }, [handleFiles]);
 
   useEffect(() => {
     const on = (e: globalThis.DragEvent) => { e.preventDefault(); setDragging(true); };

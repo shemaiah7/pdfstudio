@@ -9,8 +9,10 @@ export function navigationTarget(url: string, origins: string[]): NavTarget {
   return origins.includes(u.origin) ? "app" : "external";
 }
 
-export function allowPermission(permission: string, requestingUrl: string, origins: string[]): boolean {
-  if (permission !== "media") return false;
+export function allowPermission(permission: string, requestingUrl: string, origins: string[], mediaTypes?: string[]): boolean {
+  if (permission === "media") {
+    if (mediaTypes && !mediaTypes.every((t) => t === "audio")) return false; // microphone only, never the camera
+  } else if (permission !== "clipboard-sanitized-write") return false;
   try { return origins.includes(new URL(requestingUrl).origin); } catch { return false; }
 }
 

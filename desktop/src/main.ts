@@ -16,18 +16,21 @@ async function openPath(path: string): Promise<void> {
       await dialog.showMessageBox({ type: "info", message: "SentinelPDF can only open PDF files up to 200 MB." });
       return;
     }
-    queue.push({ name: basename(path), bytes: new Uint8Array(await readFile(path)) });
-    if (win) { if (win.isMinimized()) win.restore(); win.focus(); }
+    const file = { name: basename(path), bytes: new Uint8Array(await readFile(path)) };
+    await app.whenReady(); // macOS can deliver open-file before ready
+    queue.push(file);
+    if (!win) createWindow();
+    else { if (win.isMinimized()) win.restore(); win.focus(); }
   } catch { /* unreadable file: ignore */ }
 }
 
-if (!app.requestSingleInstanceLock()) app.quit();
-app.on("second-instance", (_e, argv) => { for (const p of pdfPathsFromArgv(argv)) void openPath(p); win?.focus(); });
-app.on("open-file", (e, path) => { e.preventDefault(); void openPath(path); }); // macOS; may fire before ready
+const url = !app.isPackaged && process.env.SENTINEL_APP_URL ? process.env.SENTINEL_APP_URL : APP_URL;
 
 function openExternal(url: string): void { if (navigationTarget(url, APP_ORIGINS) === "external") void shell.openExternal(url); }
 
 function createWindow(): void {
+  if (win) return;
+  queue.markNotReady();
   win = new BrowserWindow({
     width: 1280, height: 860, minWidth: 720, minHeight: 520, title: "SentinelPDF", show: false,
     webPreferences: {
@@ -37,7 +40,10 @@ function createWindow(): void {
   });
   win.on("page-title-updated", (e) => e.preventDefault());
   win.once("ready-to-show", () => win?.show());
-  win.webContents.setWindowOpenHandler(({ url }) => { openExternal(url); return { action: "deny" }; });
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    if (/^https?:/i.test(url)) void shell.openExternal(url); // any web link, including app origins, opens in the browser
+    return { action: "deny" };
+  });
   win.webContents.on("will-navigate", (e, url) => {
     if (url.startsWith("file:") && url.endsWith("offline.html")) return;
     if (navigationTarget(url, APP_ORIGINS) !== "app") { e.preventDefault(); openExternal(url); }
@@ -54,29 +60,38 @@ function createWindow(): void {
     const cancel = dialog.showMessageBoxSync(win!, { type: "question", buttons: ["Discard", "Cancel"], defaultId: 1, cancelId: 1, message: "Discard unsaved changes?" }) === 1;
     if (!cancel) e.preventDefault(); // preventDefault here means: proceed with the unload
   });
-  win.on("closed", () => { win = null; });
-  void win.loadURL(APP_URL).catch(() => {});
+  win.on("closed", () => { win = null; queue.markNotReady(); });
+  void win.loadURL(url).catch(() => {});
 }
 
-ipcMain.on("sentinel:ready", (e) => { if (win && e.sender === win.webContents) queue.markReady(); });
-ipcMain.on("sentinel:retry", () => { void win?.loadURL(APP_URL).catch(() => {}); });
+if (!app.requestSingleInstanceLock()) {
+  app.exit(0);
+} else {
+  app.on("second-instance", (_e, argv) => { for (const p of pdfPathsFromArgv(argv)) void openPath(p); win?.focus(); });
+  app.on("open-file", (e, path) => { e.preventDefault(); void openPath(path); }); // macOS; may fire before ready
 
-app.whenReady().then(() => {
-  session.defaultSession.setPermissionRequestHandler((wc, permission, cb, details) =>
-    cb(allowPermission(permission, details.requestingUrl || wc.getURL(), APP_ORIGINS)));
-  session.defaultSession.setPermissionCheckHandler((_wc, permission, origin) => allowPermission(permission, origin, APP_ORIGINS));
-  createWindow();
-  for (const p of pdfPathsFromArgv(process.argv)) void openPath(p); // Windows first launch
-  if (app.isPackaged) {
-    autoUpdater.on("error", () => {});
-    autoUpdater.on("update-downloaded", async () => {
-      const r = await dialog.showMessageBox({ type: "info", buttons: ["Restart to update", "Later"], defaultId: 0, message: "A SentinelPDF update is ready." });
-      if (r.response === 0) autoUpdater.quitAndInstall();
-    });
-    void autoUpdater.checkForUpdates().catch(() => {});
-    setInterval(() => { void autoUpdater.checkForUpdates().catch(() => {}); }, 6 * 60 * 60 * 1000);
-  }
-});
+  ipcMain.on("sentinel:ready", (e) => {
+    if (win && e.sender === win.webContents) { try { queue.markReady(); } catch { /* undelivered files stay queued */ } }
+  });
+  ipcMain.on("sentinel:retry", (e) => { if (win && e.sender === win.webContents) void win.loadURL(url).catch(() => {}); });
 
-app.on("window-all-closed", () => { if (process.platform !== "darwin") app.quit(); });
-app.on("activate", () => { if (!win) createWindow(); });
+  app.whenReady().then(() => {
+    session.defaultSession.setPermissionRequestHandler((wc, permission, cb, details) =>
+      cb(allowPermission(permission, details.requestingUrl || wc.getURL(), APP_ORIGINS, "mediaTypes" in details ? details.mediaTypes : undefined)));
+    session.defaultSession.setPermissionCheckHandler((_wc, permission, origin) => allowPermission(permission, origin, APP_ORIGINS));
+    createWindow();
+    for (const p of pdfPathsFromArgv(process.argv)) void openPath(p); // Windows first launch
+    if (app.isPackaged) {
+      autoUpdater.on("error", () => {});
+      autoUpdater.on("update-downloaded", async () => {
+        const r = await dialog.showMessageBox({ type: "info", buttons: ["Restart to update", "Later"], defaultId: 0, message: "A SentinelPDF update is ready." });
+        if (r.response === 0) autoUpdater.quitAndInstall();
+      });
+      void autoUpdater.checkForUpdates().catch(() => {});
+      setInterval(() => { void autoUpdater.checkForUpdates().catch(() => {}); }, 6 * 60 * 60 * 1000);
+    }
+  });
+
+  app.on("window-all-closed", () => { if (process.platform !== "darwin") app.quit(); });
+  app.on("activate", () => { if (!win) createWindow(); });
+}

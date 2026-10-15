@@ -9,7 +9,14 @@ export class OpenQueue {
   markReady(): void {
     this.ready = true;
     const pending = this.held; this.held = [];
-    for (const f of pending) this.deliver(f);
+    for (let i = 0; i < pending.length; i++) {
+      try { this.deliver(pending[i]); } catch (err) {
+        // The page can't take files right now: keep this one and the rest, and wait for the next ready signal.
+        this.held = pending.slice(i).concat(this.held);
+        this.ready = false;
+        throw err;
+      }
+    }
   }
   markNotReady(): void { this.ready = false; }
 }

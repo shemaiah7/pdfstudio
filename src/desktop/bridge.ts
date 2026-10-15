@@ -12,3 +12,25 @@ export function subscribeDesktopFiles(onFiles: (files: File[]) => void): () => v
   if (!bridge) return () => {};
   return bridge.onOpenFile(({ name, bytes }) => onFiles([new File([bytes as BlobPart], name, { type: "application/pdf" })]));
 }
+
+/** Groups items that arrive within `ms` of each other (a multi-file open) into one batch. */
+export function batchFiles<T>(onBatch: (items: T[]) => void, ms = 300): { add(item: T): void; cancel(): void } {
+  let items: T[] = [];
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  return {
+    add(item) {
+      items.push(item);
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => { const b = items; items = []; timer = null; onBatch(b); }, ms);
+    },
+    cancel() { if (timer) clearTimeout(timer); timer = null; items = []; },
+  };
+}
+
+/** Opening replaces the current document, so confirm first when it has unsaved edits. Returns whether it opened. */
+export function openDesktopBatch(files: File[], isDirty: boolean, confirmFn: (msg: string) => boolean, open: (files: File[]) => void): boolean {
+  if (files.length === 0) return false;
+  if (isDirty && !confirmFn("Discard unsaved changes and open " + (files.length === 1 ? files[0].name : files.length + " files") + "?")) return false;
+  open(files);
+  return true;
+}

@@ -26,6 +26,18 @@ describe("allowPermission", () => {
     expect(allowPermission("media", "https://sentinelpdf.com/", APP_ORIGINS)).toBe(true);
     expect(allowPermission("media", "https://evil.io/", APP_ORIGINS)).toBe(false);
   });
+  it("allows audio-only media and denies video", () => {
+    const u = "https://sentinelpdf.com/";
+    expect(allowPermission("media", u, APP_ORIGINS, ["audio"])).toBe(true);
+    expect(allowPermission("media", u, APP_ORIGINS, [])).toBe(true);
+    expect(allowPermission("media", u, APP_ORIGINS, ["video"])).toBe(false);
+    expect(allowPermission("media", u, APP_ORIGINS, ["audio", "video"])).toBe(false);
+  });
+  it("allows clipboard writes from the app only", () => {
+    expect(allowPermission("clipboard-sanitized-write", "https://sentinelpdf.com/", APP_ORIGINS)).toBe(true);
+    expect(allowPermission("clipboard-sanitized-write", "https://evil.io/", APP_ORIGINS)).toBe(false);
+    expect(allowPermission("clipboard-read", "https://sentinelpdf.com/", APP_ORIGINS)).toBe(false);
+  });
   it("denies everything else", () => {
     for (const p of ["geolocation", "notifications", "camera", "midi", "openExternal"]) {
       expect(allowPermission(p, "https://sentinelpdf.com/", APP_ORIGINS)).toBe(false);

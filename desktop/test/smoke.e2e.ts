@@ -2,7 +2,10 @@ import { test, expect, _electron as electron } from "@playwright/test";
 import { resolve } from "node:path";
 
 test("the window loads the app with the bridge", async () => {
-  const app = await electron.launch({ args: [resolve(__dirname, "..")] });
+  const app = await electron.launch({
+    args: [resolve(__dirname, "..")],
+    env: { ...process.env, SENTINEL_APP_URL: "https://pdfstudio.shemaiah7.workers.dev" } as Record<string, string>,
+  });
   try {
     const win = await app.firstWindow();
     await win.waitForLoadState("domcontentloaded");

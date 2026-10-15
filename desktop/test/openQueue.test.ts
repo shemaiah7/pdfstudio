@@ -27,4 +27,15 @@ describe("OpenQueue", () => {
     q.markReady(); q.markReady();
     expect(deliver.mock.calls.map((c) => c[0].name)).toEqual(["a.pdf", "b.pdf"]);
   });
+  it("keeps the undelivered remainder if delivery throws during the flush", () => {
+    let fail = true;
+    const got: string[] = [];
+    const q = new OpenQueue((x) => { if (x.name === "b.pdf" && fail) throw new Error("boom"); got.push(x.name); });
+    q.push(f("a.pdf")); q.push(f("b.pdf")); q.push(f("c.pdf"));
+    expect(() => q.markReady()).toThrow();
+    expect(got).toEqual(["a.pdf"]);
+    fail = false;
+    q.markReady();
+    expect(got).toEqual(["a.pdf", "b.pdf", "c.pdf"]);
+  });
 });

@@ -33,4 +33,10 @@ publish:
   provider: github
   owner: shemaiah7
   repo: pdfstudio
-  releaseType: release
+  releaseType: draft
+  tagNamePrefix: desktop-v
+electronFuses:
+  runAsNode: false
+  enableNodeOptionsEnvironmentVariable: false
+  enableNodeCliInspectArguments: false
+  onlyLoadAppFromAsar: true
