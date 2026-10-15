@@ -1,0 +1,27 @@
+{
+  "name": "sentinelpdf-desktop",
+  "productName": "SentinelPDF",
+  "version": "1.0.0",
+  "private": true,
+  "description": "SentinelPDF desktop app",
+  "author": "SentinelPDF",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "start": "npm run build && electron .",
+    "dist": "npm run build && electron-builder",
+    "dist:dir": "npm run build && electron-builder --dir --config.mac.notarize=false"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.64.1",
+    "@types/node": "^26.6.5",
+    "electron": "^44.7.2",
+    "electron-builder": "^26.15.3",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.4"
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.9"
+  }
+}
