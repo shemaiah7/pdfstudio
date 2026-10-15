@@ -32,6 +32,7 @@ describe("DefaultAppButton", () => {
     fireEvent.click(screen.getByTestId("default-app"));
     expect(screen.getByRole("dialog")).toBeTruthy();
     for (const s of DEFAULT_STEPS.mac) expect(screen.getByText(s)).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Get the desktop app" }).getAttribute("href")).toBe("/download");
     expect(localStorage.getItem("pdfstudio.defaultPrompt")).toBe("1");
     fireEvent.click(screen.getByTestId("default-app-done"));
     expect(screen.queryByRole("dialog")).toBeNull();

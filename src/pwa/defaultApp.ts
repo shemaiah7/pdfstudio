@@ -1,5 +1,7 @@
 import { isIos, isSafariMac, readPlatform, useInstallStore, type PlatformInfo } from "./install";
 
+export const DOWNLOAD_URL = "/download";
+
 export type DesktopOs = "mac" | "windows";
 
 export const desktopOs = (info: PlatformInfo): DesktopOs | null => {

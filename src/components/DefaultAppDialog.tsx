@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { DEFAULT_STEPS, type DesktopOs } from "../pwa/defaultApp";
+import { DEFAULT_STEPS, DOWNLOAD_URL, type DesktopOs } from "../pwa/defaultApp";
 import { Icon } from "./icons";
 
 interface Props { os: DesktopOs; onClose(): void }
@@ -21,6 +21,7 @@ export default function DefaultAppDialog({ os, onClose }: Props) {
         <div className="sigBody">
           <ol className="defaultSteps">{DEFAULT_STEPS[os].map((s) => <li key={s}>{s}</li>)}</ol>
           <p className="installHelp">Your computer asks you to confirm this once — apps can't change it on their own.</p>
+          <p className="installHelp"><a href={DOWNLOAD_URL}>Get the desktop app</a> to open PDFs without a browser.</p>
         </div>
         <div className="sigActions"><button type="button" className="sigPrimary" data-testid="default-app-done" onClick={onClose}>Done</button></div>
       </div>

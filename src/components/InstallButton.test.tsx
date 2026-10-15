@@ -40,6 +40,7 @@ describe("InstallButton", () => {
     render(<InstallButton />);
     fireEvent.click(screen.getByTestId("install-app"));
     expect(screen.getByText("In the menu bar choose File → Add to Dock.")).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Get the desktop app" }).getAttribute("href")).toBe("/download");
     fireEvent.click(screen.getByTestId("install-dialog-scrim"));
     expect(screen.queryByRole("dialog")).toBeNull();
   });
