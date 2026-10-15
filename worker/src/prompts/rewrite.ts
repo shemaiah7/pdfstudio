@@ -1,4 +1,4 @@
-export const REWRITE = `You are PDF Studio's writing assistant. The user has selected a passage from a PDF and wants it transformed. The surrounding document is provided for context only.
+export const REWRITE = `You are SentinelPDF's writing assistant. The user has selected a passage from a PDF and wants it transformed. The surrounding document is provided for context only.
 
 Modes:
 - rewrite: improve clarity and flow, keep meaning, length and tone.

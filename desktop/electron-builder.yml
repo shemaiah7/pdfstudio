@@ -1,0 +1,43 @@
+appId: com.sentinelpdf.desktop
+productName: SentinelPDF
+directories: { output: release, buildResources: build }
+files: [dist/**, offline.html, package.json]
+fileAssociations:
+  - ext: pdf
+    name: PDF Document
+    description: PDF Document
+    mimeType: application/pdf
+    role: Editor
+mac:
+  target:
+    - { target: dmg, arch: universal }
+    - { target: zip, arch: universal }
+  category: public.app-category.productivity
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+  notarize: true
+  minimumSystemVersion: "12.0"
+  artifactName: SentinelPDF-mac.${ext}
+  extendInfo:
+    NSMicrophoneUsageDescription: SentinelPDF uses the microphone for Voice, so you can ask about your document out loud.
+win:
+  target: [{ target: nsis, arch: x64 }]
+  artifactName: SentinelPDF-windows.${ext}
+nsis:
+  oneClick: true
+  perMachine: false
+  deleteAppDataOnUninstall: false
+publish:
+  provider: github
+  owner: shemaiah7
+  repo: pdfstudio
+  releaseType: draft
+  tagNamePrefix: desktop-v
+electronFuses:
+  runAsNode: false
+  enableNodeOptionsEnvironmentVariable: false
+  enableNodeCliInspectArguments: false
+  onlyLoadAppFromAsar: true
+  resetAdHocDarwinSignature: true

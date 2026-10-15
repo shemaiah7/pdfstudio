@@ -34,7 +34,7 @@ export default function TermsDialog({ signedIn }: { signedIn: boolean }) {
   return (
     <Sheet title="Before you start">
       <div className="sigBody">
-        <p className="acct-lede small">PDF Studio edits PDFs in your browser. AI and Voice send the text you ask about to Anthropic and ElevenLabs. <a href={TERMS_URL} target="_blank" rel="noreferrer">Read the full terms</a></p>
+        <p className="acct-lede small">SentinelPDF edits PDFs in your browser. AI and Voice send the text you ask about to Anthropic and ElevenLabs. <a href={TERMS_URL} target="_blank" rel="noreferrer">Read the full terms</a></p>
         <label className="acct-check">
           <input type="checkbox" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} />
           {TERMS_CHECKBOX}

@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Download SentinelPDF</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+<style>
+  :root {
+    --desk: #eeedea; --surface: #ffffff; --line: #e4e2dd;
+    --ink: #1b1b1a; --ink-2: #55534e; --ink-3: #77756f;
+    --accent: #3346d3; --on-accent: #ffffff;
+    --font-sans: "Geist Variable", "Geist", "Helvetica Neue", Arial, sans-serif;
+    --font-mono: "Geist Mono Variable", "Geist Mono", ui-monospace, Menlo, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --desk: #161615; --surface: #232321; --line: #3a3936;
+      --ink: #eeedea; --ink-2: #b3b0a8; --ink-3: #8e8b84;
+      --accent: #8fa0ff; --on-accent: #161615;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--desk); color: var(--ink); font: 400 15px/1.6 var(--font-sans); overflow-wrap: break-word; }
+  main { max-width: 680px; margin: 0 auto; padding: 48px 20px 64px; }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 32px; }
+  h1 { font: 700 32px/1.15 var(--font-sans); letter-spacing: -0.02em; margin: 0 0 8px; }
+  p { margin: 0 0 12px; color: var(--ink-2); }
+  strong { color: var(--ink); font-weight: 600; }
+  a { color: var(--accent); }
+  .back { display: inline-block; margin-bottom: 16px; font-size: 13px; }
+  .buttons { display: flex; flex-direction: column; gap: 12px; margin: 24px 0; }
+  .btn { display: block; text-align: center; background: var(--accent); color: var(--on-accent); text-decoration: none; font-weight: 600; padding: 14px 20px; border-radius: 12px; }
+  .btn:first-child { font-size: 17px; }
+  .btn:not(:first-child) { background: transparent; color: var(--accent); border: 1px solid var(--line); }
+  .note { font-size: 14px; }
+  @media (max-width: 520px) { .card { padding: 20px; } main { padding-top: 24px; } h1 { font-size: 26px; } }
+</style>
+</head>
+<body>
+<main>
+  <a class="back" href="/">&larr; Back to SentinelPDF</a>
+  <div class="card">
+    <h1>Get SentinelPDF for your computer</h1>
+    <p>Open PDFs from Finder or File Explorer straight into SentinelPDF, like any desktop PDF app.</p>
+
+    <div class="buttons">
+      <a class="btn" id="dl-mac" href="https://github.com/shemaiah7/pdfstudio/releases/latest/download/SentinelPDF-mac.dmg">Download for Mac</a>
+      <a class="btn" id="dl-win" href="https://github.com/shemaiah7/pdfstudio/releases/latest/download/SentinelPDF-windows.exe">Download for Windows</a>
+    </div>
+    <script>
+      if (navigator.userAgent.indexOf("Windows") !== -1) {
+        var mac = document.getElementById("dl-mac");
+        mac.parentNode.insertBefore(document.getElementById("dl-win"), mac);
+      }
+    </script>
+
+    <p class="note"><strong>Mac:</strong> macOS 12 or later, Apple silicon or Intel. Signed and notarized by Apple.</p>
+    <p class="note"><strong>Windows:</strong> Windows 10 or later (64-bit). Windows may show &ldquo;Windows protected your PC&rdquo; the first time &mdash; click <strong>More info</strong>, then <strong>Run anyway</strong>.</p>
+    <p class="note">After installing, double-click any PDF and choose SentinelPDF, or follow the steps in the app to make it your default.</p>
+  </div>
+</main>
+</body>
+</html>

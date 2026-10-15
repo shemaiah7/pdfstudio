@@ -112,3 +112,7 @@ Use Clerk development and Stripe test keys, on a preview deploy or with `npm run
 - [ ] **(paywall on)** Run `stripe trigger invoice.payment_failed`; the account stays Pro (3-day grace).
 
 Record the results in the pull request.
+
+## Desktop app
+
+Before turning on `PAYWALL_ENABLED`, design desktop sign-in: Google blocks OAuth inside embedded browsers and magic-link emails open in the system browser. Options: Clerk email-code sign-in inside the app, or a browser hand-off with a deep link.

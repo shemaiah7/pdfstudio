@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>SentinelPDF</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root { color-scheme: light dark; }
+  html, body { height: 100%; margin: 0; }
+  body { display: flex; align-items: center; justify-content: center; text-align: center;
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif; background: #f6f6f4; color: #1c1c1a; }
+  h1 { font-size: 1.5rem; margin: 0 0 .5rem; }
+  p { margin: 0 0 1.5rem; opacity: .75; }
+  button { font: inherit; padding: .5rem 1.25rem; border-radius: 8px; border: 1px solid currentColor;
+    background: transparent; color: inherit; cursor: pointer; }
+  @media (prefers-color-scheme: dark) { body { background: #1c1c1a; color: #f2f2ee; } }
+</style>
+</head>
+<body>
+<main>
+  <h1>You're offline.</h1>
+  <p>Reconnect to use SentinelPDF.</p>
+  <button id="retry">Retry</button>
+</main>
+<script>document.getElementById("retry").onclick = () => window.sentinelDesktop && window.sentinelDesktop.retry();</script>
+</body>
+</html>

@@ -8,14 +8,14 @@
   "kv_namespaces": [{ "binding": "QUOTA", "id": "53302d2274de4c06b6acd115ee4aa1e7" }],
   "d1_databases": [{ "binding": "DB", "database_name": "pdfstudio", "database_id": "c8f49593-1c4f-438f-92c0-04dcdd1879fd", "migrations_dir": "migrations" }],
   "vars": {
-    "ALLOWED_ORIGIN": "https://pdfstudio.shemaiah7.workers.dev",
-    "TURNSTILE_HOSTNAMES": "pdfstudio.shemaiah7.workers.dev",
+    "ALLOWED_ORIGIN": "https://sentinelpdf.com,https://www.sentinelpdf.com,https://pdfstudio.shemaiah7.workers.dev",
+    "TURNSTILE_HOSTNAMES": "sentinelpdf.com,www.sentinelpdf.com,pdfstudio.shemaiah7.workers.dev",
     "ELEVENLABS_AGENT_ID": "agent_3101m4q6478ceb686yqfw50yfhdv",
     "VOICE_DAILY_SECONDS": "1800",
     "PAYWALL_ENABLED": "false",
     "CLERK_ISSUER": "",
     "STRIPE_PRICE_MONTHLY": "",
     "STRIPE_PRICE_YEARLY": "",
-    "APP_URL": "https://pdfstudio.shemaiah7.workers.dev"
+    "APP_URL": "https://sentinelpdf.com"
   }
 }

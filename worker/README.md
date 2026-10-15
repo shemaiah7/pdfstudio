@@ -1,6 +1,6 @@
 # pdfstudio-ai Worker
 
-Proxy between the PDF Studio app and the Claude API.
+Proxy between the SentinelPDF app and the Claude API.
 
 ## Local dev
 1. `cp .dev.vars.example .dev.vars` and set a real `ANTHROPIC_API_KEY`, a random `SESSION_SECRET`, and the Turnstile test secret.

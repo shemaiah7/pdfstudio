@@ -12,6 +12,16 @@ const order = () => s().pages.map((p) => `${s().sources.get(p.sourceId)!.name}:$
 beforeEach(() => useDocumentStore.getState().reset());
 
 describe("open and add", () => {
+  it("a fresh store is not dirty", () => {
+    expect(s().isDirty()).toBe(false);
+  });
+
+  it("pages added without an open are dirty", async () => {
+    await s().addFiles([three()]);
+    expect(s().pages.length).toBeGreaterThan(0);
+    expect(s().isDirty()).toBe(true);
+  });
+
   it("opens a file and builds entries", async () => {
     await s().openFiles([three()]);
     expect(order()).toEqual(["three.pdf:0", "three.pdf:1", "three.pdf:2"]);

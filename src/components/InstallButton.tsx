@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { useInstallStore } from "../pwa/install";
+import { DOWNLOAD_URL } from "../pwa/defaultApp";
+import { isDesktop } from "../desktop/bridge";
 import { Icon } from "./icons";
 
 const HELP = {
@@ -22,7 +24,7 @@ export default function InstallButton({ className, label = true, iconOnly = fals
     return () => document.removeEventListener("keydown", onKey);
   }, [open]);
 
-  if (installed || hint === "none") return null;
+  if (isDesktop() || installed || hint === "none") return null;
   const onClick = () => { if (hint === "prompt") void install(); else setOpen(true); };
   return (
     <>
@@ -31,12 +33,15 @@ export default function InstallButton({ className, label = true, iconOnly = fals
       </button>
       {open && hint !== "prompt" ? (
         <div className="sigBackdrop" data-testid="install-dialog-scrim" onClick={(e) => { if (e.target === e.currentTarget) setOpen(false); }}>
-          <div className="sigDialog installDialog" role="dialog" aria-label="Install PDF Studio">
+          <div className="sigDialog installDialog" role="dialog" aria-label="Install SentinelPDF">
             <div className="sigHeader">
-              <h2>Install PDF Studio</h2>
+              <h2>Install SentinelPDF</h2>
               <button type="button" className="sigClose" aria-label="Close" onClick={() => setOpen(false)}><Icon name="close" size={18} /></button>
             </div>
-            <div className="sigBody"><p className="installHelp">{HELP[hint]}</p></div>
+            <div className="sigBody">
+              <p className="installHelp">{HELP[hint]}</p>
+              {hint === "safari-mac" ? <p className="installHelp"><a href={DOWNLOAD_URL}>Get the desktop app</a> — Safari web apps can't open PDFs from Finder.</p> : null}
+            </div>
             <div className="sigActions"><button type="button" className="sigPrimary" onClick={() => setOpen(false)}>Got it</button></div>
           </div>
         </div>

@@ -1,0 +1,108 @@
+name: Desktop
+
+on:
+  push:
+    tags: ["desktop-v*"]
+  pull_request:
+    paths: ["desktop/**", ".github/workflows/desktop.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  # Tag pushes only: the tag must match desktop/package.json, then a DRAFT release is created for the builds to upload into.
+  prepare:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/desktop-v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check the tag matches the desktop version
+        run: |
+          VERSION=$(node -p "require('./desktop/package.json').version")
+          if [ "$GITHUB_REF_NAME" != "desktop-v$VERSION" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match desktop/package.json version $VERSION (expected desktop-v$VERSION)" >&2
+            exit 1
+          fi
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+      - name: Create the draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" --draft --title "SentinelPDF $VERSION" --notes "Desktop app $VERSION" --target "$GITHUB_SHA"
+
+  # PRs and manual runs: build and check, never publish.
+  build:
+    if: github.event_name != 'push'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm, cache-dependency-path: desktop/package-lock.json }
+      - run: npm ci
+      - run: npm test
+      - name: Package (PR, unsigned)
+        if: github.event_name == 'pull_request'
+        run: npm run dist:dir -- --publish never
+        env: { CSC_IDENTITY_AUTO_DISCOVERY: "false" }
+      - name: Smoke test (PR)
+        if: github.event_name == 'pull_request'
+        run: npx playwright test
+      - name: Package (manual, unsigned, not published)
+        if: github.event_name == 'workflow_dispatch'
+        run: npm run dist -- --publish never --config.mac.notarize=false
+        env: { CSC_IDENTITY_AUTO_DISCOVERY: "false" }
+
+  # Tag pushes: build, sign (macOS only) and upload into the draft release made by prepare.
+  release-build:
+    needs: prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: write
+    defaults:
+      run:
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm, cache-dependency-path: desktop/package-lock.json }
+      - run: npm ci
+      - run: npm test
+      - name: Package and upload to the draft
+        run: npm run dist -- --publish always
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CSC_LINK: ${{ matrix.os == 'macos-latest' && secrets.MAC_CERT_P12_BASE64 || '' }}
+          CSC_KEY_PASSWORD: ${{ matrix.os == 'macos-latest' && secrets.MAC_CERT_PASSWORD || '' }}
+          APPLE_ID: ${{ matrix.os == 'macos-latest' && secrets.APPLE_ID || '' }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ matrix.os == 'macos-latest' && secrets.APPLE_APP_SPECIFIC_PASSWORD || '' }}
+          APPLE_TEAM_ID: ${{ matrix.os == 'macos-latest' && secrets.APPLE_TEAM_ID || '' }}
+          CSC_IDENTITY_AUTO_DISCOVERY: ${{ matrix.os == 'macos-latest' && 'true' || 'false' }}
+
+  # Both builds succeeded: publish the draft.
+  publish:
+    needs: release-build
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/desktop-v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: gh release edit "$GITHUB_REF_NAME" --draft=false --latest

@@ -1,4 +1,4 @@
-// PDF Studio service worker: offline app shell. Hand-written; bump the version suffixes to invalidate caches.
+// SentinelPDF service worker: offline app shell. Hand-written; bump the version suffixes to invalidate caches.
 const SHELL = "pdfstudio-shell-v1";
 const ASSETS = "pdfstudio-assets-v1";
 const MAX_ASSETS = 150;
