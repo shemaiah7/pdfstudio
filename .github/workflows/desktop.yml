@@ -32,18 +32,16 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: gh release create "$GITHUB_REF_NAME" --draft --title "SentinelPDF $VERSION" --notes "Desktop app $VERSION" --target "$GITHUB_SHA"
 
+  # PRs and manual runs: build and check, never publish.
   build:
-    needs: prepare
-    # prepare is skipped on PRs and manual runs; those still build (unpublished). A failed prepare stops tag builds.
-    if: always() && (needs.prepare.result == 'success' || needs.prepare.result == 'skipped')
+    if: github.event_name != 'push'
     strategy:
       fail-fast: false
       matrix:
         os: [macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
-    # Write access only where electron-builder uploads to the draft release (tag pushes).
     permissions:
-      contents: ${{ github.event_name == 'push' && 'write' || 'read' }}
+      contents: read
     defaults:
       run:
         working-directory: desktop
@@ -64,8 +62,27 @@ jobs:
         if: github.event_name == 'workflow_dispatch'
         run: npm run dist -- --publish never --config.mac.notarize=false
         env: { CSC_IDENTITY_AUTO_DISCOVERY: "false" }
-      - name: Release (tag, uploads to the draft)
-        if: github.event_name == 'push'
+
+  # Tag pushes: build, sign (macOS only) and upload into the draft release made by prepare.
+  release-build:
+    needs: prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: write
+    defaults:
+      run:
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm, cache-dependency-path: desktop/package-lock.json }
+      - run: npm ci
+      - run: npm test
+      - name: Package and upload to the draft
         run: npm run dist -- --publish always
         env:
           GH_TOKEN: ${{ github.token }}
@@ -78,7 +95,7 @@ jobs:
 
   # Both builds succeeded: publish the draft.
   publish:
-    needs: build
+    needs: release-build
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/desktop-v')
     runs-on: ubuntu-latest
     permissions:
