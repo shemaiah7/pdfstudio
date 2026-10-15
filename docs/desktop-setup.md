@@ -31,3 +31,7 @@ Never paste any of these values into chat. Enter them only on the pages named be
 3. Tag the merge commit `desktop-vX.Y.Z` and push the tag. The tag must equal `desktop-v` plus the `desktop/package.json` version exactly, or the workflow stops before building.
 4. The Desktop workflow creates a draft GitHub Release, builds on macOS and Windows and uploads into the draft. After both builds succeed it publishes the release automatically (if either build fails, the draft stays unpublished; delete it and the tag before retrying).
 5. Open the new GitHub Release and check it has `SentinelPDF-mac.dmg`, `SentinelPDF-mac.zip`, `SentinelPDF-windows.exe`, `latest-mac.yml` and `latest.yml`.
+
+## Owner access in the desktop app
+
+Open `sentinelpdf://owner#<your key>` once in the address bar of Safari or Chrome. SentinelPDF opens and asks you to confirm; choose "Turn on". To turn owner access off, open `sentinelpdf://owner#` the same way. The key appears once in your browser history, so only use a link you created yourself.

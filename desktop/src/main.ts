@@ -3,7 +3,7 @@ import { readFile, stat } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { autoUpdater } from "electron-updater";
 import { APP_URL, APP_ORIGINS } from "./config";
-import { allowPermission, isOpenablePdf, navigationTarget, pdfPathsFromArgv } from "./rules";
+import { allowPermission, isOpenablePdf, navigationTarget, pdfPathsFromArgv, ownerKeyFromLink, linkFromArgv, LINK_SCHEME } from "./rules";
 import { OpenQueue } from "./openQueue";
 
 let win: BrowserWindow | null = null;
@@ -25,6 +25,31 @@ async function openPath(path: string): Promise<void> {
 }
 
 const url = !app.isPackaged && process.env.SENTINEL_APP_URL ? process.env.SENTINEL_APP_URL : APP_URL;
+
+async function handleOwnerLink(link: string): Promise<void> {
+  try {
+    const key = ownerKeyFromLink(link);
+    if (key === null) return;
+    await app.whenReady();
+    if (!win) createWindow();
+    else { if (win.isMinimized()) win.restore(); win.focus(); }
+    const { response } = await dialog.showMessageBox(win!, {
+      type: "question",
+      buttons: [key ? "Turn on" : "Turn off", "Cancel"],
+      defaultId: 1,
+      cancelId: 1,
+      message: key ? "Turn on owner access on this computer?" : "Turn off owner access on this computer?",
+      detail: "Only do this with a link you created yourself.",
+    });
+    if (response === 0) {
+      // A query change forces a full navigation; a fragment-only change would not reload the page.
+      const target = new URL(url);
+      target.searchParams.set("owner-link", String(Date.now())); // unique each time, so a repeat link also reloads
+      target.hash = `owner=${encodeURIComponent(key)}`;
+      void win?.loadURL(target.toString()).catch(() => {});
+    }
+  } catch { /* a bad link must never crash the app */ }
+}
 
 function openExternal(url: string): void { if (navigationTarget(url, APP_ORIGINS) === "external") void shell.openExternal(url); }
 
@@ -67,8 +92,15 @@ function createWindow(): void {
 if (!app.requestSingleInstanceLock()) {
   app.exit(0);
 } else {
-  app.on("second-instance", (_e, argv) => { for (const p of pdfPathsFromArgv(argv)) void openPath(p); win?.focus(); });
+  if (app.isPackaged) app.setAsDefaultProtocolClient(LINK_SCHEME);
+  app.on("second-instance", (_e, argv) => {
+    for (const p of pdfPathsFromArgv(argv)) void openPath(p);
+    const link = linkFromArgv(argv);
+    if (link) void handleOwnerLink(link);
+    win?.focus();
+  });
   app.on("open-file", (e, path) => { e.preventDefault(); void openPath(path); }); // macOS; may fire before ready
+  app.on("open-url", (e, link) => { e.preventDefault(); void handleOwnerLink(link); }); // macOS; may fire before ready
 
   ipcMain.on("sentinel:ready", (e) => {
     if (win && e.sender === win.webContents) { try { queue.markReady(); } catch { /* undelivered files stay queued */ } }
@@ -81,6 +113,8 @@ if (!app.requestSingleInstanceLock()) {
     session.defaultSession.setPermissionCheckHandler((_wc, permission, origin) => allowPermission(permission, origin, APP_ORIGINS));
     createWindow();
     for (const p of pdfPathsFromArgv(process.argv)) void openPath(p); // Windows first launch
+    const firstLink = linkFromArgv(process.argv);
+    if (firstLink) void handleOwnerLink(firstLink);
     if (app.isPackaged) {
       autoUpdater.on("error", () => {});
       autoUpdater.on("update-downloaded", async () => {
