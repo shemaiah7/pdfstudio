@@ -181,7 +181,18 @@ async function scanSourceOnce(sourceId: string): Promise<void> {
     const open = () => useDocumentStore.getState().sources.has(sourceId);
     const hasText = await deps.hasText(source, p);
     if (!open() || epoch !== cancelEpoch) return;
-    if (hasText) continue;
+    if (hasText) {
+      // A typed page only carries OCR if it was sent to Deep OCR (form + handwriting): restore that after a reload.
+      const tk = pageKey(sourceId, p);
+      if (!source.hash || useOcrStore.getState().pages[tk]) continue;
+      const cached = await deps.store.get(source.hash, p);
+      if (!open()) return;
+      if (cached?.engine === "claude") {
+        textPages.add(tk);
+        useOcrStore.setState((s) => ({ pages: { ...s.pages, [tk]: { state: "done", engine: "claude" } } }));
+      }
+      continue;
+    }
     const k = pageKey(sourceId, p);
     scanned.add(k);
     if (useOcrStore.getState().pages[k]) continue; // already queued/finished: a repeat scan must not redo it

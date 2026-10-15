@@ -53,6 +53,19 @@ describe("useOcrStore", () => {
     expect(useOcrStore.getState().pages[pageKey(id2, 0)]).toBeUndefined();
     expect(localStorage.getItem("pdfstudio.ocr.auto")).toBe("0");
   });
+  it("restores the Deep OCR state of a typed page from the cache after a reload", async () => {
+    configureOcrDeps({ hasText: async () => true });
+    await store.put(`h${n}`, 0, { ...linesToOcrPage(["handwriting"], { widthPt: 300, heightPt: 400 }), engine: "claude" });
+    await store.put(`h${n}`, 1, { ...linesToOcrPage(["tess"], { widthPt: 300, heightPt: 400 }), engine: "tesseract" });
+    const id = await openScan(3);
+    await useOcrStore.getState().scanSource(id); await flush();
+    expect(useOcrStore.getState().pages[pageKey(id, 0)]).toEqual({ state: "done", engine: "claude" });
+    expect(isTextPage(pageKey(id, 0))).toBe(true);
+    expect(useOcrStore.getState().pages[pageKey(id, 1)]).toBeUndefined(); // a Tesseract result never applies to a typed page
+    expect(isTextPage(pageKey(id, 1))).toBe(false);
+    expect(useOcrStore.getState().pages[pageKey(id, 2)]).toBeUndefined();
+    expect(useOcrStore.getState().scannedPageEntries()).toEqual([]); // typed pages stay out of "All scanned pages"
+  });
   it("uses a cached page without running the engine", async () => {
     let runs = 0;
     configureOcrDeps({ tesseract: () => ({ ...engine(["x"]), recognize: async () => { runs++; return linesToOcrPage(["x"], { widthPt: 1, heightPt: 1 }); } }) });
