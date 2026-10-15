@@ -43,4 +43,13 @@ describe("InstallButton", () => {
     fireEvent.click(screen.getByTestId("install-dialog-scrim"));
     expect(screen.queryByRole("dialog")).toBeNull();
   });
+
+  it("renders nothing in the desktop app", () => {
+    (window as Window & { sentinelDesktop?: unknown }).sentinelDesktop = { version: "1", onOpenFile: () => () => {} };
+    try {
+      useInstallStore.setState({ installed: false, platformHint: "ios" });
+      const { container } = render(<InstallButton />);
+      expect(container.innerHTML).toBe("");
+    } finally { delete (window as Window & { sentinelDesktop?: unknown }).sentinelDesktop; }
+  });
 });

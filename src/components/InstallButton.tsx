@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useInstallStore } from "../pwa/install";
+import { isDesktop } from "../desktop/bridge";
 import { Icon } from "./icons";
 
 const HELP = {
@@ -22,7 +23,7 @@ export default function InstallButton({ className, label = true, iconOnly = fals
     return () => document.removeEventListener("keydown", onKey);
   }, [open]);
 
-  if (installed || hint === "none") return null;
+  if (isDesktop() || installed || hint === "none") return null;
   const onClick = () => { if (hint === "prompt") void install(); else setOpen(true); };
   return (
     <>

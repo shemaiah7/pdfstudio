@@ -1,12 +1,13 @@
 import { useState } from "react";
 import { markPromptDone, promptDone, useDefaultApp } from "../pwa/defaultApp";
+import { isDesktop } from "../desktop/bridge";
 import DefaultAppDialog from "./DefaultAppDialog";
 
 export default function DefaultAppPrompt() {
   const { os, installed } = useDefaultApp();
   const [hidden, setHidden] = useState(promptDone);
   const [open, setOpen] = useState(false);
-  if (!installed || !os) return null;
+  if (isDesktop() || !installed || !os) return null;
   return (
     <>
       {hidden ? null : (

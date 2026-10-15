@@ -52,4 +52,13 @@ describe("DefaultAppPrompt", () => {
     const r = render(<DefaultAppPrompt />);
     expect(r.container.innerHTML).toBe("");
   });
+
+  it("is not shown in the desktop app", () => {
+    (window as Window & { sentinelDesktop?: unknown }).sentinelDesktop = { version: "1", onOpenFile: () => () => {} };
+    try {
+      setup();
+      const { container } = render(<DefaultAppPrompt />);
+      expect(container.innerHTML).toBe("");
+    } finally { delete (window as Window & { sentinelDesktop?: unknown }).sentinelDesktop; }
+  });
 });

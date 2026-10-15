@@ -19,6 +19,7 @@ import PaywallSheet from "./components/account/PaywallSheet";
 import ActivatingNotice from "./components/account/ActivatingNotice";
 import RolloutBanner from "./components/account/RolloutBanner";
 import DefaultAppPrompt from "./components/DefaultAppPrompt";
+import { subscribeDesktopFiles } from "./desktop/bridge";
 import { requireFeature } from "./components/account/useGate";
 import { useAiClient } from "./components/ai/useAiClient";
 
@@ -115,6 +116,9 @@ export default function App() {
       if (files.length) void handleFiles(files, "open");
     });
   }, [handleFiles]);
+
+  // Desktop app: PDFs opened from Finder/Explorer arrive through the Electron preload bridge.
+  useEffect(() => subscribeDesktopFiles((files) => { void handleFiles(files, "open"); }), [handleFiles]);
 
   useEffect(() => {
     const on = (e: globalThis.DragEvent) => { e.preventDefault(); setDragging(true); };

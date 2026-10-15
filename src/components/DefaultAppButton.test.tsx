@@ -39,4 +39,14 @@ describe("DefaultAppButton", () => {
     fireEvent.keyDown(document, { key: "Escape" });
     expect(screen.queryByRole("dialog")).toBeNull();
   });
+
+  it("is hidden in the desktop app", () => {
+    (window as Window & { sentinelDesktop?: unknown }).sentinelDesktop = { version: "1", onOpenFile: () => () => {} };
+    try {
+      setUa(MAC_CHROME);
+      useInstallStore.setState({ installed: true });
+      const { container } = render(<DefaultAppButton />);
+      expect(container.innerHTML).toBe("");
+    } finally { delete (window as Window & { sentinelDesktop?: unknown }).sentinelDesktop; }
+  });
 });
