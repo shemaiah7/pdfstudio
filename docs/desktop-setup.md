@@ -1,6 +1,8 @@
 # SentinelPDF desktop: one-time signing setup
 
 Do these steps once so the Mac app is signed and notarized. Windows needs nothing.
+
+The desktop window loads the app at `https://sentinelpdf.com` (`APP_URL` in `desktop/src/config.ts`).
 Never paste any of these values into chat. Enter them only on the pages named below.
 
 1. **Accept Apple's latest agreement.** Go to developer.apple.com, click Account, and accept the updated Apple Developer Program License Agreement if a banner shows. Notarization fails until it is accepted.
