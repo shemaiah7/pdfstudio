@@ -21,7 +21,7 @@ export function isOpenablePdf(path: string, size: number): boolean {
 }
 
 export function pdfPathsFromArgv(argv: string[]): string[] {
-  return argv.slice(1).filter((a) => !a.startsWith("-") && /\.pdf$/i.test(a));
+  return argv.slice(1).filter((a) => !a.startsWith("-") && !/^sentinelpdf:/i.test(a) && /\.pdf$/i.test(a));
 }
 
 export const LINK_SCHEME = "sentinelpdf";

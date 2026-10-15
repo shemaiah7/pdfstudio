@@ -105,3 +105,10 @@ describe("linkFromArgv", () => {
     expect(linkFromArgv(["x.exe", "C:\\a.pdf"])).toBeNull();
   });
 });
+
+describe("pdfPathsFromArgv with links", () => {
+  it("does not treat a sentinelpdf link as a PDF path", () => {
+    expect(pdfPathsFromArgv(["x.exe", "sentinelpdf://owner#x.pdf"])).toEqual([]);
+    expect(pdfPathsFromArgv(["x.exe", "SentinelPDF://owner#x.pdf", "C:\\a.pdf"])).toEqual(["C:\\a.pdf"]);
+  });
+});

@@ -41,7 +41,13 @@ async function handleOwnerLink(link: string): Promise<void> {
       message: key ? "Turn on owner access on this computer?" : "Turn off owner access on this computer?",
       detail: "Only do this with a link you created yourself.",
     });
-    if (response === 0) void win?.loadURL(`${url}#owner=${encodeURIComponent(key)}`).catch(() => {});
+    if (response === 0) {
+      // A query change forces a full navigation; a fragment-only change would not reload the page.
+      const target = new URL(url);
+      target.searchParams.set("owner-link", "1");
+      target.hash = `owner=${encodeURIComponent(key)}`;
+      void win?.loadURL(target.toString()).catch(() => {});
+    }
   } catch { /* a bad link must never crash the app */ }
 }
 
