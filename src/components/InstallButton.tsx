@@ -31,9 +31,9 @@ export default function InstallButton({ className, label = true, iconOnly = fals
       </button>
       {open && hint !== "prompt" ? (
         <div className="sigBackdrop" data-testid="install-dialog-scrim" onClick={(e) => { if (e.target === e.currentTarget) setOpen(false); }}>
-          <div className="sigDialog installDialog" role="dialog" aria-label="Install PDF Studio">
+          <div className="sigDialog installDialog" role="dialog" aria-label="Install SentinelPDF">
             <div className="sigHeader">
-              <h2>Install PDF Studio</h2>
+              <h2>Install SentinelPDF</h2>
               <button type="button" className="sigClose" aria-label="Close" onClick={() => setOpen(false)}><Icon name="close" size={18} /></button>
             </div>
             <div className="sigBody"><p className="installHelp">{HELP[hint]}</p></div>

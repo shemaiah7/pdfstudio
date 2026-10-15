@@ -20,7 +20,7 @@ describe("DefaultAppPrompt", () => {
     setup();
     render(<DefaultAppPrompt />);
     expect(screen.getByTestId("default-app-prompt").getAttribute("role")).toBe("status");
-    expect(screen.getByText("Make PDF Studio your default PDF app?")).toBeTruthy();
+    expect(screen.getByText("Make SentinelPDF your default PDF app?")).toBeTruthy();
   });
 
   it("Not now hides and stores", () => {

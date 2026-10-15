@@ -12,14 +12,14 @@ export const desktopOs = (info: PlatformInfo): DesktopOs | null => {
 export const DEFAULT_STEPS: Record<DesktopOs, string[]> = {
   mac: [
     "In Finder, select any PDF and press ⌘I (File → Get Info).",
-    "Under “Open with”, choose PDF Studio.",
+    "Under “Open with”, choose SentinelPDF.",
     "Click Change All…, then Continue.",
     "The first time a PDF opens, your browser asks to confirm. Keep “Remember my choice” ticked and click Open.",
     "If the PDF is in iCloud Drive, macOS asks once whether your browser may open it. Click Allow.",
   ],
   windows: [
     "Right-click any PDF and choose Open with → Choose another app.",
-    "Pick PDF Studio. If it isn't listed, click More apps.",
+    "Pick SentinelPDF. If it isn't listed, click More apps.",
     "Select Always (or tick “Always use this app”), then OK.",
     "The first time a PDF opens, your browser asks to confirm. Keep “Remember my choice” ticked and click Open.",
   ],

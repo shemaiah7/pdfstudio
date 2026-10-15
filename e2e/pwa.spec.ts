@@ -6,7 +6,7 @@ test("manifest is valid and its icons load", async ({ request }) => {
   const res = await request.get(`${ORIGIN}/manifest.webmanifest`);
   expect(res.ok()).toBe(true);
   const m = await res.json();
-  expect(m.name).toBe("PDF Studio");
+  expect(m.name).toBe("SentinelPDF");
   expect(m.display).toBe("standalone");
   expect(m.icons).toHaveLength(3);
   for (const icon of m.icons) {

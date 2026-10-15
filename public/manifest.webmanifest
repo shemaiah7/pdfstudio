@@ -1,6 +1,6 @@
 {
-  "name": "PDF Studio",
-  "short_name": "PDF Studio",
+  "name": "SentinelPDF",
+  "short_name": "SentinelPDF",
   "description": "Edit PDFs in your browser and talk to them.",
   "id": "/",
   "start_url": "/",

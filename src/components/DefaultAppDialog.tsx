@@ -13,9 +13,9 @@ export default function DefaultAppDialog({ os, onClose }: Props) {
 
   return (
     <div className="sigBackdrop" data-testid="default-app-dialog" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="sigDialog installDialog" role="dialog" aria-label="Make PDF Studio your default PDF app">
+      <div className="sigDialog installDialog" role="dialog" aria-label="Make SentinelPDF your default PDF app">
         <div className="sigHeader">
-          <h2>Open PDFs with PDF Studio</h2>
+          <h2>Open PDFs with SentinelPDF</h2>
           <button type="button" className="sigClose" aria-label="Close" onClick={onClose}><Icon name="close" size={18} /></button>
         </div>
         <div className="sigBody">
