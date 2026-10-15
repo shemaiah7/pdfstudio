@@ -42,21 +42,24 @@ function createWindow(): void {
     if (url.startsWith("file:") && url.endsWith("offline.html")) return;
     if (navigationTarget(url, APP_ORIGINS) !== "app") { e.preventDefault(); openExternal(url); }
   });
+  win.webContents.on("will-redirect", (e, url, _inPlace, isMainFrame) => {
+    if (isMainFrame && navigationTarget(url, APP_ORIGINS) !== "app") { e.preventDefault(); openExternal(url); }
+  });
   win.webContents.on("did-start-navigation", (_e, _url, _inPlace, isMainFrame) => { if (isMainFrame) queue.markNotReady(); });
   win.webContents.on("did-fail-load", (_e, code, _desc, _url, isMainFrame) => {
-    if (isMainFrame && code !== -3) void win?.loadFile(join(__dirname, "..", "offline.html"));
+    if (isMainFrame && code !== -3) void win?.loadFile(join(__dirname, "..", "offline.html")).catch(() => {});
   });
   // Electron silently cancels a close when the page's beforeunload objects; ask instead, so the window can always be closed.
   win.webContents.on("will-prevent-unload", (e) => {
-    const stay = dialog.showMessageBoxSync(win!, { type: "question", buttons: ["Leave", "Stay"], defaultId: 1, cancelId: 1, message: "You have unsaved changes. Leave SentinelPDF anyway?" }) === 1;
-    if (!stay) e.preventDefault(); // preventDefault here means: proceed with the unload
+    const cancel = dialog.showMessageBoxSync(win!, { type: "question", buttons: ["Discard", "Cancel"], defaultId: 1, cancelId: 1, message: "Discard unsaved changes?" }) === 1;
+    if (!cancel) e.preventDefault(); // preventDefault here means: proceed with the unload
   });
   win.on("closed", () => { win = null; });
-  void win.loadURL(APP_URL);
+  void win.loadURL(APP_URL).catch(() => {});
 }
 
 ipcMain.on("sentinel:ready", (e) => { if (win && e.sender === win.webContents) queue.markReady(); });
-ipcMain.on("sentinel:retry", () => { void win?.loadURL(APP_URL); });
+ipcMain.on("sentinel:retry", () => { void win?.loadURL(APP_URL).catch(() => {}); });
 
 app.whenReady().then(() => {
   session.defaultSession.setPermissionRequestHandler((wc, permission, cb, details) =>

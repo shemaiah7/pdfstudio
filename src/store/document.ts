@@ -63,12 +63,14 @@ let counter = 0;
 const nextId = (prefix: string) => `${prefix}-${++counter}`;
 
 function samePages(a: PageEntry[] | null, b: PageEntry[]): boolean {
-  if (!a || a.length !== b.length) return false;
+  if (!a) return b.length === 0;
+  if (a.length !== b.length) return false;
   return a.every((p, i) => p.id === b[i].id && p.rotation === b[i].rotation);
 }
 
 function sameEdits(a: Edit[] | null, b: Edit[]): boolean {
-  if (!a || a.length !== b.length) return false;
+  if (!a) return b.length === 0;
+  if (a.length !== b.length) return false;
   return a.every((e, i) => e.id === b[i].id && e.text === b[i].text);
 }
 
@@ -82,12 +84,14 @@ function serializeFormValues(m: FormValues | null): string {
 
 function sameFormValues(a: FormValues | null, b: FormValues): boolean {
   if (a === b) return true;
-  return a !== null && serializeFormValues(a) === serializeFormValues(b);
+  if (a === null) return b.size === 0;
+  return serializeFormValues(a) === serializeFormValues(b);
 }
 
 function sameAnnotations(a: Annotation[] | null, b: Annotation[]): boolean {
   if (a === b) return true;
-  if (!a || a.length !== b.length) return false;
+  if (!a) return b.length === 0;
+  if (a.length !== b.length) return false;
   return a.every((x, i) => x === b[i] || (x.id === b[i].id && JSON.stringify(x) === JSON.stringify(b[i])));
 }
 
