@@ -23,3 +23,24 @@ export function isOpenablePdf(path: string, size: number): boolean {
 export function pdfPathsFromArgv(argv: string[]): string[] {
   return argv.slice(1).filter((a) => !a.startsWith("-") && /\.pdf$/i.test(a));
 }
+
+export const LINK_SCHEME = "sentinelpdf";
+
+/** Owner key from a sentinelpdf://owner#<key> link: the key ("" means turn off), or null if the URL isn't an owner link. */
+export function ownerKeyFromLink(url: string): string | null {
+  let u: URL;
+  try { u = new URL(url); } catch { return null; }
+  if (u.protocol !== `${LINK_SCHEME}:`) return null;
+  if (u.host.toLowerCase() !== "owner") return null;
+  if (u.pathname !== "" && u.pathname !== "/") return null;
+  if (u.search !== "") return null;
+  let key: string;
+  try { key = decodeURIComponent(u.hash.replace(/^#/, "")); } catch { return null; }
+  key = key.trim();
+  if (key.length > 512 || /[\u0000-\u001f\u007f-\u009f]/.test(key)) return null;
+  return key;
+}
+
+export function linkFromArgv(argv: string[]): string | null {
+  return argv.find((a) => a.toLowerCase().startsWith(`${LINK_SCHEME}:`)) ?? null;
+}

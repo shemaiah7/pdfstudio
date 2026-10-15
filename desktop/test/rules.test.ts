@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { navigationTarget, allowPermission, isOpenablePdf, pdfPathsFromArgv } from "../src/rules";
+import { navigationTarget, allowPermission, isOpenablePdf, pdfPathsFromArgv, ownerKeyFromLink, linkFromArgv } from "../src/rules";
 import { APP_ORIGINS, MAX_PDF_BYTES } from "../src/config";
 
 describe("navigationTarget", () => {
@@ -65,5 +65,43 @@ describe("pdfPathsFromArgv", () => {
   });
   it("returns nothing when no PDF was passed", () => {
     expect(pdfPathsFromArgv(["/Applications/SentinelPDF.app/Contents/MacOS/SentinelPDF", "-psn_0_12345"])).toEqual([]);
+  });
+});
+
+describe("ownerKeyFromLink", () => {
+  it("reads the key from the hash", () => {
+    expect(ownerKeyFromLink("sentinelpdf://owner#abc123")).toBe("abc123");
+    expect(ownerKeyFromLink("sentinelpdf://owner/#abc")).toBe("abc");
+    expect(ownerKeyFromLink("SENTINELPDF://OWNER#abc")).toBe("abc");
+  });
+  it("decodes encoded characters", () => {
+    expect(ownerKeyFromLink("sentinelpdf://owner#a%20b%2Bc%26d")).toBe("a b+c&d");
+  });
+  it("treats an empty key as turn off", () => {
+    expect(ownerKeyFromLink("sentinelpdf://owner#")).toBe("");
+    expect(ownerKeyFromLink("sentinelpdf://owner")).toBe("");
+  });
+  it("rejects anything else", () => {
+    expect(ownerKeyFromLink("sentinelpdf://other#abc")).toBeNull();
+    expect(ownerKeyFromLink("https://sentinelpdf.com/#owner=abc")).toBeNull();
+    expect(ownerKeyFromLink("sentinelpdf://owner?key=abc")).toBeNull();
+    expect(ownerKeyFromLink("sentinelpdf://owner#%E0%A4%A")).toBeNull();
+    expect(ownerKeyFromLink("sentinelpdf://owner#" + "a".repeat(513))).toBeNull();
+    expect(ownerKeyFromLink("sentinelpdf://owner#a%00b")).toBeNull();
+    expect(ownerKeyFromLink("sentinelpdf://owner/extra#abc")).toBeNull();
+    expect(ownerKeyFromLink("not a url")).toBeNull();
+  });
+  it("accepts a key of exactly 512 characters", () => {
+    expect(ownerKeyFromLink("sentinelpdf://owner#" + "a".repeat(512))).toBe("a".repeat(512));
+  });
+});
+
+describe("linkFromArgv", () => {
+  it("finds the link in Windows-style argv", () => {
+    expect(linkFromArgv(["C:\\App\\SentinelPDF.exe", "sentinelpdf://owner#abc"])).toBe("sentinelpdf://owner#abc");
+    expect(linkFromArgv(["x.exe", "SentinelPDF://owner#abc"])).toBe("SentinelPDF://owner#abc");
+  });
+  it("returns null without one", () => {
+    expect(linkFromArgv(["x.exe", "C:\\a.pdf"])).toBeNull();
   });
 });

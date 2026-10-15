@@ -2,6 +2,9 @@ appId: com.sentinelpdf.desktop
 productName: SentinelPDF
 directories: { output: release, buildResources: build }
 files: [dist/**, offline.html, package.json]
+protocols:
+  - name: SentinelPDF link
+    schemes: [sentinelpdf]
 fileAssociations:
   - ext: pdf
     name: PDF Document
