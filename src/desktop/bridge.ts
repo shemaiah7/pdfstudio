@@ -14,15 +14,22 @@ export function subscribeDesktopFiles(onFiles: (files: File[]) => void): () => v
 }
 
 /** Groups items that arrive within `ms` of each other (a multi-file open) into one batch. */
-export function batchFiles<T>(onBatch: (items: T[]) => void, ms = 300): { add(item: T): void; cancel(): void } {
+export function batchFiles<T>(onBatch: (items: T[]) => void, ms = 300): { add(item: T): void; flush(): void; cancel(): void } {
   let items: T[] = [];
   let timer: ReturnType<typeof setTimeout> | null = null;
+  const flush = () => {
+    if (timer) clearTimeout(timer);
+    timer = null;
+    if (items.length === 0) return;
+    const b = items; items = []; onBatch(b);
+  };
   return {
     add(item) {
       items.push(item);
       if (timer) clearTimeout(timer);
-      timer = setTimeout(() => { const b = items; items = []; timer = null; onBatch(b); }, ms);
+      timer = setTimeout(flush, ms);
     },
+    flush,
     cancel() { if (timer) clearTimeout(timer); timer = null; items = []; },
   };
 }

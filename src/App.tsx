@@ -123,7 +123,7 @@ export default function App() {
       openDesktopBatch(files, useDocumentStore.getState().isDirty(), (m) => window.confirm(m), (f) => { void handleFiles(f, "open"); });
     }, 300);
     const off = subscribeDesktopFiles((files) => files.forEach(batch.add));
-    return () => { off(); batch.cancel(); };
+    return () => { off(); batch.flush(); };
   }, [handleFiles]);
 
   useEffect(() => {

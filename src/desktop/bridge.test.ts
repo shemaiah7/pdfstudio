@@ -51,6 +51,13 @@ describe("batchFiles", () => {
     b.add("a"); vi.advanceTimersByTime(500); b.add("b"); vi.advanceTimersByTime(500);
     expect(got.mock.calls).toEqual([[["a"]], [["b"]]]);
   });
+  it("flush delivers a pending batch immediately", () => {
+    vi.useFakeTimers();
+    const got = vi.fn();
+    const b = batchFiles<string>(got, 300);
+    b.add("a"); b.flush(); vi.advanceTimersByTime(1000);
+    expect(got.mock.calls).toEqual([[["a"]]]);
+  });
   it("cancel drops a pending batch", () => {
     vi.useFakeTimers();
     const got = vi.fn();

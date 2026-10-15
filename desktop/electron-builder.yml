@@ -40,3 +40,4 @@ electronFuses:
   enableNodeOptionsEnvironmentVariable: false
   enableNodeCliInspectArguments: false
   onlyLoadAppFromAsar: true
+  resetAdHocDarwinSignature: true
