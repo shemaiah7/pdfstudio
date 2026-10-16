@@ -17,10 +17,12 @@ Proxy between the SentinelPDF app and the Claude API.
 
 ## Owner key
 Gives the site owner unlimited AI, Deep OCR and voice minutes (Turnstile still applies).
-1. Generate a key: `openssl rand -base64 48` (must be at least 32 characters, otherwise owner mode stays off).
-2. Set it as a secret from `worker/`: `npx wrangler secret put OWNER_KEY`.
-3. Unlock a browser by opening `https://<site>/#owner=<key>` once; the app stores the key and removes it from the address bar.
-4. Clear a browser with `https://<site>/#owner=`.
+1. Generate a key straight to the clipboard: `openssl rand -base64 48 | tr -d '\n' | pbcopy` (must be at least 32 characters, otherwise owner mode stays off). Paste it into a password manager entry first — don't let the password manager substitute a suggested password.
+2. From `worker/`, run `npx wrangler secret put OWNER_KEY` and paste the same clipboard value.
+3. Unlock a browser: `open "https://<site>/#owner=$(pbpaste)"` (a fresh load is required; editing only the `#` part of an open tab doesn't reload the app). The app stores the key and removes it from the address bar. Each site address (sentinelpdf.com, workers.dev) keeps its own copy.
+4. Unlock the desktop app: `open "sentinelpdf://owner#$(pbpaste)"`, then choose Turn on (see docs/desktop-setup.md).
+5. Clear a browser with `https://<site>/#owner=`; clear the desktop app with `open "sentinelpdf://owner#"`.
+6. Check: after one AI request the AI panel footer reads "Owner · unlimited". Rotating the key logs every unlocked browser and app out of owner mode until they are unlocked again.
 
 ## Protocol
 POST /session { turnstileToken, ownerKey? } → { token, expiresAt, owner? }

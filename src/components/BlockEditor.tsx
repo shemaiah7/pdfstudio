@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useDocumentStore } from "../store/document";
 import { measureFor } from "../pdf/metrics";
 import { FONT_CSS } from "../pdf/fonts";
@@ -18,7 +18,8 @@ export default function BlockEditor({ open, scale, heightPt, onClose }: { open: 
   const finished = useRef(false);
   const original = open.existing?.text ?? open.block.text;
   useEffect(() => { let on = true; void measureFor(open.font).then((m) => { if (on) setMeasure(() => m); }); return () => { on = false; }; }, [open.font]);
-  useEffect(() => {
+  // Layout effect: fill the box in the same commit that first shows it, so nothing can see (or type into) an empty editor.
+  useLayoutEffect(() => {
     const el = ref.current;
     if (!measure || !el) return;
     el.textContent = text;
