@@ -23,9 +23,9 @@ describe("public/download.html", () => {
     expect(html).toContain("<h1>SentinelPDF for Mac and Windows</h1>");
   });
   it("keeps static version and size text as the fallback when the release fetch fails", () => {
-    expect(html).toContain("Version 1.0.2 &middot; 229 MB &middot; macOS 12+ (Apple silicon and Intel)");
+    expect(html).toContain("Version 1.0.2 &middot; 218 MB &middot; macOS 12+ (Apple silicon and Intel)");
     expect(html).toContain('var version = "1.0.2"');
-    expect(html).toContain('size: "111 MB"');
+    expect(html).toContain('size: "106 MB"');
   });
   it("supports dark mode and phones", () => {
     expect(html).toContain("prefers-color-scheme: dark");

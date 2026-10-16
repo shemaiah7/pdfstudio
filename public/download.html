@@ -105,7 +105,7 @@
         <p class="lede">Open PDFs from Finder or File Explorer straight into SentinelPDF &mdash; edit, sign, and ask questions out loud.</p>
         <div class="cta">
           <a class="btn" id="dl-primary" href="https://github.com/shemaiah7/pdfstudio/releases/latest/download/SentinelPDF-mac.dmg">Download for Mac</a>
-          <p class="meta" id="dl-meta">Version 1.0.2 &middot; 229 MB &middot; macOS 12+ (Apple silicon and Intel)</p>
+          <p class="meta" id="dl-meta">Version 1.0.2 &middot; 218 MB &middot; macOS 12+ (Apple silicon and Intel)</p>
           <p class="other"><a id="dl-other" href="https://github.com/shemaiah7/pdfstudio/releases/latest/download/SentinelPDF-windows.exe">Download for Windows</a></p>
         </div>
       </div>
@@ -156,8 +156,8 @@
     var REL = "https://github.com/shemaiah7/pdfstudio/releases/latest/download/";
     var win = /Windows/.test(navigator.userAgent);
     var DL = {
-      mac: { label: "Download for Mac", href: REL + "SentinelPDF-mac.dmg", req: "macOS 12+ (Apple silicon and Intel)", size: "229 MB", asset: /\.dmg$/ },
-      win: { label: "Download for Windows", href: REL + "SentinelPDF-windows.exe", req: "Windows 10+ 64-bit", size: "111 MB", asset: /\.exe$/ }
+      mac: { label: "Download for Mac", href: REL + "SentinelPDF-mac.dmg", req: "macOS 12+ (Apple silicon and Intel)", size: "218 MB", asset: /\.dmg$/ },
+      win: { label: "Download for Windows", href: REL + "SentinelPDF-windows.exe", req: "Windows 10+ 64-bit", size: "106 MB", asset: /\.exe$/ }
     };
     var main = win ? DL.win : DL.mac, other = win ? DL.mac : DL.win;
     var version = "1.0.2";
