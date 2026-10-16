@@ -6,6 +6,7 @@ import { ocrHandler } from "./handlers/ocr";
 import { liveHandler, liveUsageHandler } from "./handlers/live";
 import { checkoutHandler, portalHandler, webhookHandler } from "./handlers/billing";
 import { meHandler, termsHandler, deleteAccountHandler } from "./handlers/me";
+import { desktopTicketHandler } from "./handlers/desktopTicket";
 
 export type Handler = (request: Request, env: Env, ctx: ExecutionContext) => Promise<Response>;
 
@@ -21,6 +22,7 @@ const routes: Record<string, Handler> = {
   "/billing/checkout": (r, env) => checkoutHandler(r, env),
   "/billing/portal": (r, env) => portalHandler(r, env),
   "/billing/webhook": (r, env) => webhookHandler(r, env),
+  "/desktop/ticket": (r, env) => desktopTicketHandler(r, env),
 };
 
 export default {

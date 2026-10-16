@@ -14,6 +14,8 @@ The terms page at `public/terms.html` is a draft. Fill in `[REFUND POLICY — ow
 2. Add the allowed origin `https://pdfstudio.shemaiah7.workers.dev` (and your own domain if you add one).
 3. Note three values for later: the **Frontend API URL** (this becomes `CLERK_ISSUER`; a trailing slash is fine), the **secret key** (`CLERK_SECRET_KEY`) and the **publishable key** (`VITE_CLERK_PUBLISHABLE_KEY`, used in step 5).
 
+**Desktop sign-in:** in the Clerk dashboard → User & authentication → Email, turn on **Email verification code** for sign-in and sign-up (keep the magic link and Google). The desktop app's browser hand-off uses one-time sign-in tokens, which need only the `CLERK_SECRET_KEY` secret you already set.
+
 ## 2. Stripe Dashboard
 
 1. Create the product **PDF Studio Pro** with two recurring prices: **$29 per month** and **$249 per year**. Note their price ids for `STRIPE_PRICE_MONTHLY` and `STRIPE_PRICE_YEARLY`.
