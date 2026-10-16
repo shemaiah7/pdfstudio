@@ -47,7 +47,7 @@ test("browser sign-in: matching state delivers the ticket once", async () => {
   } finally {
     await app.evaluate(({ app: a }) => a.exit(0)).catch(() => {});
     stub.server.close();
-    rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+    try { rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }); } catch { /* Electron may still hold profile files while exiting (EBUSY on Windows, ENOTEMPTY on macOS); the OS temp dir is cleaned later */ }
   }
 });
 
@@ -92,6 +92,6 @@ test("browser sign-in: a link that arrives before the page subscribes is held an
   } finally {
     await app.evaluate(({ app: a }) => a.exit(0)).catch(() => {});
     stub.server.close();
-    rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+    try { rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }); } catch { /* Electron may still hold profile files while exiting (EBUSY on Windows, ENOTEMPTY on macOS); the OS temp dir is cleaned later */ }
   }
 });
