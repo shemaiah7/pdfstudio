@@ -19,6 +19,6 @@ test("the window loads the app with the bridge", async () => {
   } finally {
     // exit(), not close(): quit() would raise the unsaved-changes prompt if the page objects to unloading.
     await app.evaluate(({ app }) => app.exit(0)).catch(() => {});
-    rmSync(dir, { recursive: true, force: true });
+    rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
   }
 });

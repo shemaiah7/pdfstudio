@@ -84,7 +84,7 @@ async function handleSignInLink(link: string): Promise<boolean> {
   if (!win) createWindow(); else { if (win.isMinimized()) win.restore(); win.focus(); }
   const result = consumeSignIn(pendingSignIn, parsed, Date.now());
   if (result === "ok") { pendingSignIn = null; heldSignIn = { kind: "ticket", ticket: parsed.ticket, until: Date.now() + HELD_MS }; }
-  else heldSignIn = { kind: "failed", until: Date.now() + HELD_MS };
+  else if (!(heldSignIn?.kind === "ticket" && Date.now() <= heldSignIn.until)) heldSignIn = { kind: "failed", until: Date.now() + HELD_MS }; // a failure never replaces a waiting ticket
   flushSignIn();
   return true;
 }
@@ -119,7 +119,7 @@ function createWindow(): void {
   win.webContents.on("will-redirect", (e, url, _inPlace, isMainFrame) => {
     if (isMainFrame && navigationTarget(url, APP_ORIGINS) !== "app") { e.preventDefault(); openExternal(url); }
   });
-  win.webContents.on("did-start-navigation", (_e, _url, _inPlace, isMainFrame) => { if (isMainFrame) { queue.markNotReady(); signInReady = false; } });
+  win.webContents.on("did-start-navigation", (_e, _url, isInPlace, isMainFrame) => { if (isMainFrame && !isInPlace) { queue.markNotReady(); signInReady = false; } });
   win.webContents.on("did-fail-load", (_e, code, _desc, _url, isMainFrame) => {
     if (isMainFrame && code !== -3) void win?.loadFile(join(__dirname, "..", "offline.html")).catch(() => {});
   });
