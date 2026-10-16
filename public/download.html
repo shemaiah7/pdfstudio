@@ -75,7 +75,7 @@
   .safe { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
   .safe .item { border-left: 2px solid var(--line); padding-left: 16px; font-size: 14px; color: var(--ink-2); }
   .safe .item strong { display: block; color: var(--ink); font-weight: 600; margin-bottom: 2px; }
-  .private { margin-top: 20px; display: flex; gap: 10px; align-items: flex-start; background: var(--ok-soft); color: var(--ok); border-radius: 12px; padding: 12px 16px; font-size: 14px; }
+  .private { margin-top: 20px; display: flex; max-width: 30em; gap: 10px; align-items: flex-start; background: var(--ok-soft); color: var(--ok); border-radius: 12px; padding: 12px 16px; font-size: 14px; }
   .private svg { margin-top: 3px; }
   footer { border-top: 1px solid var(--line); padding: 24px 0 40px; display: flex; flex-wrap: wrap; gap: 8px 20px; font-size: 13px; color: var(--ink-3); }
   footer a { color: var(--ink-2); text-decoration: none; }
@@ -111,6 +111,7 @@
           <div class="btns"><a class="btn" id="dl-primary" href="https://github.com/shemaiah7/pdfstudio/releases/latest/download/SentinelPDF-mac.dmg">Download for Mac</a></div>
           <p class="meta" id="dl-meta">Version 1.0.2 &middot; 218 MB &middot; macOS 12+ (Apple silicon and Intel)</p>
           <p class="other" id="dl-other-line"><a id="dl-other" href="https://github.com/shemaiah7/pdfstudio/releases/latest/download/SentinelPDF-windows.exe">Download for Windows</a> <span id="dl-other-meta">&middot; 106 MB &middot; Windows 10+ 64-bit</span></p>
+          <p class="private"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 11h12v9H6z M8 11V8a4 4 0 0 1 8 0v3"/></svg>Your PDFs stay on your computer; only the text you ask about is sent for AI answers.</p>
         </div>
       </div>
       <figure class="shot">
@@ -145,7 +146,6 @@
         <div class="item"><strong>Mac</strong>Signed and notarized by Apple, so it opens without warnings.</div>
         <div class="item"><strong>Windows</strong>Windows may show &ldquo;Windows protected your PC&rdquo; the first time. Choose <strong style="display:inline">More info</strong>, then <strong style="display:inline">Run anyway</strong>. A signed Windows build is coming.</div>
       </div>
-      <p class="private"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 11h12v9H6z M8 11V8a4 4 0 0 1 8 0v3"/></svg>Your PDFs stay on your computer; only the text you ask about is sent for AI answers.</p>
     </section>
   </main>
 
