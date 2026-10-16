@@ -13,5 +13,11 @@ export const clerkAppearance = {
   elements: {
     card: { boxShadow: "var(--shadow-3)" },
     formButtonPrimary: { color: "var(--color-on-primary)" },
+    // Clerk derives these from its "neutral" colour, which defaults to black and can't be set from a CSS var,
+    // so the Google button text and outlines were black-on-dark in dark mode. Style them from our tokens directly.
+    socialButtonsBlockButton: { color: "var(--color-ink)", boxShadow: "0 0 0 1px var(--color-line) !important" },
+    socialButtonsBlockButtonText: { color: "var(--color-ink)" },
+    formFieldInput: { boxShadow: "0 0 0 1px var(--color-line) !important" },
+    dividerLine: { backgroundColor: "var(--color-line)" },
   },
 };
