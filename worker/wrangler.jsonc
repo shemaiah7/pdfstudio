@@ -13,7 +13,7 @@
     "ELEVENLABS_AGENT_ID": "agent_3101m4q6478ceb686yqfw50yfhdv",
     "VOICE_DAILY_SECONDS": "1800",
     "PAYWALL_ENABLED": "false",
-    "CLERK_ISSUER": "",
+    "CLERK_ISSUER": "https://clerk.sentinelpdf.com",
     "STRIPE_PRICE_MONTHLY": "",
     "STRIPE_PRICE_YEARLY": "",
     "APP_URL": "https://sentinelpdf.com"
