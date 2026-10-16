@@ -590,3 +590,13 @@ body { background: var(--bg); color: var(--text); font: var(--text-body); }
 .limit-panel { display: flex; flex-direction: column; align-items: stretch; gap: 10px; margin: 12px 18px 0; padding: 12px; border: 1px solid var(--color-warning-line); border-radius: 12px; background: var(--color-warning-soft); color: var(--color-warning-strong); font-size: 13px; }
 .limit-panel p { margin: 0; }
 .upgrade-pro { display: inline-flex; align-items: center; justify-content: center; height: 44px; padding: 0 16px; border: 0; border-radius: 11px; background: var(--color-primary); color: var(--color-on-primary); font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; }
+
+/* Desktop sign-in panel */
+.dsi-body { align-items: stretch; padding: 18px 16px; }
+.dsi-form { display: flex; flex-direction: column; gap: 10px; }
+.dsi-label { font-size: 13px; color: var(--color-ink-2); }
+.dsi-input { height: 44px; padding: 0 12px; border: 1px solid var(--color-line); border-radius: 10px; background: var(--color-surface); color: var(--color-ink); font: inherit; font-size: 16px; min-width: 0; }
+.dsi-input:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 1px; }
+.dsi-status { margin: 0; font-size: 14px; color: var(--color-ink); text-align: center; }
+.dsi-error { margin: 0; font-size: 13px; color: var(--color-danger); text-align: center; }
+.dsi-body .acct-link:disabled { color: var(--color-ink-3); cursor: default; }

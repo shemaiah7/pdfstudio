@@ -1,7 +1,7 @@
-import { SignInButton, SignUpButton } from "@clerk/clerk-react";
 import { clerkEnabled } from "../../account/clerk";
 import { Icon } from "../icons";
 import Sheet from "./Sheet";
+import SignInTrigger from "./SignInTrigger";
 import { useSheets } from "./useGate";
 
 /** Anonymous visitors who reach an editing or AI feature. */
@@ -23,8 +23,8 @@ export default function UpgradeSheet() {
       </div>
       {clerk ? (
         <div className="sigActions acct-stack">
-          <SignUpButton mode="modal"><button type="button" className="sigPrimary acct-wide" onClick={close}>Create account</button></SignUpButton>
-          <SignInButton mode="modal"><button type="button" className="acct-link" onClick={close}>I already have an account · Sign in</button></SignInButton>
+          <SignInTrigger mode="sign-up" onBeforeOpen={close}><button type="button" className="sigPrimary acct-wide" onClick={close}>Create account</button></SignInTrigger>
+          <SignInTrigger mode="sign-in" onBeforeOpen={close}><button type="button" className="acct-link" onClick={close}>I already have an account · Sign in</button></SignInTrigger>
         </div>
       ) : null}
     </Sheet>

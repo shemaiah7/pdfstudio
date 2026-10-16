@@ -12,6 +12,7 @@ import App from './App.tsx'
 import { ClerkBridge } from './account/ClerkBridge.tsx'
 import { clerkAppearance } from './account/clerkAppearance.ts'
 import { useAccount } from './account/store.ts'
+import DesktopSignInPanel, { DesktopTicketListener } from './components/account/DesktopSignInPanel.tsx'
 
 const clerkKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY as string | undefined
 
@@ -23,6 +24,8 @@ createRoot(document.getElementById('root')!).render(
     {clerkKey ? (
       <ClerkProvider publishableKey={clerkKey} afterSignOutUrl="/" appearance={clerkAppearance}>
         <ClerkBridge />
+        <DesktopTicketListener />
+        <DesktopSignInPanel />
         <App />
       </ClerkProvider>
     ) : (
