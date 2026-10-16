@@ -34,4 +34,12 @@ Never paste any of these values into chat. Enter them only on the pages named be
 
 ## Owner access in the desktop app
 
-Open `sentinelpdf://owner#<your key>` once in the address bar of Safari or Chrome. SentinelPDF opens and asks you to confirm; choose "Turn on". To turn owner access off, open `sentinelpdf://owner#` the same way. The key appears once in your browser history, so only use a link you created yourself.
+Browsers can drop everything after `#` when they hand a `sentinelpdf://` link to an app, so open the link from Terminal instead. Copy the owner key from the Passwords app ("SentinelPDF owner key"), then run:
+
+```bash
+open "sentinelpdf://owner#$(pbpaste)"
+```
+
+SentinelPDF asks "Turn on owner access on this computer?"; choose **Turn on**. The key goes straight from the clipboard to the app and never appears on screen or in browser history. To turn owner access off, run `open "sentinelpdf://owner#"` and choose **Turn off**.
+
+Check it worked: open a PDF and run one AI request; the AI panel's footer reads "Owner · unlimited".
