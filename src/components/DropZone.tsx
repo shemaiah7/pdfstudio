@@ -34,7 +34,7 @@ export default function DropZone({ onFiles, empty, forceOver = false }: Props) {
       {empty ? (
         <>
           <header className="empty-top">
-            <div className="empty-brand"><span className="empty-brand-mark"><Icon name="file" size={16} /></span>SentinelPDF</div>
+            <div className="empty-brand"><img className="empty-brand-mark" src="/brand/mark-small.svg" alt="" width="30" height="30" />SentinelPDF</div>
             <div className="empty-top-right">
               <InstallButton className="install-pill" />
               <DefaultAppButton className="install-pill" />
