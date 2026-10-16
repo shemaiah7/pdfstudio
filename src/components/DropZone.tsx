@@ -4,6 +4,8 @@ import { Icon, type IconName } from "./icons";
 import ThemeToggle from "./ThemeToggle";
 import InstallButton from "./InstallButton";
 import DefaultAppButton from "./DefaultAppButton";
+import AccountEntry from "./account/AccountEntry";
+import { clerkEnabled } from "../account/clerk";
 
 const FEATURES: { icon: IconName; title: string; text: string }[] = [
   { icon: "highlight", title: "A full editor, no upload", text: "Mark up, sign, retype text, merge files. Your PDF stays on this device." },
@@ -40,6 +42,7 @@ export default function DropZone({ onFiles, empty, forceOver = false }: Props) {
               <DefaultAppButton className="install-pill" />
               <ThemeToggle className="theme-toggle-ghost" />
               <span className="empty-privacy"><Icon name="lock" size={14} />Files never leave your browser.</span>
+              {clerkEnabled() ? <AccountEntry className="empty-account" /> : null}
             </div>
           </header>
           <div className="empty-main">
