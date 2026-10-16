@@ -1,10 +1,12 @@
 import { test, expect, _electron as electron } from "@playwright/test";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 
 test("the window loads the app with the bridge", async () => {
   const app = await electron.launch({
     args: [resolve(__dirname, "..")],
-    env: { ...process.env, SENTINEL_APP_URL: "https://pdfstudio.shemaiah7.workers.dev" } as Record<string, string>,
+    env: { ...process.env, SENTINEL_APP_URL: "https://pdfstudio.shemaiah7.workers.dev", SENTINEL_USER_DATA: mkdtempSync(tmpdir() + "/sentinel-e2e-") } as Record<string, string>,
   });
   try {
     const win = await app.firstWindow();

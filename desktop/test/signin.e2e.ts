@@ -1,0 +1,38 @@
+import { test, expect, _electron as electron } from "@playwright/test";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { resolve } from "node:path";
+
+test("browser sign-in: matching state delivers the ticket once", async () => {
+  const app = await electron.launch({
+    args: [resolve(__dirname, "..")],
+    env: {
+      ...process.env,
+      SENTINEL_APP_URL: "https://pdfstudio.shemaiah7.workers.dev",
+      SENTINEL_TEST_NO_BROWSER: "1",
+      SENTINEL_USER_DATA: mkdtempSync(tmpdir() + "/sentinel-e2e-"),
+    } as Record<string, string>,
+  });
+  try {
+    const win = await app.firstWindow();
+    await win.waitForLoadState("domcontentloaded");
+    await win.evaluate(() => {
+      const w = window as unknown as { sentinelDesktop: { onSignInTicket(cb: (t: string) => void): void; onSignInFailed(cb: (r: string) => void): void; startBrowserSignIn(): void }; __got: string[]; __failed: string[] };
+      w.__got = []; w.__failed = [];
+      w.sentinelDesktop.onSignInTicket((t) => w.__got.push(t));
+      w.sentinelDesktop.onSignInFailed((r) => w.__failed.push(r));
+      w.sentinelDesktop.startBrowserSignIn();
+    });
+    await expect.poll(() => app.evaluate(() => (globalThis as unknown as { __sentinelLastSignInUrl?: string }).__sentinelLastSignInUrl ?? "")).toContain("/desktop-signin?state=");
+    const opened = await app.evaluate(() => (globalThis as unknown as { __sentinelLastSignInUrl: string }).__sentinelLastSignInUrl);
+    const state = new URL(opened).searchParams.get("state")!;
+    const link = `sentinelpdf://signin?ticket=tkt_test&state=${state}`;
+    await app.evaluate(({ app: a }, l) => { a.emit("open-url", { preventDefault() {} }, l); }, link);
+    await expect.poll(() => win.evaluate(() => (window as unknown as { __got: string[] }).__got)).toEqual(["tkt_test"]);
+    await app.evaluate(({ app: a }, l) => { a.emit("open-url", { preventDefault() {} }, l); }, link);
+    await expect.poll(() => win.evaluate(() => (window as unknown as { __failed: string[] }).__failed)).toEqual(["expired"]);
+    expect(await win.evaluate(() => (window as unknown as { __got: string[] }).__got)).toEqual(["tkt_test"]);
+  } finally {
+    await app.evaluate(({ app: a }) => a.exit(0)).catch(() => {});
+  }
+});
