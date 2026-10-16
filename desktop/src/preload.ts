@@ -18,6 +18,6 @@ contextBridge.exposeInMainWorld("sentinelDesktop", {
   },
   retry: () => ipcRenderer.send("sentinel:retry"),
   startBrowserSignIn: () => ipcRenderer.send("sentinel:start-browser-signin"),
-  onSignInTicket(cb: (t: string) => void) { ticketListeners.add(cb); return () => { ticketListeners.delete(cb); }; },
+  onSignInTicket(cb: (t: string) => void) { ticketListeners.add(cb); ipcRenderer.send("sentinel:signin-ready"); return () => { ticketListeners.delete(cb); }; },
   onSignInFailed(cb: (r: "expired") => void) { failedListeners.add(cb); return () => { failedListeners.delete(cb); }; },
 });

@@ -13,6 +13,18 @@ if (!app.isPackaged && process.env.SENTINEL_USER_DATA) app.setPath("userData", p
 
 let win: BrowserWindow | null = null;
 let pendingSignIn: PendingSignIn | null = null;
+// A ticket (or failure) is held here until the page has subscribed, so a reload or early link never drops it.
+let heldSignIn: { kind: "ticket"; ticket: string; until: number } | { kind: "failed"; until: number } | null = null;
+let signInReady = false;
+const HELD_MS = 300_000;
+function flushSignIn(): void {
+  if (!heldSignIn || !signInReady || !win) return;
+  const held = heldSignIn;
+  heldSignIn = null;
+  if (Date.now() > held.until) return;
+  if (held.kind === "ticket") win.webContents.send("sentinel:signin-ticket", held.ticket);
+  else win.webContents.send("sentinel:signin-failed", "expired");
+}
 const queue = new OpenQueue((f) => win?.webContents.send("sentinel:open-file", f));
 
 async function openPath(path: string): Promise<void> {
@@ -71,8 +83,9 @@ async function handleSignInLink(link: string): Promise<boolean> {
   await app.whenReady();
   if (!win) createWindow(); else { if (win.isMinimized()) win.restore(); win.focus(); }
   const result = consumeSignIn(pendingSignIn, parsed, Date.now());
-  if (result === "ok") { pendingSignIn = null; win?.webContents.send("sentinel:signin-ticket", parsed.ticket); }
-  else win?.webContents.send("sentinel:signin-failed", "expired");
+  if (result === "ok") { pendingSignIn = null; heldSignIn = { kind: "ticket", ticket: parsed.ticket, until: Date.now() + HELD_MS }; }
+  else heldSignIn = { kind: "failed", until: Date.now() + HELD_MS };
+  flushSignIn();
   return true;
 }
 
@@ -106,7 +119,7 @@ function createWindow(): void {
   win.webContents.on("will-redirect", (e, url, _inPlace, isMainFrame) => {
     if (isMainFrame && navigationTarget(url, APP_ORIGINS) !== "app") { e.preventDefault(); openExternal(url); }
   });
-  win.webContents.on("did-start-navigation", (_e, _url, _inPlace, isMainFrame) => { if (isMainFrame) queue.markNotReady(); });
+  win.webContents.on("did-start-navigation", (_e, _url, _inPlace, isMainFrame) => { if (isMainFrame) { queue.markNotReady(); signInReady = false; } });
   win.webContents.on("did-fail-load", (_e, code, _desc, _url, isMainFrame) => {
     if (isMainFrame && code !== -3) void win?.loadFile(join(__dirname, "..", "offline.html")).catch(() => {});
   });
@@ -115,7 +128,7 @@ function createWindow(): void {
     const cancel = dialog.showMessageBoxSync(win!, { type: "question", buttons: ["Discard", "Cancel"], defaultId: 1, cancelId: 1, message: "Discard unsaved changes?" }) === 1;
     if (!cancel) e.preventDefault(); // preventDefault here means: proceed with the unload
   });
-  win.on("closed", () => { win = null; queue.markNotReady(); });
+  win.on("closed", () => { win = null; signInReady = false; queue.markNotReady(); });
   void win.loadURL(url).catch(() => {});
 }
 
@@ -135,6 +148,7 @@ if (!app.requestSingleInstanceLock()) {
   ipcMain.on("sentinel:ready", (e) => {
     if (win && e.sender === win.webContents) { try { queue.markReady(); } catch { /* undelivered files stay queued */ } }
   });
+  ipcMain.on("sentinel:signin-ready", (e) => { if (win && e.sender === win.webContents) { signInReady = true; flushSignIn(); } });
   ipcMain.on("sentinel:start-browser-signin", (e) => { if (win && e.sender === win.webContents) void startBrowserSignIn(); });
   ipcMain.on("sentinel:retry", (e) => { if (win && e.sender === win.webContents) void win.loadURL(url).catch(() => {}); });
 
