@@ -27,6 +27,11 @@ describe("public/download.html", () => {
     expect(html).toContain('var version = "1.0.2"');
     expect(html).toContain('size: "106 MB"');
   });
+  it("shows the other platform's details and handles devices with no installer", () => {
+    expect(html).toContain('id="dl-other-meta"');
+    expect(html).toContain("navigator.maxTouchPoints");
+    expect(html).toContain("use it in your browser");
+  });
   it("supports dark mode and phones", () => {
     expect(html).toContain("prefers-color-scheme: dark");
     expect(html).toContain('name="viewport"');
