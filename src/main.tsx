@@ -12,8 +12,10 @@ import App from './App.tsx'
 import { ClerkBridge } from './account/ClerkBridge.tsx'
 import { clerkAppearance } from './account/clerkAppearance.ts'
 import { useAccount } from './account/store.ts'
+import DesktopSignInPage, { DesktopSignInUnavailable } from './account/DesktopSignInPage.tsx'
 import DesktopSignInPanel, { DesktopTicketListener } from './components/account/DesktopSignInPanel.tsx'
 
+const isDesktopSignInPage = location.pathname === '/desktop-signin'
 const clerkKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY as string | undefined
 
 // Dev without Clerk has no ClerkBridge to restore the cached plan; the e2e suite seeds it that way.
@@ -23,11 +25,19 @@ createRoot(document.getElementById('root')!).render(
   <StrictMode>
     {clerkKey ? (
       <ClerkProvider publishableKey={clerkKey} afterSignOutUrl="/" appearance={clerkAppearance}>
-        <ClerkBridge />
-        <DesktopTicketListener />
-        <DesktopSignInPanel />
-        <App />
+        {isDesktopSignInPage ? (
+          <DesktopSignInPage />
+        ) : (
+          <>
+            <ClerkBridge />
+            <DesktopTicketListener />
+            <DesktopSignInPanel />
+            <App />
+          </>
+        )}
       </ClerkProvider>
+    ) : isDesktopSignInPage ? (
+      <DesktopSignInUnavailable />
     ) : (
       <App />
     )}
