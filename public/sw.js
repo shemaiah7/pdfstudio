@@ -1,6 +1,6 @@
 // SentinelPDF service worker: offline app shell. Hand-written; bump the version suffixes to invalidate caches.
 const SHELL = "pdfstudio-shell-v1";
-const ASSETS = "pdfstudio-assets-v1";
+const ASSETS = "pdfstudio-assets-v2"; // v2: drops v1 entries poisoned with HTML (see cacheFirst)
 const MAX_ASSETS = 150;
 const STATIC = /^\/(assets\/|pdfjs-wasm\/|icons\/|favicon\.svg$|manifest\.webmanifest$)/;
 
@@ -34,12 +34,17 @@ async function navigate(request) {
   }
 }
 
+// Right after a deploy the edge can briefly answer a new /assets/ URL with the SPA's index.html (200, text/html).
+// Caching that would break the app until the next deploy, so HTML is never cached or served for static paths.
+const isHtml = (res) => (res.headers.get("content-type") || "").includes("text/html");
+
 async function cacheFirst(request) {
   const cache = await caches.open(ASSETS);
   const hit = await cache.match(request);
-  if (hit) return hit;
+  if (hit && !isHtml(hit)) return hit;
+  if (hit) await cache.delete(request);
   const res = await fetch(request);
-  if (res.ok) {
+  if (res.ok && !isHtml(res)) {
     await cache.put(request, res.clone());
     await trim(cache);
   }
