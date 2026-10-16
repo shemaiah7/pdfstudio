@@ -1,11 +1,20 @@
 export interface DesktopFile { name: string; bytes: Uint8Array }
-export interface DesktopBridge { version: string; onOpenFile(cb: (f: DesktopFile) => void): () => void; retry?: () => void }
+export interface DesktopBridge {
+  version: string;
+  onOpenFile(cb: (f: DesktopFile) => void): () => void;
+  retry?: () => void;
+  startBrowserSignIn?(): void;
+  onSignInTicket?(cb: (ticket: string) => void): () => void;
+  onSignInFailed?(cb: (reason: "expired") => void): () => void;
+}
 
 /** The Electron preload exposes window.sentinelDesktop; absent in normal browsers. */
 export const desktopBridge = (): DesktopBridge | null =>
   typeof window === "undefined" ? null : ((window as Window & { sentinelDesktop?: DesktopBridge }).sentinelDesktop ?? null);
 
 export const isDesktop = (): boolean => desktopBridge() !== null;
+
+export const canBrowserSignIn = (): boolean => typeof desktopBridge()?.startBrowserSignIn === "function";
 
 export function subscribeDesktopFiles(onFiles: (files: File[]) => void): () => void {
   const bridge = desktopBridge();

@@ -26,4 +26,5 @@ Gives the site owner unlimited AI, Deep OCR and voice minutes (Turnstile still a
 
 ## Protocol
 POST /session { turnstileToken, ownerKey? } → { token, expiresAt, owner? }
+POST /desktop/ticket (Bearer token) → { ticket } (one-time Clerk sign-in token, 300 s; 5 per minute)
 POST /ai (Bearer token) { task, document, ... } → SSE: delta / done / error

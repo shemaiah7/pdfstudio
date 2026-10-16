@@ -11,8 +11,10 @@ The terms page at `public/terms.html` is a draft. Fill in `[REFUND POLICY — ow
 ## 1. Clerk
 
 1. Create an application and enable **Google** and **Email link** (email verification link) sign-in.
-2. Add the allowed origin `https://pdfstudio.shemaiah7.workers.dev` (and your own domain if you add one).
+2. Add the allowed origins `https://pdfstudio.shemaiah7.workers.dev`, `https://sentinelpdf.com` and `https://www.sentinelpdf.com` (and any other domain you add).
 3. Note three values for later: the **Frontend API URL** (this becomes `CLERK_ISSUER`; a trailing slash is fine), the **secret key** (`CLERK_SECRET_KEY`) and the **publishable key** (`VITE_CLERK_PUBLISHABLE_KEY`, used in step 5).
+
+**Desktop sign-in:** in the Clerk dashboard → User & authentication → Email, turn on **Email verification code** for sign-in and sign-up (keep the magic link and Google). Sign-up must require only an email address — turn off password, name and username requirements — or new accounts can't finish with an email code in the desktop app. The desktop app's browser hand-off uses one-time sign-in tokens, which need only the `CLERK_SECRET_KEY` secret you already set.
 
 ## 2. Stripe Dashboard
 

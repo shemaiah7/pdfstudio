@@ -5,8 +5,26 @@ import { autoUpdater } from "electron-updater";
 import { APP_URL, APP_ORIGINS } from "./config";
 import { allowPermission, isOpenablePdf, navigationTarget, pdfPathsFromArgv, ownerKeyFromLink, linkFromArgv, LINK_SCHEME } from "./rules";
 import { OpenQueue } from "./openQueue";
+import { randomBytes } from "node:crypto";
+import { createPendingSignIn, signInLinkFrom, consumeSignIn, type PendingSignIn } from "./signin";
+
+// Test-only: lets an e2e run use its own profile (and single-instance lock) beside an installed copy.
+if (!app.isPackaged && process.env.SENTINEL_USER_DATA) app.setPath("userData", process.env.SENTINEL_USER_DATA);
 
 let win: BrowserWindow | null = null;
+let pendingSignIn: PendingSignIn | null = null;
+// A ticket (or failure) is held here until the page has subscribed, so a reload or early link never drops it.
+let heldSignIn: { kind: "ticket"; ticket: string; until: number } | { kind: "failed"; until: number } | null = null;
+let signInReady = false;
+const HELD_MS = 300_000;
+function flushSignIn(): void {
+  if (!heldSignIn || !signInReady || !win) return;
+  const held = heldSignIn;
+  heldSignIn = null;
+  if (Date.now() > held.until) return;
+  if (held.kind === "ticket") win.webContents.send("sentinel:signin-ticket", held.ticket);
+  else win.webContents.send("sentinel:signin-failed", "expired");
+}
 const queue = new OpenQueue((f) => win?.webContents.send("sentinel:open-file", f));
 
 async function openPath(path: string): Promise<void> {
@@ -51,6 +69,31 @@ async function handleOwnerLink(link: string): Promise<void> {
   } catch { /* a bad link must never crash the app */ }
 }
 
+async function startBrowserSignIn(): Promise<void> {
+  pendingSignIn = createPendingSignIn(Date.now(), (n) => new Uint8Array(randomBytes(n)));
+  const target = new URL("/desktop-signin", url);
+  target.searchParams.set("state", pendingSignIn.state);
+  if (!app.isPackaged && process.env.SENTINEL_TEST_NO_BROWSER === "1") { (globalThis as unknown as { __sentinelLastSignInUrl: string }).__sentinelLastSignInUrl = target.toString(); return; }
+  await shell.openExternal(target.toString()).catch(() => {});
+}
+
+async function handleSignInLink(link: string): Promise<boolean> {
+  const parsed = signInLinkFrom(link);
+  if (!parsed) return false;
+  await app.whenReady();
+  if (!win) createWindow(); else { if (win.isMinimized()) win.restore(); win.focus(); }
+  const result = consumeSignIn(pendingSignIn, parsed, Date.now());
+  if (result === "ok") { pendingSignIn = null; heldSignIn = { kind: "ticket", ticket: parsed.ticket, until: Date.now() + HELD_MS }; }
+  else if (!(heldSignIn?.kind === "ticket" && Date.now() <= heldSignIn.until)) heldSignIn = { kind: "failed", until: Date.now() + HELD_MS }; // a failure never replaces a waiting ticket
+  flushSignIn();
+  return true;
+}
+
+async function handleLink(link: string): Promise<void> {
+  if (await handleSignInLink(link)) return;
+  await handleOwnerLink(link);
+}
+
 function openExternal(url: string): void { if (navigationTarget(url, APP_ORIGINS) === "external") void shell.openExternal(url); }
 
 function createWindow(): void {
@@ -76,7 +119,7 @@ function createWindow(): void {
   win.webContents.on("will-redirect", (e, url, _inPlace, isMainFrame) => {
     if (isMainFrame && navigationTarget(url, APP_ORIGINS) !== "app") { e.preventDefault(); openExternal(url); }
   });
-  win.webContents.on("did-start-navigation", (_e, _url, _inPlace, isMainFrame) => { if (isMainFrame) queue.markNotReady(); });
+  win.webContents.on("did-start-navigation", (_e, _url, isInPlace, isMainFrame) => { if (isMainFrame && !isInPlace) { queue.markNotReady(); signInReady = false; } });
   win.webContents.on("did-fail-load", (_e, code, _desc, _url, isMainFrame) => {
     if (isMainFrame && code !== -3) void win?.loadFile(join(__dirname, "..", "offline.html")).catch(() => {});
   });
@@ -85,7 +128,7 @@ function createWindow(): void {
     const cancel = dialog.showMessageBoxSync(win!, { type: "question", buttons: ["Discard", "Cancel"], defaultId: 1, cancelId: 1, message: "Discard unsaved changes?" }) === 1;
     if (!cancel) e.preventDefault(); // preventDefault here means: proceed with the unload
   });
-  win.on("closed", () => { win = null; queue.markNotReady(); });
+  win.on("closed", () => { win = null; signInReady = false; queue.markNotReady(); });
   void win.loadURL(url).catch(() => {});
 }
 
@@ -96,15 +139,17 @@ if (!app.requestSingleInstanceLock()) {
   app.on("second-instance", (_e, argv) => {
     for (const p of pdfPathsFromArgv(argv)) void openPath(p);
     const link = linkFromArgv(argv);
-    if (link) void handleOwnerLink(link);
+    if (link) void handleLink(link);
     win?.focus();
   });
   app.on("open-file", (e, path) => { e.preventDefault(); void openPath(path); }); // macOS; may fire before ready
-  app.on("open-url", (e, link) => { e.preventDefault(); void handleOwnerLink(link); }); // macOS; may fire before ready
+  app.on("open-url", (e, link) => { e.preventDefault(); void handleLink(link); }); // macOS; may fire before ready
 
   ipcMain.on("sentinel:ready", (e) => {
     if (win && e.sender === win.webContents) { try { queue.markReady(); } catch { /* undelivered files stay queued */ } }
   });
+  ipcMain.on("sentinel:signin-ready", (e) => { if (win && e.sender === win.webContents) { signInReady = true; flushSignIn(); } });
+  ipcMain.on("sentinel:start-browser-signin", (e) => { if (win && e.sender === win.webContents) void startBrowserSignIn(); });
   ipcMain.on("sentinel:retry", (e) => { if (win && e.sender === win.webContents) void win.loadURL(url).catch(() => {}); });
 
   app.whenReady().then(() => {
@@ -114,7 +159,7 @@ if (!app.requestSingleInstanceLock()) {
     createWindow();
     for (const p of pdfPathsFromArgv(process.argv)) void openPath(p); // Windows first launch
     const firstLink = linkFromArgv(process.argv);
-    if (firstLink) void handleOwnerLink(firstLink);
+    if (firstLink) void handleLink(firstLink);
     if (app.isPackaged) {
       autoUpdater.on("error", () => {});
       autoUpdater.on("update-downloaded", async () => {

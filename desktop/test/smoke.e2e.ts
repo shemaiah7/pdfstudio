@@ -1,10 +1,13 @@
 import { test, expect, _electron as electron } from "@playwright/test";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 
 test("the window loads the app with the bridge", async () => {
+  const dir = mkdtempSync(tmpdir() + "/sentinel-e2e-");
   const app = await electron.launch({
     args: [resolve(__dirname, "..")],
-    env: { ...process.env, SENTINEL_APP_URL: "https://pdfstudio.shemaiah7.workers.dev" } as Record<string, string>,
+    env: { ...process.env, SENTINEL_APP_URL: "https://pdfstudio.shemaiah7.workers.dev", SENTINEL_USER_DATA: dir } as Record<string, string>,
   });
   try {
     const win = await app.firstWindow();
@@ -16,5 +19,6 @@ test("the window loads the app with the bridge", async () => {
   } finally {
     // exit(), not close(): quit() would raise the unsaved-changes prompt if the page objects to unloading.
     await app.evaluate(({ app }) => app.exit(0)).catch(() => {});
+    try { rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }); } catch { /* Electron may still hold profile files while exiting (EBUSY on Windows, ENOTEMPTY on macOS); the OS temp dir is cleaned later */ }
   }
 });

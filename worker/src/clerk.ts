@@ -68,3 +68,16 @@ export async function deleteClerkUser(id: string, env: Env, fetchFn: typeof fetc
   const res = await fetchFn(`${CLERK_API}/users/${encodeURIComponent(id)}`, { method: "DELETE", headers: { authorization: `Bearer ${env.CLERK_SECRET_KEY}` } });
   if (!res.ok && res.status !== 404) throw new Error(`clerk_${res.status}`);
 }
+
+/** One-time sign-in token (Clerk Backend API) for the desktop browser hand-off. Valid 300 s, single use. */
+export async function createSignInToken(userId: string, env: Env, fetchFn: typeof fetch = fetch): Promise<string> {
+  const res = await fetchFn(`${CLERK_API}/sign_in_tokens`, {
+    method: "POST",
+    headers: { authorization: `Bearer ${env.CLERK_SECRET_KEY}`, "content-type": "application/json" },
+    body: JSON.stringify({ user_id: userId, expires_in_seconds: 300 }),
+  });
+  if (!res.ok) throw new Error(`clerk_${res.status}`);
+  const body = (await res.json()) as { token?: string };
+  if (!body.token) throw new Error("clerk_no_token");
+  return body.token;
+}

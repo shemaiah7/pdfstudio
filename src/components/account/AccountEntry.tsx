@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import { SignInButton, useUser } from "@clerk/clerk-react";
+import { useUser } from "@clerk/clerk-react";
 import AccountMenu from "./AccountMenu";
 import { initials } from "./initials";
+import SignInTrigger from "./SignInTrigger";
 import TrialPill from "./TrialPill";
 
 
@@ -18,7 +19,7 @@ export default function AccountEntry({ className = "" }: { className?: string })
   }, [open]);
 
   if (!isSignedIn) {
-    return <div className={`acct-entry ${className}`}><SignInButton mode="modal"><button type="button" className="tb-signin" data-testid="sign-in">Sign in</button></SignInButton></div>;
+    return <div className={`acct-entry ${className}`}><SignInTrigger mode="sign-in"><button type="button" className="tb-signin" data-testid="sign-in">Sign in</button></SignInTrigger></div>;
   }
   const name = user?.fullName ?? user?.primaryEmailAddress?.emailAddress ?? "";
   return (
