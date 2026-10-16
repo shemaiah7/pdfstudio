@@ -3,6 +3,12 @@ import { stateFromSearch, appLink, fetchDesktopTicket } from "./desktopTicket";
 const S = "A".repeat(43);
 describe("stateFromSearch", () => {
   it("accepts exactly one valid state", () => { expect(stateFromSearch(`?state=${S}`)).toBe(S); });
+  it("ignores Clerk's own __clerk_ params", () => {
+    expect(stateFromSearch(`?state=${S}&__clerk_status=verified&__clerk_created_session=x`)).toBe(S);
+    expect(stateFromSearch(`?state=${S}&__clerk_db_jwt=y`)).toBe(S);
+    expect(stateFromSearch("?__clerk_status=verified")).toBeNull();
+    expect(stateFromSearch(`?state=${S}&x=1&__clerk_status=verified`)).toBeNull();
+  });
   it("rejects missing, short, junk or extra params", () => {
     for (const s of ["", "?", "?state=short", `?state=${S}&x=1`, `?state=${S}!`, "?ticket=1"]) expect(stateFromSearch(s)).toBeNull();
   });

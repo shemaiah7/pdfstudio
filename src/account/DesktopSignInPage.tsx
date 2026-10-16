@@ -37,7 +37,7 @@ export default function DesktopSignInPage({ navigate = go }: { navigate?: (url: 
   if (state === null) return <DesktopSignInShell><p className="dsp-msg">{INVALID}</p></DesktopSignInShell>;
   if (!isLoaded) return <DesktopSignInShell />;
   if (!isSignedIn) {
-    return <DesktopSignInShell><SignIn routing="hash" forceRedirectUrl={window.location.href} /></DesktopSignInShell>;
+    return <DesktopSignInShell><SignIn routing="hash" withSignUp forceRedirectUrl={window.location.href} signUpForceRedirectUrl={window.location.href} /></DesktopSignInShell>;
   }
 
   async function onContinue() {

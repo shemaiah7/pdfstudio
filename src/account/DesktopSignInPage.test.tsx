@@ -6,13 +6,13 @@ import DesktopSignInPage from "./DesktopSignInPage";
 const S = "B".repeat(43);
 const h = vi.hoisted(() => ({
   loaded: true, signedIn: true,
-  getToken: vi.fn(), signOut: vi.fn(),
+  getToken: vi.fn(), signOut: vi.fn(), signInProps: {} as Record<string, unknown>,
 }));
 vi.mock("@clerk/clerk-react", () => ({
   useAuth: () => ({ isLoaded: h.loaded, isSignedIn: h.signedIn, getToken: h.getToken }),
   useUser: () => ({ user: { primaryEmailAddress: { emailAddress: "me@example.com" } } }),
   useClerk: () => ({ signOut: h.signOut }),
-  SignIn: () => <div>mock-signin</div>,
+  SignIn: (props: Record<string, unknown>) => { h.signInProps = props; return <div>mock-signin</div>; },
 }));
 
 const navigate = vi.fn();
@@ -42,6 +42,14 @@ it("renders Clerk's sign-in when signed out", () => {
   h.signedIn = false;
   mount();
   expect(screen.getByText("mock-signin")).toBeTruthy();
+});
+
+it("keeps ?state through both sign-in and first-time sign-up redirects", () => {
+  h.signedIn = false;
+  mount();
+  expect(h.signInProps.withSignUp).toBe(true);
+  expect(h.signInProps.forceRedirectUrl).toBe(window.location.href);
+  expect(h.signInProps.signUpForceRedirectUrl).toBe(window.location.href);
 });
 
 it("renders nothing but the header while Clerk loads", () => {

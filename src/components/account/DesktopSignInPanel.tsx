@@ -7,6 +7,8 @@ import Sheet from "./Sheet";
 const NO_FINISH = "Sign-in didn't finish. Try again.";
 const UNAVAILABLE = "Sign-in isn't available right now. You can keep viewing PDFs.";
 const BAD_CODE = "That code isn't right. Check the email or resend.";
+const MORE_DETAILS = "Your account needs more details. Sign in with your browser instead.";
+const CODE_ERRORS = ["form_code_incorrect", "verification_failed", "verification_expired"];
 const errCode = (e: unknown) => (e as { errors?: { code?: string }[] } | null)?.errors?.[0]?.code;
 
 /** Mounted once at the root: signs in with the ticket the desktop app hands over, even while the panel is closed. Never logs the ticket. */
@@ -22,7 +24,11 @@ export function DesktopTicketListener(): null {
   useEffect(() => {
     if (!desktop) return;
     const bridge = desktopBridge();
-    const offTicket = bridge?.onSignInTicket?.((t) => { pending.current = t; setTick((n) => n + 1); });
+    const offTicket = bridge?.onSignInTicket?.((t) => {
+      if (signedIn.current) return; // a late ticket from the browser: already signed in
+      pending.current = t;
+      setTick((n) => n + 1);
+    });
     const offFailed = bridge?.onSignInFailed?.(() => {
       if (signedIn.current) return;
       const s = useDesktopSignIn.getState();
@@ -37,6 +43,7 @@ export function DesktopTicketListener(): null {
     if (!desktop || !isLoaded || !pending.current) return;
     const ticket = pending.current;
     pending.current = null; // single use
+    if (signedIn.current) return;
     void (async () => {
       try {
         const r = await signIn.create({ strategy: "ticket", ticket });
@@ -123,10 +130,10 @@ function PanelBody() {
       const r = mode === "signIn"
         ? await signIn!.attemptFirstFactor({ strategy: "email_code", code })
         : await signUp!.attemptEmailAddressVerification({ code });
-      if (r.status !== "complete") throw new Error("incomplete");
+      if (r.status !== "complete") { setError(MORE_DETAILS); return; }
       await setActive!({ session: r.createdSessionId });
       close();
-    } catch { setError(BAD_CODE); }
+    } catch (err) { setError(CODE_ERRORS.includes(errCode(err) ?? "") ? BAD_CODE : NO_FINISH); }
     finally { setBusy(false); }
   };
 

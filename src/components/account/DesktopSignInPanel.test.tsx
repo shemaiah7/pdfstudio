@@ -66,11 +66,13 @@ it("1 choose -> browser -> waiting -> cancel", () => {
 it("2 handles a ticket with the panel closed, then closes the panel", async () => {
   const log = ["log", "warn", "error"].map((k) => vi.spyOn(console, k as "log").mockImplementation(() => {}));
   signIn().create.mockResolvedValue({ status: "complete", createdSessionId: "sess_1" });
-  mount();
+  mount(); open();
+  expect(screen.getByText("Sign in to SentinelPDF")).toBeTruthy();
   act(() => ticketCb("tkt"));
   await waitFor(() => expect(h.setActive).toHaveBeenCalledWith({ session: "sess_1" }));
   expect(signIn().create).toHaveBeenCalledWith({ strategy: "ticket", ticket: "tkt" });
   await waitFor(() => expect(useDesktopSignIn.getState().open).toBe(false));
+  await waitFor(() => expect(screen.queryByText("Sign in to SentinelPDF")).toBeNull());
   log.forEach((s) => s.mock.calls.forEach((c) => expect(JSON.stringify(c)).not.toContain("tkt")));
 });
 
@@ -162,4 +164,42 @@ it("11 renders nothing outside the desktop app", () => {
   delete (window as unknown as { sentinelDesktop?: unknown }).sentinelDesktop;
   const { container } = mount(); open();
   expect(container.innerHTML).toBe("");
+});
+
+it("12 a non-'not found' sign-in error does not start a sign-up and is shown", async () => {
+  signIn().create.mockRejectedValue({ errors: [{ code: "too_many_requests", longMessage: "Slow down." }] });
+  mount(); open();
+  fireEvent.click(screen.getByRole("button", { name: "Use an email code instead" }));
+  fireEvent.change(screen.getByRole("textbox"), { target: { value: "a@b.c" } });
+  fireEvent.submit(screen.getByRole("textbox").closest("form")!);
+  expect(await screen.findByText("Slow down.")).toBeTruthy();
+  expect(signUp().create).not.toHaveBeenCalled();
+});
+
+it("13 a sign-up that needs more details says so, not 'wrong code'", async () => {
+  signIn().create.mockRejectedValue({ errors: [{ code: "form_identifier_not_found" }] });
+  signUp().attemptEmailAddressVerification.mockResolvedValue({ status: "missing_requirements" });
+  await toCode("new@x.y");
+  submitCode("654321");
+  expect(await screen.findByText("Your account needs more details. Sign in with your browser instead.")).toBeTruthy();
+  expect(screen.queryByText("That code isn't right. Check the email or resend.")).toBeNull();
+  expect(h.setActive).not.toHaveBeenCalled();
+});
+
+it("14 other thrown errors in the code step say sign-in didn't finish", async () => {
+  signIn().create.mockResolvedValue({ supportedFirstFactors: [{ strategy: "email_code", emailAddressId: "idn_1" }] });
+  signIn().attemptFirstFactor.mockRejectedValue(new Error("network"));
+  await toCode();
+  submitCode("111111");
+  expect(await screen.findByText("Sign-in didn't finish. Try again.")).toBeTruthy();
+});
+
+it("15 a late browser ticket is dropped silently once signed in", async () => {
+  h.signedIn = true;
+  mount();
+  act(() => ticketCb("tkt"));
+  await act(async () => { await Promise.resolve(); });
+  expect(signIn().create).not.toHaveBeenCalled();
+  expect(screen.queryByRole("alert")).toBeNull();
+  expect(useDesktopSignIn.getState().error).toBeNull();
 });

@@ -1,7 +1,7 @@
 export const STATE_RE = /^[A-Za-z0-9_-]{43}$/;
 export function stateFromSearch(search: string): string | null {
   const p = new URLSearchParams(search);
-  const keys = [...p.keys()];
+  const keys = [...p.keys()].filter((k) => !k.startsWith("__clerk_")); // Clerk adds its own params after a redirect
   if (keys.length !== 1 || keys[0] !== "state") return null;
   const s = p.get("state") ?? "";
   return STATE_RE.test(s) ? s : null;

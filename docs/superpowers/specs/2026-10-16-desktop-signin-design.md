@@ -84,6 +84,10 @@ When accounts are off (no Clerk key), no Sign in entry renders, as today.
 
 In the Clerk dashboard, under User & authentication → Email, enable **Email verification code** for sign-in and sign-up, alongside the magic link and Google. No new secrets: `CLERK_SECRET_KEY` (already required for accounts) is used for sign-in tokens.
 
+## Security notes
+
+POST /desktop/ticket turns a valid session JWT into a new session; a stolen JWT would already imply XSS on the app origin, which owns the session anyway.
+
 ## Error handling summary
 
 | Situation | What the user sees |
