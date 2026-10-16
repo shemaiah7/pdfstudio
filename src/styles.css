@@ -27,7 +27,7 @@ body { background: var(--bg); color: var(--text); font: var(--text-body); }
 .drop-card-sub { font-size: 13px; color: var(--color-ink-2); }
 .empty-top { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; padding: 18px 28px; }
 .empty-brand { display: flex; align-items: center; gap: 10px; font-size: 16px; font-weight: 600; }
-.empty-brand-mark { width: 30px; height: 30px; display: grid; place-items: center; border-radius: 8px; background: var(--color-primary); color: var(--color-on-primary); }
+.empty-brand-mark { width: 30px; height: 30px; display: block; border-radius: 8px; }
 .empty-top-right { display: flex; align-items: center; gap: 12px; }
 .theme-toggle-ghost { width: 36px; height: 36px; display: inline-grid; place-items: center; padding: 0; border: 0; border-radius: 10px; background: transparent; color: var(--color-ink-2); cursor: pointer; }
 .theme-toggle-ghost:hover { background: var(--color-fill-subtle); color: var(--color-ink); }
