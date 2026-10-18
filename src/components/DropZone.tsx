@@ -79,6 +79,10 @@ export default function DropZone({ onFiles, empty, forceOver = false }: Props) {
               <p className="empty-limits">Free: 20 AI requests and 30 minutes of voice a day</p>
             </div>
           </div>
+          <footer className="empty-footer">
+            <span>© SentinelPDF · Melantech LLC</span>
+            <nav aria-label="Legal and downloads"><a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href="/download">Desktop app</a></nav>
+          </footer>
         </>
       ) : (over || forceOver) ? (
         <div className="drop-card" aria-hidden="true">

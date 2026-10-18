@@ -18,6 +18,11 @@ describe("DropZone", () => {
     render(<DropZone onFiles={vi.fn()} empty />);
     expect(screen.getByTestId("account-entry-stub")).toBeTruthy();
   });
+  it("links privacy, terms and the desktop app in the start-screen footer (Google branding needs the privacy link)", () => {
+    render(<DropZone onFiles={vi.fn()} empty />);
+    const hrefs = Array.from(document.querySelectorAll("footer a")).map((a) => a.getAttribute("href"));
+    expect(hrefs).toEqual(["/privacy", "/terms", "/download"]);
+  });
   it("shows no account control when accounts are off", () => {
     render(<DropZone onFiles={vi.fn()} empty />);
     expect(screen.queryByTestId("account-entry-stub")).toBeNull();
