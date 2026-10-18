@@ -88,8 +88,11 @@ Check that `POST https://pdfstudio-ai.shemaiah7.workers.dev/me` with an anonymou
 
 ## 5. Rollout sequence
 
+**Scheduled (owner decision, 2026-10-17):** notice goes up **Monday 2026-10-19** (`VITE_ROLLOUT_NOTICE="October 26"`, app deploy only); launch **Monday 2026-10-26** (step 3 below, then the trial clock in step 4, then the owner's own Pro purchase and refund). The start-screen allowance line switches automatically with `VITE_PAYWALL_ENABLED`.
+
+
 1. **Accounts phase, flag off.** With the Worker from step 4 live, set `VITE_CLERK_PUBLISHABLE_KEY` in `.env.production`, keep `VITE_PAYWALL_ENABLED=false`, and deploy the app (`npm run deploy`, from a clean worktree of `origin/main`; merging does not deploy). People can sign in and accept the terms, but nothing is locked and everyone gets the current anonymous quotas. Check that sign-in works live and that a new account sees the terms step.
-2. **Notice (7 days).** Set `VITE_ROLLOUT_NOTICE` to the launch date only, for example `VITE_ROLLOUT_NOTICE="November 3"`. The banner wraps it: "From November 3, AI and editing need a free account. Viewing stays free." Rebuild, deploy, and keep it up for 7 days.
+2. **Notice (7 days).** Set `VITE_ROLLOUT_NOTICE` to the launch date only, for example `VITE_ROLLOUT_NOTICE="November 3"`. The banner wraps it: "From November 3, AI, Voice and editing need a free account. Your first 7 days include everything; viewing PDFs stays free." Rebuild, deploy, and keep it up for 7 days.
 3. **Launch.** Set the Worker var `PAYWALL_ENABLED="true"` and `VITE_PAYWALL_ENABLED=true` in `.env.production`, clear `VITE_ROLLOUT_NOTICE`, run all tests, deploy the Worker (`npm --prefix worker run deploy`), then the app (`npm run deploy`, from a clean worktree of `origin/main`).
 4. **Trial clock, once, right after the flag flip.** Accounts created during the accounts and notice phases started their 7-day trial at sign-up, so most of it ran while nothing was gated. To give everyone at least 7 days of full access from launch, run this once from `worker/`, with `<LAUNCH_UNIX>` replaced by the launch time in Unix seconds (for example the output of `date +%s` at the flip):
 
