@@ -149,5 +149,5 @@ it("shows the trust note and footer links", () => {
   expect(screen.getByText("This one-time pass works only for the app that asked for it and expires in 5 minutes.")).toBeTruthy();
   expect(screen.getByRole("link", { name: "Privacy" }).getAttribute("href")).toBe("/privacy");
   expect(screen.getByRole("link", { name: "Terms" }).getAttribute("href")).toBe("/terms");
-  expect(screen.getByText("© SentinelPDF · Melantech LLC")).toBeTruthy();
+  expect(screen.getByText("© SentinelPDF · Melantech Innovations L.L.C.")).toBeTruthy();
 });

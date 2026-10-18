@@ -67,7 +67,7 @@ export function DesktopSignInShell({ children, step }: { children?: ReactNode; s
         </p>
       </div>
       <footer className="dsp-footer">
-        <span>© SentinelPDF · Melantech LLC</span>
+        <span>© SentinelPDF · Melantech Innovations L.L.C.</span>
         <nav aria-label="Legal"><a href="/privacy">Privacy</a><a href="/terms">Terms</a></nav>
       </footer>
     </main>

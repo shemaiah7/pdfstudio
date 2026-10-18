@@ -15,7 +15,7 @@ describe("public/terms.html", () => {
   });
   it("has no owner placeholders left and names the operator, refunds and contact", () => {
     expect(html).not.toMatch(/\[(REFUND|CONTACT)[^\]]*\]/);
-    expect(html).toContain("operated by Melantech LLC");
+    expect(html).toContain("operated by Melantech Innovations L.L.C.");
     expect(html).toContain("payments are non-refundable");
     expect(html).toContain("mailto:shemaiah.sanders@melantechinnovations.com");
   });

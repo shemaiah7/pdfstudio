@@ -11,7 +11,7 @@ describe("terms of use clauses the owner chose", () => {
     ["courts, not arbitration", "state or federal courts located in New Jersey"],
     ["cap = fees paid", "limited to the amount you paid us for SentinelPDF in the 12 months before the claim"],
     ["non-waivable carve-out", "does not limit liability for fraud, gross negligence, wilful misconduct"],
-    ["indemnification", "agree to defend and reimburse Melantech LLC"],
+    ["indemnification", "agree to defend and reimburse Melantech Innovations L.L.C."],
     ["automatic renewal", "Pro renews automatically"],
     ["AI provider retention", "may keep it for a limited time for safety and abuse monitoring"],
     ["suspension", "We may suspend or close an account"],
