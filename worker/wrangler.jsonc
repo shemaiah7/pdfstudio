@@ -14,8 +14,8 @@
     "VOICE_DAILY_SECONDS": "1800",
     "PAYWALL_ENABLED": "false",
     "CLERK_ISSUER": "https://clerk.sentinelpdf.com",
-    "STRIPE_PRICE_MONTHLY": "",
-    "STRIPE_PRICE_YEARLY": "",
+    "STRIPE_PRICE_MONTHLY": "price_1URiiK2dUzKbw9XRLUj2pF7L",
+    "STRIPE_PRICE_YEARLY": "price_1URiiw2dUzKbw9XRDzm8p9iK",
     "APP_URL": "https://sentinelpdf.com"
   }
 }

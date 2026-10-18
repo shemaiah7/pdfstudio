@@ -18,7 +18,7 @@ The terms page at `public/terms.html` is a draft. Fill in `[REFUND POLICY — ow
 
 ## 2. Stripe Dashboard
 
-1. Create the product **PDF Studio Pro** with two recurring prices: **$29 per month** and **$249 per year**. Note their price ids for `STRIPE_PRICE_MONTHLY` and `STRIPE_PRICE_YEARLY`.
+1. Create the product **SentinelPDF Pro** (in the dedicated **SentinelPDF** Stripe account, not a shared one) with two recurring prices: **$29 per month** and **$249 per year**. Note their price ids for `STRIPE_PRICE_MONTHLY` and `STRIPE_PRICE_YEARLY`.
 2. Turn on the **Customer Portal** (Settings, Billing, Customer portal). Allow customers to cancel subscriptions, with cancellation at the **end of the billing period**.
 3. Add a webhook endpoint `https://pdfstudio-ai.shemaiah7.workers.dev/billing/webhook` with these events:
    - `checkout.session.completed`
