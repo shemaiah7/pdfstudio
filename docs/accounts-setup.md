@@ -4,7 +4,7 @@ This is the one-time setup for sign-in (Clerk), billing (Stripe) and the account
 
 > **D1 is already set up:** the `pdfstudio` database (`c8f49593-1c4f-438f-92c0-04dcdd1879fd`) was created on 2026-10-13, its id is in `worker/wrangler.jsonc`, and migration `0001_accounts.sql` has been applied remotely. Until you finish the rest of this setup, nothing here is live and `PAYWALL_ENABLED` stays `"false"`.
 
-The terms page at `public/terms.html` is a draft. Fill in `[REFUND POLICY — owner to decide]` and `[CONTACT EMAIL — owner to fill in]` and get it legally reviewed before launch.
+The terms (`public/terms.html`, version 2026-10-17.2) and privacy policy (`public/privacy.html`) are final, reviewed and approved by the owner: New Jersey law and courts, liability capped at fees paid in the prior 12 months, no refunds. Changing the terms means bumping `TERMS_VERSION` in `src/account/terms.ts`, `worker/src/terms.ts` and the page together.
 
 **Order matters: the Worker goes first.** Set up Clerk and Stripe (steps 1–2) to get their values, configure and deploy the Worker with the D1 id, `CLERK_ISSUER` and the secrets (steps 3–4), and only then ship the app with a Clerk publishable key (step 5). An app with a Clerk key talking to a Worker without `CLERK_ISSUER` cannot start a signed-in session: every signed-in request fails and users see "Please sign in again."
 
