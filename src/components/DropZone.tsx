@@ -80,7 +80,7 @@ export default function DropZone({ onFiles, empty, forceOver = false }: Props) {
             </div>
           </div>
           <footer className="empty-footer">
-            <span>© SentinelPDF · Melantech LLC</span>
+            <span>© SentinelPDF · Melantech Innovations L.L.C.</span>
             <nav aria-label="Legal and downloads"><a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href="/download">Desktop app</a></nav>
           </footer>
         </>
