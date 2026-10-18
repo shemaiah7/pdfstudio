@@ -11,7 +11,7 @@ export default function RolloutBanner({ notice = defaultNotice() }: { notice?: s
   const dismiss = () => { setHidden(true); try { localStorage.setItem(KEY, "1"); } catch { /* storage blocked */ } };
   return (
     <div className="acct-rollout" role="status">
-      <span>{`From ${notice}, AI and editing need a free account. Viewing stays free.`}</span>
+      <span>{`From ${notice}, AI, Voice and editing need a free account. Your first 7 days include everything; viewing PDFs stays free.`}</span>
       <button type="button" className="acct-x" aria-label="Dismiss" onClick={dismiss}>×</button>
     </div>
   );

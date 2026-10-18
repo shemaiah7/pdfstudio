@@ -12,7 +12,7 @@ it("renders nothing without a notice", () => {
 });
 it("shows the notice and remembers dismissal", () => {
   const { unmount } = render(<RolloutBanner notice="Nov 3" />);
-  expect(screen.getByText("From Nov 3, AI and editing need a free account. Viewing stays free.")).toBeTruthy();
+  expect(screen.getByText("From Nov 3, AI, Voice and editing need a free account. Your first 7 days include everything; viewing PDFs stays free.")).toBeTruthy();
   fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
   expect(screen.queryByRole("status")).toBeNull();
   expect(localStorage.getItem("pdfstudio.rolloutDismissed")).toBe("1");

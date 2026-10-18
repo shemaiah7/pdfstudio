@@ -6,6 +6,7 @@ import InstallButton from "./InstallButton";
 import DefaultAppButton from "./DefaultAppButton";
 import AccountEntry from "./account/AccountEntry";
 import { clerkEnabled } from "../account/clerk";
+import { paywallEnabled } from "../account/capabilities";
 
 const FEATURES: { icon: IconName; title: string; text: string }[] = [
   { icon: "highlight", title: "A full editor, no upload", text: "Mark up, sign, retype text, merge files. Your PDF stays on this device." },
@@ -76,7 +77,7 @@ export default function DropZone({ onFiles, empty, forceOver = false }: Props) {
                   <p className="muted" data-testid="voice-hint">Open a document, then talk to it: ask questions by voice and hear answers cited to the page.</p>
                 </div>
               </div>
-              <p className="empty-limits">Free: 20 AI requests and 30 minutes of voice a day</p>
+              <p className="empty-limits">{paywallEnabled() ? "Free account: 7 days of everything, then 5 AI questions and 5 Voice minutes a day · Pro $29/mo" : "Free: 20 AI requests and 30 minutes of voice a day"}</p>
             </div>
           </div>
           <footer className="empty-footer">
