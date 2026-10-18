@@ -6,11 +6,11 @@ import DesktopSignInPage from "./DesktopSignInPage";
 const S = "B".repeat(43);
 const h = vi.hoisted(() => ({
   loaded: true, signedIn: true,
-  getToken: vi.fn(), signOut: vi.fn(), signInProps: {} as Record<string, unknown>,
+  user: {} as Record<string, unknown>, getToken: vi.fn(), signOut: vi.fn(), signInProps: {} as Record<string, unknown>,
 }));
 vi.mock("@clerk/clerk-react", () => ({
   useAuth: () => ({ isLoaded: h.loaded, isSignedIn: h.signedIn, getToken: h.getToken }),
-  useUser: () => ({ user: { primaryEmailAddress: { emailAddress: "me@example.com" } } }),
+  useUser: () => ({ user: h.user }),
   useClerk: () => ({ signOut: h.signOut }),
   SignIn: (props: Record<string, unknown>) => { h.signInProps = props; return <div>mock-signin</div>; },
 }));
@@ -19,6 +19,7 @@ const navigate = vi.fn();
 const fetchSpy = vi.fn();
 beforeEach(() => {
   h.loaded = true; h.signedIn = true;
+  h.user = { primaryEmailAddress: { emailAddress: "me@example.com" } };
   h.getToken.mockReset().mockResolvedValue("jwt1");
   h.signOut.mockReset().mockResolvedValue(undefined);
   navigate.mockClear(); fetchSpy.mockReset();
@@ -34,7 +35,7 @@ it("shows only the invalid message for a bad state and never fetches", () => {
   window.history.replaceState({}, "", "/desktop-signin?state=short");
   mount();
   expect(screen.getByText("This sign-in link isn't valid. Start again from the SentinelPDF app.")).toBeTruthy();
-  expect(screen.queryByRole("button", { name: "Continue" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Continue to the app" })).toBeNull();
   expect(fetchSpy).not.toHaveBeenCalled();
 });
 
@@ -56,34 +57,34 @@ it("renders nothing but the header while Clerk loads", () => {
   h.loaded = false;
   mount();
   expect(screen.queryByText("mock-signin")).toBeNull();
-  expect(screen.queryByRole("button", { name: "Continue" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Continue to the app" })).toBeNull();
 });
 
 it("confirms the account when signed in", () => {
   mount();
-  expect(screen.getByText(/Sign in to the SentinelPDF app as/)).toBeTruthy();
+  expect(screen.getByRole("heading", { level: 1, name: "Sign in to the SentinelPDF desktop app" })).toBeTruthy();
   expect(screen.getByText("me@example.com")).toBeTruthy();
-  expect(screen.getByRole("button", { name: "Continue" })).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Continue to the app" })).toBeTruthy();
   expect(screen.getByRole("button", { name: "Not you? Switch account" })).toBeTruthy();
 });
 
 it("Continue fetches a ticket with the JWT, opens the app link and offers a re-open button", async () => {
   reply(200, { ticket: "tkt" });
   mount();
-  fireEvent.click(screen.getByRole("button", { name: "Continue" }));
-  await screen.findByText("You're signed in. Return to SentinelPDF.");
+  fireEvent.click(screen.getByRole("button", { name: "Continue to the app" }));
+  await screen.findByText("You're signed in to the app");
   const link = `sentinelpdf://signin?ticket=tkt&state=${S}`;
   expect(fetchSpy.mock.calls[0][1]).toEqual(expect.objectContaining({ method: "POST", headers: expect.objectContaining({ authorization: "Bearer jwt1" }) }));
   expect(navigate).toHaveBeenCalledWith(link);
   navigate.mockClear();
-  fireEvent.click(screen.getByRole("button", { name: "Return to SentinelPDF" }));
+  fireEvent.click(screen.getByRole("button", { name: "Open SentinelPDF" }));
   expect(navigate).toHaveBeenCalledWith(link);
 });
 
 it("429 says to wait", async () => {
   reply(429, { error: "rate_limited" });
   mount();
-  fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+  fireEvent.click(screen.getByRole("button", { name: "Continue to the app" }));
   await screen.findByText("Too many tries. Wait a minute and try again.");
   expect(navigate).not.toHaveBeenCalled();
 });
@@ -91,7 +92,7 @@ it("429 says to wait", async () => {
 it("other errors say sign-in is unavailable", async () => {
   reply(502, { error: "upstream" });
   mount();
-  fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+  fireEvent.click(screen.getByRole("button", { name: "Continue to the app" }));
   await screen.findByText("Sign-in isn't available right now. You can keep viewing PDFs.");
 });
 
@@ -100,4 +101,53 @@ it("Switch account signs out and returns to the sign-in view", async () => {
   fireEvent.click(screen.getByRole("button", { name: "Not you? Switch account" }));
   await waitFor(() => expect(h.signOut).toHaveBeenCalled());
   expect(h.signOut).toHaveBeenCalledWith({ redirectUrl: window.location.href });
+});
+
+const step = () => screen.getByRole("list", { name: "Progress" }).querySelector('[aria-current="step"]')?.textContent;
+
+it("marks step 2 on the confirm card", () => {
+  mount();
+  expect(step()).toContain("Confirm");
+});
+
+it("marks step 3 on the done card", async () => {
+  reply(200, { ticket: "tkt" });
+  mount();
+  fireEvent.click(screen.getByRole("button", { name: "Continue to the app" }));
+  await screen.findByText("You can close this tab.");
+  expect(step()).toContain("Back to the app");
+  expect(screen.getByText("If SentinelPDF didn't open, use the button below.")).toBeTruthy();
+});
+
+it("marks step 1 when signed out", () => {
+  h.signedIn = false;
+  mount();
+  expect(step()).toContain("Sign in");
+});
+
+it("shows the profile photo and full name when present", () => {
+  h.user = { imageUrl: "https://img.example/a.png", fullName: "Ada Lovelace", primaryEmailAddress: { emailAddress: "me@example.com" } };
+  const { container } = mount();
+  expect(container.querySelector("img.dsp-avatar")?.getAttribute("src")).toBe("https://img.example/a.png");
+  expect(screen.getByText("Ada Lovelace")).toBeTruthy();
+});
+
+it("falls back to initials without a photo", () => {
+  h.user = { fullName: "Ada Lovelace", primaryEmailAddress: { emailAddress: "me@example.com" } };
+  const { container } = mount();
+  expect(container.querySelector("img.dsp-avatar")).toBeNull();
+  expect(container.querySelector(".dsp-initials")?.textContent).toBe("AL");
+});
+
+it("initial comes from the email when there is no name", () => {
+  const { container } = mount();
+  expect(container.querySelector(".dsp-initials")?.textContent).toBe("M");
+});
+
+it("shows the trust note and footer links", () => {
+  mount();
+  expect(screen.getByText("This one-time pass works only for the app that asked for it and expires in 5 minutes.")).toBeTruthy();
+  expect(screen.getByRole("link", { name: "Privacy" }).getAttribute("href")).toBe("/privacy");
+  expect(screen.getByRole("link", { name: "Terms" }).getAttribute("href")).toBe("/terms");
+  expect(screen.getByText("© SentinelPDF · Melantech LLC")).toBeTruthy();
 });
