@@ -10,6 +10,7 @@ import { useSheets } from "./account/useGate";
 vi.mock("../pdf/render", () => ({
   renderPage: vi.fn(() => ({ cancel: () => {}, promise: Promise.resolve() })),
   releaseSource: vi.fn(),
+  getPage: vi.fn(async () => ({ view: [0, 0, 612, 792], rotate: 0 })),
 }));
 
 beforeEach(() => {

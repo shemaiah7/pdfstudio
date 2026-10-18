@@ -161,7 +161,7 @@ export default function App() {
           {pagesOpen ? <button type="button" className="pages-scrim" aria-label="Close pages" onClick={() => setPagesOpen(false)} /> : null}
           <ThumbnailSidebar open={pagesOpen} onPick={() => setPagesOpen(false)} />
           <div className="canvas-area">
-            <PageView scale={scale} />
+            <PageView scale={scale} onFitScale={setScale} />
             <ToolPalette />
           </div>
           <RightPanel />
