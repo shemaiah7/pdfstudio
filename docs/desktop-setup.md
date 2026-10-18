@@ -1,6 +1,6 @@
 # SentinelPDF desktop: one-time signing setup
 
-Do these steps once so the Mac app is signed and notarized. Windows needs nothing.
+Do these steps once so the Mac app is signed and notarized. Windows signing is optional; see "Windows code signing" below.
 
 The desktop window loads the app at `https://sentinelpdf.com` (`APP_URL` in `desktop/src/config.ts`).
 Never paste any of these values into chat. Enter them only on the pages named below.
@@ -43,3 +43,21 @@ open "sentinelpdf://owner#$(pbpaste)"
 SentinelPDF asks "Turn on owner access on this computer?"; choose **Turn on**. The key goes straight from the clipboard to the app and never appears on screen or in browser history. To turn owner access off, run `open "sentinelpdf://owner#"` and choose **Turn off**.
 
 Check it worked: open a PDF and run one AI request; the AI panel's footer reads "Owner · unlimited".
+
+## Windows code signing (Azure Artifact Signing)
+
+Until this is switched on, the Windows installer is unsigned and SmartScreen shows "Windows protected your PC".
+
+Already set up (October 2026):
+- Azure subscription "SentinelPDF Signing", resource group and Artifact Signing account `sentinelpdf-signing` (Basic, East US, endpoint `https://eus.codesigning.azure.net/`).
+- Organization identity validation for Melantech Innovations L.L.C. (ID `c3d96706-a437-471f-b4ca-66b4d2712ae9`).
+- App registration `sentinelpdf-github-signing` with the "Artifact Signing Certificate Profile Signer" role on the account. Its client secret expires 2028-10-16; make a new one before then and replace the GitHub secret.
+- GitHub secrets `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`.
+
+To switch it on, after the identity validation shows **Completed**:
+1. On the signing account, open Certificate profiles → Create → **Public Trust**, name it `SentinelPDF`, and pick the completed validation.
+2. Open the profile and note the certificate's subject **CN** exactly as shown.
+3. In GitHub → Settings → Secrets and variables → Actions → **Variables**, add `AZURE_SIGNING_PROFILE` = `SentinelPDF` and `AZURE_PUBLISHER_NAME` = that CN.
+4. Release as usual. The Windows job signs the installer and fails if the signature isn't valid or the signer name doesn't match `AZURE_PUBLISHER_NAME`.
+
+`AZURE_PUBLISHER_NAME` must never change afterwards without care: installed apps check that later updates are signed by that name.
