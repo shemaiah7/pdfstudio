@@ -63,7 +63,7 @@ jobs:
         run: npm run dist -- --publish never --config.mac.notarize=false
         env: { CSC_IDENTITY_AUTO_DISCOVERY: "false" }
 
-  # Tag pushes: build, sign (macOS only) and upload into the draft release made by prepare.
+  # Tag pushes: build, sign (macOS; Windows once AZURE_SIGNING_PROFILE is set) and upload into the draft release made by prepare.
   release-build:
     needs: prepare
     strategy:
@@ -104,6 +104,7 @@ jobs:
           rm -f "$RUNNER_TEMP/cert.p12"
           security find-identity -v -p codesigning "$KEYCHAIN" | grep -q "Developer ID Application" || { echo "Developer ID identity not found"; exit 1; }
       - name: Package and upload to the draft
+        if: matrix.os == 'macos-latest' || vars.AZURE_SIGNING_PROFILE == ''
         run: npm run dist -- --publish always
         env:
           GH_TOKEN: ${{ github.token }}
@@ -111,6 +112,37 @@ jobs:
           APPLE_APP_SPECIFIC_PASSWORD: ${{ matrix.os == 'macos-latest' && secrets.APPLE_APP_SPECIFIC_PASSWORD || '' }}
           APPLE_TEAM_ID: ${{ matrix.os == 'macos-latest' && secrets.APPLE_TEAM_ID || '' }}
           CSC_IDENTITY_AUTO_DISCOVERY: ${{ matrix.os == 'macos-latest' && 'true' || 'false' }}
+
+      # Windows signing with Azure Artifact Signing. Off until the repo variable AZURE_SIGNING_PROFILE
+      # (the certificate profile name) is set; AZURE_PUBLISHER_NAME must match the certificate's
+      # subject CN exactly, because electron-updater checks it before installing later updates.
+      - name: Package, sign and upload to the draft (Windows, Azure Artifact Signing)
+        if: matrix.os == 'windows-latest' && vars.AZURE_SIGNING_PROFILE != ''
+        shell: bash
+        run: >-
+          npm run dist -- --publish always
+          --config.win.azureSignOptions.endpoint=https://eus.codesigning.azure.net/
+          --config.win.azureSignOptions.codeSigningAccountName=sentinelpdf-signing
+          "--config.win.azureSignOptions.certificateProfileName=$AZURE_SIGNING_PROFILE"
+          "--config.win.azureSignOptions.publisherName=$AZURE_PUBLISHER_NAME"
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          AZURE_SIGNING_PROFILE: ${{ vars.AZURE_SIGNING_PROFILE }}
+          AZURE_PUBLISHER_NAME: ${{ vars.AZURE_PUBLISHER_NAME }}
+      - name: Check the Windows installer signature
+        if: matrix.os == 'windows-latest' && vars.AZURE_SIGNING_PROFILE != ''
+        shell: pwsh
+        env:
+          AZURE_PUBLISHER_NAME: ${{ vars.AZURE_PUBLISHER_NAME }}
+        run: |
+          $sig = Get-AuthenticodeSignature release/SentinelPDF-windows.exe
+          Write-Host "Status: $($sig.Status)  Signer: $($sig.SignerCertificate.Subject)"
+          if ($sig.Status -ne 'Valid') { throw "Installer signature is $($sig.Status)" }
+          if ($sig.SignerCertificate.GetNameInfo('SimpleName', $false) -ne $env:AZURE_PUBLISHER_NAME) { throw "Signer CN does not match AZURE_PUBLISHER_NAME" }
 
   # Both builds succeeded: publish the draft.
   publish:
