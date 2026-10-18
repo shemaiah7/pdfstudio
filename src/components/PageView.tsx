@@ -20,6 +20,8 @@ import FormLayer from "./FormLayer";
 import { useFields } from "./useFields";
 import OcrBadge from "./ocr/OcrBadge";
 import AnnotationOverlay from "./AnnotationOverlay";
+import { getPage } from "../pdf/render";
+import { fitWidthScale } from "./fitScale";
 
 function PageForm({ source, sourceId, sourcePageIndex, meta }: { source: SourceFile; sourceId: string; sourcePageIndex: number; meta: PageMeta }) {
   const fields = useFields(source);
@@ -54,7 +56,7 @@ export function BlockHint({ pageId, scale, heightPt, register }: { pageId: strin
   return box ? <div className="block-hint-outline" style={{ left: box.x * scale, top: (heightPt - box.y - box.height) * scale, width: box.width * scale, height: box.height * scale }} /> : null;
 }
 
-interface Props { scale: number }
+interface Props { scale: number; onFitScale?: (s: number) => void }
 type PageMetaPt = { widthPt: number; heightPt: number; pageRotate: number };
 const contains = (b: Box, x: number, y: number) => x >= b.x && x <= b.x + b.width && y >= b.y && y <= b.y + b.height;
 const WHITE: [number, number, number] = [1, 1, 1];
@@ -65,7 +67,8 @@ function pointAt(pageEl: HTMLElement, clientX: number, clientY: number, scale: n
   return { x: (clientX - r.left) / scale, y: heightPt - (clientY - r.top) / scale };
 }
 
-export default function PageView({ scale }: Props) {
+export default function PageView({ scale, onFitScale }: Props) {
+  const mainRef = useRef<HTMLElement>(null);
   const pages = useDocumentStore((s) => s.pages);
   const sources = useDocumentStore((s) => s.sources);
   const selection = useDocumentStore((s) => s.selection);
@@ -156,8 +159,28 @@ export default function PageView({ scale }: Props) {
     });
   };
 
+  const first = pages[0];
+  /** Fits the first page's width to the pane when a document is opened (not on resize or zoom). */
+  useEffect(() => {
+    const st = useDocumentStore.getState();
+    const entry = st.pages[0];
+    const source = entry && st.sources.get(entry.sourceId);
+    const el = mainRef.current;
+    if (!entry || !source || !el || el.clientWidth <= 0 || !onFitScale) return;
+    let cancelled = false;
+    getPage(source, entry.sourcePageIndex).then((page) => {
+      if (cancelled) return;
+      let w = page.view[2] - page.view[0];
+      let h = page.view[3] - page.view[1];
+      if ((page.rotate + entry.rotation) % 180 !== 0) [w, h] = [h, w];
+      const s = fitWidthScale(el.clientWidth, w);
+      if (s !== null) onFitScale(s);
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [first?.sourceId, first?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
   return (
-    <main className="pageview">
+    <main className="pageview" ref={mainRef}>
       {pages.map((entry, i) => {
         const source = sources.get(entry.sourceId)!;
         return (
