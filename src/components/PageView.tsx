@@ -177,7 +177,7 @@ export default function PageView({ scale, onFitScale }: Props) {
       if (s !== null) onFitScale(s);
     }).catch(() => {});
     return () => { cancelled = true; };
-  }, [first?.sourceId, first?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [first?.sourceId]); // eslint-disable-line react-hooks/exhaustive-deps -- refit only when a new document is opened; page ops within one source keep the user's zoom
 
   return (
     <main className="pageview" ref={mainRef}>

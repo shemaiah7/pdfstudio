@@ -67,4 +67,17 @@ describe("PageView fit width on open", () => {
     act(() => { useDocumentStore.setState({ pages: [entry2] }); });
     await waitFor(() => expect(spy).toHaveBeenCalledTimes(2));
   });
+
+  it("keeps the zoom when the first page is deleted or reordered within the same file", async () => {
+    const spy = vi.fn();
+    const second = { ...entry, id: "p1b" };
+    useDocumentStore.setState({ pages: [entry, second] });
+    render(<PageView scale={1.2} onFitScale={spy} />);
+    await waitFor(() => expect(spy).toHaveBeenCalledTimes(1));
+    act(() => { useDocumentStore.setState({ pages: [second, entry] }); });
+    await new Promise((r) => setTimeout(r, 20));
+    act(() => { useDocumentStore.setState({ pages: [entry] }); });
+    await new Promise((r) => setTimeout(r, 20));
+    expect(spy).toHaveBeenCalledTimes(1);
+  });
 });
