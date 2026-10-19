@@ -4,7 +4,7 @@
 These model government/bank notices whose owner password only restricts permissions.
 Run: python3 scripts/make-encrypted-fixtures.py   (needs: pip install pypdf cryptography  -- cryptography is
 pypdf's AES backend; the objstm variant also uses pikepdf, optional)
-Output: src/pdf/__fixtures__/encrypted-{rc4-128,aes-128,aes-256}.pdf, plus
+Output: src/pdf/__fixtures__/encrypted-{rc4-40,rc4-128,aes-128,aes-256-r5,aes-256}.pdf, plus
         encrypted-userpw-aes-128.pdf (user password "secret") for the password-required path.
 Synthetic content only; never commit a real document here.
 """
@@ -66,9 +66,11 @@ def encrypt(plain: bytes, name: str, algorithm: str, user_password: str = "") ->
 
 
 plain = plain_pdf()
-encrypt(plain, "encrypted-rc4-128", "RC4-128")
+encrypt(plain, "encrypted-rc4-40", "RC4-40")        # V1 R2
+encrypt(plain, "encrypted-rc4-128", "RC4-128")      # V2 R3
 encrypt(plain, "encrypted-aes-128", "AES-128")
-encrypt(plain, "encrypted-aes-256", "AES-256")
+encrypt(plain, "encrypted-aes-256-r5", "AES-256-R5")  # V5 R5 (Adobe extension level 3)
+encrypt(plain, "encrypted-aes-256", "AES-256")      # V5 R6
 encrypt(plain, "encrypted-userpw-aes-128", "AES-128", user_password="secret")
 
 # Optional: the same document with its objects packed into object streams (xref stream + /ObjStm),

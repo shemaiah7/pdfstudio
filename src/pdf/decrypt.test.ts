@@ -12,7 +12,7 @@ import { loadEncryptedFixture } from "../test/loadEncryptedFixture";
 const hex = (b: Uint8Array) => Array.from(b, (x) => x.toString(16).padStart(2, "0")).join("");
 const unhex = (h: string) => Uint8Array.from(h.match(/../g)!, (x) => parseInt(x, 16));
 
-const FIXTURES = ["encrypted-rc4-128", "encrypted-aes-128", "encrypted-aes-256", "encrypted-aes-128-objstm"];
+const FIXTURES = ["encrypted-rc4-40", "encrypted-rc4-128", "encrypted-aes-128", "encrypted-aes-256-r5", "encrypted-aes-256", "encrypted-aes-128-objstm"];
 
 async function pageContent(doc: PDFDocument, i: number): Promise<string> {
   const page = doc.getPages()[i];
@@ -89,10 +89,12 @@ describe("decryptIfNeeded edge cases", () => {
 
 describe("computeFileKey", () => {
   const KNOWN: Record<string, string> = {
+    "encrypted-rc4-40": "589afd1bb1",
     "encrypted-rc4-128": "6a94831b13779bed5b44277434f78bcc",
     "encrypted-aes-128": "6a94831b13779bed5b44277434f78bcc",
-    "encrypted-aes-256": "304c756c6bc0e9c7341d1041a6b1de94972577376d8fd75303d003d19f4d5fd4",
-    "encrypted-aes-128-objstm": "1bbd8cce72cbd1204afe9c03391b9f2a",
+    "encrypted-aes-256-r5": "f9921cb0eaa3bb42f68e85dae54be0eedc27b1641e77a2072591c30d6a205a07",
+    "encrypted-aes-256": "ada5ad30419b456b937c9b6067e16de4d72a21e0144e43ab4090b40d1225d919",
+    "encrypted-aes-128-objstm": "ebd622abfd06a442296aef42224d5774",
   };
   it.each(Object.entries(KNOWN))("%s", async (name, expected) => {
     const { PDFParser } = await import("pdf-lib");
