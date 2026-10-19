@@ -1,7 +1,8 @@
 import type { FieldDef } from "../pdf/formFill";
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { useDocumentStore, sourceReleasers } from "./document";
+import { useDocumentStore, sourceReleasers, describeOpenResult } from "./document";
 import { loadFixture } from "../test/loadFixture";
+import { loadEncryptedFixture } from "../test/loadEncryptedFixture";
 
 const three = () => ({ name: "three.pdf", bytes: loadFixture("three") });
 const two = () => ({ name: "two.pdf", bytes: loadFixture("two") });
@@ -53,6 +54,38 @@ describe("open and add", () => {
     const res = await s().addFiles([big], 10); // 10-byte limit for the test
     expect(res.oversized).toEqual(["big.pdf"]);
     expect(s().pages.length).toBe(2); // still opened
+  });
+});
+
+describe("encrypted files", () => {
+  it("decrypts an empty-user-password file on open", async () => {
+    const input = loadEncryptedFixture("encrypted-aes-128");
+    const res = await s().openFiles([{ name: "notice.pdf", bytes: input }]);
+    expect(res.skipped).toEqual([]);
+    expect(res.passwordProtected).toEqual([]);
+    const src = [...s().sources.values()][0];
+    expect(src.pageCount).toBe(2);
+    expect(s().pages.length).toBe(2);
+    expect(src.bytes).not.toBe(input);
+    expect(Buffer.from(src.bytes).equals(Buffer.from(input))).toBe(false);
+  });
+
+  it("reports a user-password file as password-protected", async () => {
+    const res = await s().openFiles([{ name: "locked.pdf", bytes: loadEncryptedFixture("encrypted-userpw-aes-128") }]);
+    expect(res.passwordProtected).toEqual(["locked.pdf"]);
+    expect(res.skipped).toEqual([]);
+    expect(s().error).toContain("password-protected");
+  });
+});
+
+describe("describeOpenResult", () => {
+  it("lists skipped, password-protected, then oversized", () => {
+    expect(describeOpenResult({ skipped: ["a", "b"], passwordProtected: ["c"], oversized: ["d"] })).toEqual([
+      "Couldn't read a, b as a PDF.",
+      "c is password-protected; SentinelPDF can't open it without the password.",
+      "d is very large; editing may be slow.",
+    ]);
+    expect(describeOpenResult({ skipped: [], passwordProtected: [], oversized: [] })).toEqual([]);
   });
 });
 

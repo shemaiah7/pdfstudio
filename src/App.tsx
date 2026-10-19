@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { useDocumentStore } from "./store/document";
+import { useDocumentStore, describeOpenResult } from "./store/document";
 import DropZone from "./components/DropZone";
 import ThumbnailSidebar from "./components/ThumbnailSidebar";
 import PageView from "./components/PageView";
@@ -101,9 +101,7 @@ export default function App() {
     const empty = useDocumentStore.getState().sources.size === 0;
     const useOpen = mode === "open" || (mode === "auto" && empty);
     const res = await (useOpen ? openFiles : addFiles)(await toBytes(files));
-    const msgs: string[] = [];
-    if (res.skipped.length) msgs.push(`Couldn't read ${res.skipped.join(", ")} as a PDF.`);
-    if (res.oversized.length) msgs.push(`${res.oversized.join(", ")} is very large; editing may be slow.`);
+    const msgs = describeOpenResult(res);
     if (msgs.length) setError(msgs.join(" "));
   }, [openFiles, addFiles, setError]);
 
