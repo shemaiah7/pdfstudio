@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { normalizeFont } from "../pdf/fonts";
 import { countPages, addRotation } from "../pdf/pageOps";
 import { sha256 } from "../pdf/hash";
+import { decryptIfNeeded, PasswordRequiredError } from "../pdf/decrypt";
 import type { FieldDef } from "../pdf/formFill";
 import type { Annotation, AnnotationPatch, Edit, EditFont, FormValue, FormValues, LegacyEditFont, NewAnnotation, PageEntry, SourceFile, SourceId } from "../pdf/types";
 
@@ -11,7 +12,15 @@ export const SIZE_WARNING_BYTES = 100 * 1024 * 1024;
 // Lets the renderer free pdf.js documents without the store importing pdf.js.
 export const sourceReleasers: Array<(id: SourceId) => void> = [];
 
-export interface OpenResult { skipped: string[]; oversized: string[] }
+export interface OpenResult { skipped: string[]; oversized: string[]; passwordProtected: string[] }
+
+export function describeOpenResult(res: OpenResult): string[] {
+  const msgs: string[] = [];
+  if (res.skipped.length) msgs.push(`Couldn't read ${res.skipped.join(", ")} as a PDF.`);
+  if (res.passwordProtected.length) msgs.push(`${res.passwordProtected.join(", ")} is password-protected; SentinelPDF can't open it without the password.`);
+  if (res.oversized.length) msgs.push(`${res.oversized.join(", ")} is very large; editing may be slow.`);
+  return msgs;
+}
 
 export interface Snapshot { pages: PageEntry[]; edits: Edit[]; annotations: Annotation[]; formValues: FormValues }
 
@@ -100,16 +109,18 @@ async function loadSources(
   limit: number,
 ): Promise<{ sources: SourceFile[]; result: OpenResult }> {
   const sources: SourceFile[] = [];
-  const result: OpenResult = { skipped: [], oversized: [] };
+  const result: OpenResult = { skipped: [], oversized: [], passwordProtected: [] };
   for (const f of files) {
     try {
-      const pageCount = await countPages(f.bytes);
+      const { bytes } = await decryptIfNeeded(f.bytes);
+      const pageCount = await countPages(bytes);
       let hash: string | undefined;
-      try { hash = await sha256(f.bytes); } catch { /* no crypto.subtle (e.g. plain http): open without a hash */ }
-      sources.push({ id: nextId("src"), name: f.name, bytes: f.bytes, pageCount, hash });
-      if (f.bytes.byteLength > limit) result.oversized.push(f.name);
-    } catch {
-      result.skipped.push(f.name);
+      try { hash = await sha256(bytes); } catch { /* no crypto.subtle (e.g. plain http): open without a hash */ }
+      sources.push({ id: nextId("src"), name: f.name, bytes, pageCount, hash });
+      if (bytes.byteLength > limit) result.oversized.push(f.name);
+    } catch (e) {
+      if (e instanceof PasswordRequiredError) result.passwordProtected.push(f.name);
+      else result.skipped.push(f.name);
     }
   }
   return { sources, result };
@@ -152,7 +163,7 @@ export const useDocumentStore = create<DocumentState>((set, get) => {
     async openFiles(files, limit = SIZE_WARNING_BYTES) {
       const { sources, result } = await loadSources(files, limit);
       if (sources.length === 0) {
-        set({ error: files.length ? `Couldn't read ${result.skipped.join(", ")} as a PDF.` : null });
+        set({ error: files.length ? describeOpenResult(result).join(" ") || null : null });
         return result;
       }
       for (const id of get().sources.keys()) sourceReleasers.forEach((release) => release(id));
