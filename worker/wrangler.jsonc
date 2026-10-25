@@ -12,7 +12,7 @@
     "TURNSTILE_HOSTNAMES": "sentinelpdf.com,www.sentinelpdf.com,pdfstudio.shemaiah7.workers.dev",
     "ELEVENLABS_AGENT_ID": "agent_3101m4q6478ceb686yqfw50yfhdv",
     "VOICE_DAILY_SECONDS": "1800",
-    "PAYWALL_ENABLED": "false",
+    "PAYWALL_ENABLED": "true",
     "CLERK_ISSUER": "https://clerk.sentinelpdf.com",
     "STRIPE_PRICE_MONTHLY": "price_1URiiK2dUzKbw9XRLUj2pF7L",
     "STRIPE_PRICE_YEARLY": "price_1URiiw2dUzKbw9XRDzm8p9iK",
