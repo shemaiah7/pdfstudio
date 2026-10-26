@@ -8,7 +8,7 @@ vi.mock("@clerk/clerk-react", () => ({
   SignInButton: ({ children }: { children: React.ReactElement }) => <div data-testid="clerk-in">{children}</div>,
   SignUpButton: ({ children }: { children: React.ReactElement }) => <div data-testid="clerk-up">{children}</div>,
 }));
-afterEach(() => { cleanup(); delete (window as unknown as { sentinelDesktop?: unknown }).sentinelDesktop; useDesktopSignIn.setState({ open: false, step: "choose", error: null }); });
+afterEach(() => { cleanup(); delete (window as unknown as { sentinelDesktop?: unknown }).sentinelDesktop; useDesktopSignIn.setState({ open: false, step: "email", error: null }); });
 
 it("renders Clerk's buttons outside the desktop app", () => {
   render(<><SignInTrigger mode="sign-in"><button>in</button></SignInTrigger><SignInTrigger mode="sign-up"><button>up</button></SignInTrigger></>);

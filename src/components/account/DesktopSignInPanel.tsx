@@ -7,7 +7,7 @@ import Sheet from "./Sheet";
 const NO_FINISH = "Sign-in didn't finish. Try again.";
 const UNAVAILABLE = "Sign-in isn't available right now. You can keep viewing PDFs.";
 const BAD_CODE = "That code isn't right. Check the email or resend.";
-const MORE_DETAILS = "Your account needs more details. Sign in with your browser instead.";
+const MORE_DETAILS = "Your account needs more details. Sign in with Google instead.";
 const CODE_ERRORS = ["form_code_incorrect", "verification_failed", "verification_expired"];
 const errCode = (e: unknown) => (e as { errors?: { code?: string }[] } | null)?.errors?.[0]?.code;
 
@@ -33,7 +33,7 @@ export function DesktopTicketListener(): null {
       if (signedIn.current) return;
       const s = useDesktopSignIn.getState();
       if (!s.open) s.openPanel();
-      s.setStep("choose");
+      s.setStep("email");
       s.setError("That sign-in link expired. Try again.");
     });
     return () => { offTicket?.(); offFailed?.(); };
@@ -52,7 +52,7 @@ export function DesktopTicketListener(): null {
         useDesktopSignIn.getState().close();
       } catch {
         const s = useDesktopSignIn.getState();
-        s.openPanel(); s.setStep("choose"); s.setError(NO_FINISH);
+        s.openPanel(); s.setStep("email"); s.setError(NO_FINISH);
       }
     })();
   }, [desktop, isLoaded, tick, signIn, setActive]);
@@ -77,7 +77,6 @@ function PanelBody() {
   const [resendWait, setResendWait] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  useEffect(() => { if (!canBrowserSignIn()) setStep("email"); }, [setStep]);
   useEffect(() => {
     if (isLoaded) return;
     const t = setTimeout(() => setStep("unavailable"), 10_000);
@@ -149,19 +148,10 @@ function PanelBody() {
   return (
     <Sheet title="Sign in to SentinelPDF" onClose={close}>
       <div className="sigBody dsi-body">
-        {step === "choose" ? (
-          <>
-            <button type="button" className="sigPrimary acct-wide" onClick={() => { desktopBridge()?.startBrowserSignIn?.(); setStep("waiting"); }}>Sign in with your browser</button>
-            <button type="button" className="acct-link" onClick={() => setStep("email")}>Use an email code instead</button>
-            <p className="acct-note">Google and email links open in your browser.</p>
-            {alert}
-          </>
-        ) : null}
         {step === "waiting" ? (
           <>
             <p className="dsi-status" role="status">Finish signing in in your browser…</p>
-            <button type="button" className="acct-link" onClick={() => setStep("choose")}>Cancel</button>
-            <button type="button" className="acct-link" onClick={() => setStep("email")}>Use an email code instead</button>
+            <button type="button" className="acct-link" onClick={() => setStep("email")}>Cancel</button>
           </>
         ) : null}
         {step === "email" ? (
@@ -169,6 +159,12 @@ function PanelBody() {
             <label className="dsi-label" htmlFor="dsi-email">Email</label>
             <input id="dsi-email" className="dsi-input" type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
             <button type="submit" className="sigPrimary acct-wide" disabled={busy}>Email me a code</button>
+            {canBrowserSignIn() ? (
+              <>
+                <button type="button" className="acct-link" onClick={() => { desktopBridge()?.startBrowserSignIn?.(); setStep("waiting"); }}>Sign in with Google instead</button>
+                <p className="acct-note">Opens your browser.</p>
+              </>
+            ) : null}
             {alert}
           </form>
         ) : null}
