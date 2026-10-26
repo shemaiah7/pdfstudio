@@ -25,7 +25,7 @@ function setBridge(extra: Bridge = { startBrowserSignIn }) {
     ...extra,
   };
 }
-const reset = () => useDesktopSignIn.setState({ open: false, step: "choose", error: null });
+const reset = () => useDesktopSignIn.setState({ open: false, step: "email", error: null });
 
 beforeEach(() => {
   h.loaded = true; h.signedIn = false;
@@ -44,7 +44,6 @@ const signUp = () => h.signUp as { create: ReturnType<typeof vi.fn>; prepareEmai
 
 async function toCode(email = "me@example.com") {
   mount(); open();
-  fireEvent.click(screen.getByRole("button", { name: "Use an email code instead" }));
   fireEvent.change(screen.getByRole("textbox"), { target: { value: email } });
   fireEvent.submit(screen.getByRole("textbox").closest("form")!);
   await screen.findByLabelText(/code/i);
@@ -54,13 +53,15 @@ const submitCode = (code: string) => {
   fireEvent.submit(screen.getByLabelText(/code/i).closest("form")!);
 };
 
-it("1 choose -> browser -> waiting -> cancel", () => {
+it("1 email -> Google in browser -> waiting -> cancel", () => {
   mount(); open();
-  fireEvent.click(screen.getByRole("button", { name: "Sign in with your browser" }));
+  expect(screen.getByRole("textbox")).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "Sign in with Google instead" }));
   expect(startBrowserSignIn).toHaveBeenCalled();
   expect(screen.getByText("Finish signing in in your browser…")).toBeTruthy();
   fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
-  expect(screen.getByRole("button", { name: "Sign in with your browser" })).toBeTruthy();
+  expect(screen.getByRole("textbox")).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Sign in with Google instead" })).toBeTruthy();
 });
 
 it("2 handles a ticket with the panel closed, then closes the panel", async () => {
@@ -93,7 +94,7 @@ it("4 shows an error when Clerk rejects the ticket", async () => {
   mount();
   act(() => ticketCb("tkt"));
   expect(await screen.findByText("Sign-in didn't finish. Try again.")).toBeTruthy();
-  expect(screen.getByRole("button", { name: "Sign in with your browser" })).toBeTruthy();
+  expect(screen.getByRole("textbox")).toBeTruthy();
 });
 
 it("5 expired: error when signed out, none when signed in", () => {
@@ -157,7 +158,7 @@ it("10 older desktop app without startBrowserSignIn opens on the email step", ()
   (window as unknown as { sentinelDesktop: Bridge }).sentinelDesktop = { version: "1", onOpenFile: () => () => {} };
   mount(); open();
   expect(screen.getByRole("textbox")).toBeTruthy();
-  expect(screen.queryByRole("button", { name: "Sign in with your browser" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Sign in with Google instead" })).toBeNull();
 });
 
 it("11 renders nothing outside the desktop app", () => {
@@ -169,7 +170,6 @@ it("11 renders nothing outside the desktop app", () => {
 it("12 a non-'not found' sign-in error does not start a sign-up and is shown", async () => {
   signIn().create.mockRejectedValue({ errors: [{ code: "too_many_requests", longMessage: "Slow down." }] });
   mount(); open();
-  fireEvent.click(screen.getByRole("button", { name: "Use an email code instead" }));
   fireEvent.change(screen.getByRole("textbox"), { target: { value: "a@b.c" } });
   fireEvent.submit(screen.getByRole("textbox").closest("form")!);
   expect(await screen.findByText("Slow down.")).toBeTruthy();
@@ -181,7 +181,7 @@ it("13 a sign-up that needs more details says so, not 'wrong code'", async () =>
   signUp().attemptEmailAddressVerification.mockResolvedValue({ status: "missing_requirements" });
   await toCode("new@x.y");
   submitCode("654321");
-  expect(await screen.findByText("Your account needs more details. Sign in with your browser instead.")).toBeTruthy();
+  expect(await screen.findByText("Your account needs more details. Sign in with Google instead.")).toBeTruthy();
   expect(screen.queryByText("That code isn't right. Check the email or resend.")).toBeNull();
   expect(h.setActive).not.toHaveBeenCalled();
 });
