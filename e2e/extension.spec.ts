@@ -42,6 +42,8 @@ test.beforeAll(async () => {
   sw = context.serviceWorkers()[0] ?? (await context.waitForEvent("serviceworker"));
   await sw.evaluate((o) => chrome.storage.local.set({ appOrigin: o }), APP);
   await rulesAre(true);
+  // The file:// path reports "file-access" through this API; if it ever leaves MV3 workers, the user would see "check your connection" instead.
+  expect(await sw.evaluate(() => typeof chrome.extension?.isAllowedFileSchemeAccess)).toBe("function");
 });
 
 test.afterAll(async () => {
