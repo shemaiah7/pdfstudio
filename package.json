@@ -14,6 +14,8 @@
     "e2e": "playwright test",
     "search:smoke": "tsx scripts/search-smoke.ts",
     "lint": "oxlint",
+    "extension:pack": "sh scripts/pack-extension.sh",
+    "extension:dev": "sh scripts/extension-dev.sh",
     "worker:dev": "npm --prefix worker run dev",
     "worker:test": "npm --prefix worker test",
     "worker:deploy": "npm --prefix worker run deploy",
