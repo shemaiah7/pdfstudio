@@ -59,3 +59,5 @@ https://sentinelpdf.com/privacy.html
 2. Edge Add-ons: Partner Center, new extension, upload the same zip, reuse the same copy, submit.
 3. The extension ID is known only after the first upload. The web app does not need it.
 4. Deploy the web-app side (README, "Release") before submitting.
+
+Screenshots: `npm run extension:screenshots` regenerates `extension/store/*.jpg` (1280×800 JPEG, as the Chrome Web Store and Edge Add-ons require). It builds the dev extension, opens a sample PDF through it in the app on `localhost:5199` (starting `vite` if nothing is running there), and composes the toolbar popup on a 1280×800 canvas. Upload both files with the listing.
