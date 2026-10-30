@@ -13,6 +13,7 @@ export const SIZE_WARNING_BYTES = 100 * 1024 * 1024;
 export const sourceReleasers: Array<(id: SourceId) => void> = [];
 
 export interface OpenResult { skipped: string[]; oversized: string[]; passwordProtected: string[] }
+export interface ErrorAction { label: string; run(): void }
 
 export function describeOpenResult(res: OpenResult): string[] {
   const msgs: string[] = [];
@@ -39,6 +40,8 @@ export interface DocumentState {
   savedAnnotations: Annotation[] | null;
   savedFormValues: FormValues | null;
   error: string | null;
+  /** Optional button shown beside the error text; cleared whenever setError is called without one. */
+  errorAction: ErrorAction | null;
   openFiles(files: { name: string; bytes: Uint8Array }[], limit?: number): Promise<OpenResult>;
   addFiles(files: { name: string; bytes: Uint8Array }[], limit?: number): Promise<OpenResult>;
   reorder(ids: string[], toIndex: number): void;
@@ -58,7 +61,7 @@ export interface DocumentState {
   select(ids: string[], mode: "replace" | "toggle" | "add"): void;
   clearSelection(): void;
   markClean(): void;
-  setError(message: string | null): void;
+  setError(message: string | null, action?: ErrorAction): void;
   isDirty(): boolean;
   canUndo(): boolean;
   canRedo(): boolean;
@@ -150,6 +153,7 @@ const initial = () => ({
   savedAnnotations: null as Annotation[] | null,
   savedFormValues: null as FormValues | null,
   error: null as string | null,
+  errorAction: null as ErrorAction | null,
 });
 
 export const useDocumentStore = create<DocumentState>((set, get) => {
@@ -163,7 +167,7 @@ export const useDocumentStore = create<DocumentState>((set, get) => {
     async openFiles(files, limit = SIZE_WARNING_BYTES) {
       const { sources, result } = await loadSources(files, limit);
       if (sources.length === 0) {
-        set({ error: files.length ? describeOpenResult(result).join(" ") || null : null });
+        set({ error: files.length ? describeOpenResult(result).join(" ") || null : null, errorAction: null });
         return result;
       }
       for (const id of get().sources.keys()) sourceReleasers.forEach((release) => release(id));
@@ -293,7 +297,7 @@ export const useDocumentStore = create<DocumentState>((set, get) => {
 
     clearSelection() { set({ selection: new Set() }); },
     markClean() { set((s) => ({ savedPages: s.pages, savedEdits: s.edits, savedAnnotations: s.annotations, savedFormValues: s.formValues })); },
-    setError(message) { set({ error: message }); },
+    setError(message, action) { set({ error: message, errorAction: message ? (action ?? null) : null }); },
     isDirty() {
       const s = get();
       return !samePages(s.savedPages, s.pages) || !sameEdits(s.savedEdits, s.edits)

@@ -44,6 +44,17 @@ describe("owner key", () => {
     expect(getOwnerKey()).toBe("keep");
     expect(location.hash).toBe("#section");
   });
+  it("returns early for extension hand-off links, even when the URL contains owner=", () => {
+    localStorage.setItem(OWNER_STORAGE_KEY, "keep");
+    history.replaceState(null, "", "/#sx=tok&open=https://x.test/a.pdf?a=1&owner=evil");
+    captureOwnerKey();
+    expect(getOwnerKey()).toBe("keep");
+    expect(location.hash).toBe("#sx=tok&open=https://x.test/a.pdf?a=1&owner=evil");
+    history.replaceState(null, "", "/#open=https://x.test/a.pdf?owner=evil");
+    captureOwnerKey();
+    expect(getOwnerKey()).toBe("keep");
+    expect(location.hash).toBe("#open=https://x.test/a.pdf?owner=evil");
+  });
   it("survives storage that throws", () => {
     vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => { throw new Error("denied"); });
     vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => { throw new Error("denied"); });
