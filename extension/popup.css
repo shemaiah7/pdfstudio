@@ -1,0 +1,11 @@
+:root { color-scheme: light dark; --bg: #ffffff; --ink: #1b1b1a; --ink-2: #55534e; --line: #e4e2dd; --accent: #3346d3; --on-accent: #ffffff; }
+@media (prefers-color-scheme: dark) { :root { --bg: #232321; --ink: #eeedea; --ink-2: #b3b0a8; --line: #3a3936; --accent: #8fa0ff; --on-accent: #161615; } }
+* { box-sizing: border-box; }
+body { width: 300px; margin: 0; padding: 16px; background: var(--bg); color: var(--ink); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+h1 { margin: 0 0 12px; font-size: 16px; font-weight: 700; }
+.row { display: flex; gap: 8px; align-items: flex-start; margin-bottom: 14px; cursor: pointer; }
+.row input { margin-top: 3px; }
+button { width: 100%; padding: 9px 12px; border: 0; border-radius: 8px; background: var(--accent); color: var(--on-accent); font: inherit; font-weight: 600; cursor: pointer; }
+button:disabled { opacity: 0.45; cursor: default; }
+.hint { margin: 8px 0 0; color: var(--ink-2); font-size: 12px; }
+.note { margin: 14px 0 0; padding-top: 12px; border-top: 1px solid var(--line); color: var(--ink-2); font-size: 12px; }
