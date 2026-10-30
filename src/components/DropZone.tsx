@@ -14,9 +14,9 @@ const FEATURES: { icon: IconName; title: string; text: string }[] = [
   { icon: "deep-ocr", title: "Scans work too", text: "Scanned pages are read automatically so search and voice can use them." },
 ];
 
-interface Props { onFiles: (files: File[]) => void; empty: boolean; forceOver?: boolean }
+interface Props { onFiles: (files: File[]) => void; empty: boolean; forceOver?: boolean; opening?: string }
 
-export default function DropZone({ onFiles, empty, forceOver = false }: Props) {
+export default function DropZone({ onFiles, empty, forceOver = false, opening }: Props) {
   const [over, setOver] = useState(false);
   const input = useRef<HTMLInputElement>(null);
 
@@ -64,7 +64,9 @@ export default function DropZone({ onFiles, empty, forceOver = false }: Props) {
                 <div className="empty-drop dropzone-inner">
                   <div className="empty-pages" aria-hidden="true"><span /><span /></div>
                   <div className="empty-drop-title">Drop PDFs here</div>
-                  <div className="empty-drop-sub">Several files are merged into one document</div>
+                  {opening
+                    ? <div className="empty-opening" role="status" data-testid="opening"><span className="acct-spin" aria-hidden="true" />Opening {opening}…</div>
+                    : <div className="empty-drop-sub">Several files are merged into one document</div>}
                   <button onClick={() => input.current?.click()}>Choose files</button>
                   <input ref={input} type="file" accept="application/pdf" multiple hidden
                     onChange={(e) => { onFiles(Array.from(e.target.files ?? [])); e.target.value = ""; }} />

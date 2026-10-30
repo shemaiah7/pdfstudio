@@ -20,6 +20,7 @@ import ActivatingNotice from "./components/account/ActivatingNotice";
 import RolloutBanner from "./components/account/RolloutBanner";
 import DefaultAppPrompt from "./components/DefaultAppPrompt";
 import { subscribeDesktopFiles, batchFiles, openDesktopBatch } from "./desktop/bridge";
+import { subscribeExtensionBridge, watchPendingOpen, clearOpenHash, openOriginal, canOpenOriginal, TIMEOUT_MESSAGE, EXTENSION_INSTALL_URL } from "./extension/bridge";
 import { requireFeature } from "./components/account/useGate";
 import { useAiClient } from "./components/ai/useAiClient";
 
@@ -43,6 +44,8 @@ export default function App() {
   const [scale, setScale] = useState(() => (typeof window.matchMedia === "function" && window.matchMedia("(max-width: 700px)").matches ? 0.6 : 1.2));
   const [pagesOpen, setPagesOpen] = useState(false);
   const [dragging, setDragging] = useState(false);
+  // File name while the browser extension is fetching a PDF for us; shown on the empty screen.
+  const [opening, setOpening] = useState<string | null>(null);
   // Create the AI client on every screen (not just with a document open): the account plan and
   // the post-checkout "Activating Pro" poll both need it on the empty state.
   useAiClient();
@@ -124,6 +127,37 @@ export default function App() {
     return () => { off(); batch.flush(); };
   }, [handleFiles]);
 
+  // Browser extension: PDFs it fetched (with the browser's login) arrive as window messages. The page itself never fetches the URL.
+  useEffect(() => {
+    const done = () => { setOpening(null); useToolsStore.getState().setMessage(null); };
+    const install = EXTENSION_INSTALL_URL;
+    const watch = watchPendingOpen(() => {
+      done();
+      setError(TIMEOUT_MESSAGE, install ? { label: "Get the extension", run: () => { window.open(install, "_blank", "noopener"); } } : undefined);
+      clearOpenHash();
+    });
+    const off = subscribeExtensionBridge({
+      onFetching(name) {
+        watch.cancel();
+        setOpening(name);
+        useToolsStore.getState().setMessage(`Opening ${name}…`);
+      },
+      onFiles(files) {
+        watch.cancel();
+        done();
+        openDesktopBatch(files, useDocumentStore.getState().isDirty(), (m) => window.confirm(m), (f) => { void handleFiles(f, "open"); });
+        clearOpenHash();
+      },
+      onError(message, info) {
+        watch.cancel();
+        done();
+        setError(message, canOpenOriginal(info.reason) && info.url ? { label: "Open it without SentinelPDF", run: () => openOriginal(info.url) } : undefined);
+        clearOpenHash();
+      },
+    });
+    return () => { off(); watch.cancel(); };
+  }, [handleFiles, setError]);
+
   useEffect(() => {
     const on = (e: globalThis.DragEvent) => { e.preventDefault(); setDragging(true); };
     const off = () => setDragging(false);
@@ -152,7 +186,7 @@ export default function App() {
       {clerkEnabled() ? <SignedInTerms /> : null}
       <UpgradeSheet />
       <PaywallSheet />
-      {empty ? <DropZone onFiles={handleFiles} empty /> : (
+      {empty ? <DropZone onFiles={handleFiles} empty opening={opening ?? undefined} /> : (
         <>
         <Toolbar scale={scale} setScale={setScale} onFiles={handleFiles} onTogglePages={() => setPagesOpen((o) => !o)} pagesOpen={pagesOpen} />
         <div className="workspace">

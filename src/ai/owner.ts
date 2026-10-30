@@ -10,6 +10,8 @@ export function captureOwnerKey(): void {
   if (typeof location === "undefined") return;
   const hash = location.hash.replace(/^#/, "");
   if (!hash) return;
+  // Browser-extension hand-off (#sx=<token>&open=<url>): the URL may contain "owner=", so leave it for the extension bridge.
+  if (hash.startsWith("sx=") || hash.startsWith("open=")) return;
   const parts = hash.split("&");
   const idx = parts.findIndex((p) => p === "owner" || p.startsWith("owner="));
   if (idx < 0) return;
