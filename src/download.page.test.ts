@@ -12,6 +12,8 @@ describe("public/download.html", () => {
   });
   it("names the app and explains the Windows warning and requirements", () => {
     expect(html).toContain("<title>Download SentinelPDF</title>");
+    expect(html).toContain("Signed by Melantech Innovations L.L.C.");
+    expect(html).not.toContain("A signed Windows build is coming");
     expect(html).toContain("More info");
     expect(html).toContain("Run anyway");
     expect(html).toContain("macOS 12");
