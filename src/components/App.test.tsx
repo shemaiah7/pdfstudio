@@ -6,6 +6,9 @@ import { useDocumentStore } from "../store/document";
 import { loadFixture } from "../test/loadFixture";
 import { useAccount } from "../account/store";
 import { useSheets } from "./account/useGate";
+import { printDocument } from "../store/print";
+
+vi.mock("../store/print", () => ({ printDocument: vi.fn(async () => {}), usePrintStore: (sel: (s: { busy: boolean }) => unknown) => sel({ busy: false }) }));
 
 vi.mock("../pdf/render", () => ({
   renderPage: vi.fn(() => ({ cancel: () => {}, promise: Promise.resolve() })),
@@ -71,5 +74,20 @@ describe("App Delete shortcut gate", () => {
     await setup();
     fireEvent.keyDown(window, { key: "Delete" });
     expect(useDocumentStore.getState().pages).toHaveLength(2);
+  });
+});
+
+describe("App print shortcut", () => {
+  it("Cmd/Ctrl+P is intercepted and triggers print", async () => {
+    await useDocumentStore.getState().openFiles([{ name: "three.pdf", bytes: loadFixture("three") }]);
+    render(<App />);
+    vi.mocked(printDocument).mockClear();
+    const meta = new KeyboardEvent("keydown", { key: "p", metaKey: true, cancelable: true });
+    window.dispatchEvent(meta);
+    const ctrl = new KeyboardEvent("keydown", { key: "P", ctrlKey: true, cancelable: true });
+    window.dispatchEvent(ctrl);
+    expect(meta.defaultPrevented).toBe(true);
+    expect(ctrl.defaultPrevented).toBe(true);
+    expect(printDocument).toHaveBeenCalledTimes(2);
   });
 });

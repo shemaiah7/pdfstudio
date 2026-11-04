@@ -11,6 +11,8 @@ const PATHS = {
   "deep-ocr": "M4 8V5a1 1 0 0 1 1-1h3 M16 4h3a1 1 0 0 1 1 1v3 M20 16v3a1 1 0 0 1-1 1h-3 M8 20H5a1 1 0 0 1-1-1v-3 M8 10h8 M8 14h5",
   "chevron-down": "M6 9l6 6 6-6",
   "download": "M12 4v11 M7 10l5 5 5-5 M4 20h16",
+  "print": "M7 9V4h10v5 M7 17H5a1 1 0 0 1-1-1v-5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v5a1 1 0 0 1-1 1h-2 M7 14h10v6H7z",
+  "share": "M12 15V4 M8 8l4-4 4 4 M5 12v7a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-7",
   "minus": "M5 12h14",
   "plus": "M12 5v14 M5 12h14",
   "file": "M7 3h7l5 5v13H7z M14 3v5h5 M10 13h6 M10 17h4",

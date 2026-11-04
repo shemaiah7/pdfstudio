@@ -3,6 +3,7 @@ export interface DesktopBridge {
   version: string;
   onOpenFile(cb: (f: DesktopFile) => void): () => void;
   retry?: () => void;
+  share?(name: string, bytes: Uint8Array): Promise<"shown" | "unsupported">;
   startBrowserSignIn?(): void;
   onSignInTicket?(cb: (ticket: string) => void): () => void;
   onSignInFailed?(cb: (reason: "expired") => void): () => void;

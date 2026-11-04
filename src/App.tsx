@@ -8,6 +8,7 @@ import ToolPalette from "./components/ToolPalette";
 import ErrorBanner from "./components/ErrorBanner";
 import OcrToast from "./components/ocr/OcrToast";
 import RightPanel from "./components/search/RightPanel";
+import { printDocument } from "./store/print";
 import { useToolsStore } from "./store/tools";
 import { useAiStore } from "./store/ai";
 import { captureSelection } from "./pdf/selection";
@@ -60,6 +61,7 @@ export default function App() {
       const mod = e.metaKey || e.ctrlKey;
       if (mod && e.key === "z" && !e.shiftKey) { e.preventDefault(); st.undo(); }
       else if (mod && (e.key === "y" || (e.key === "z" && e.shiftKey))) { e.preventDefault(); st.redo(); }
+      else if (mod && e.key.toLowerCase() === "p") { e.preventDefault(); void printDocument(); }
       else if ((e.key === "Delete" || e.key === "Backspace") && st.selectedAnnotationId && !isEditing()) { e.preventDefault(); st.removeAnnotation(st.selectedAnnotationId); }
       else if ((e.key === "Delete" || e.key === "Backspace") && st.selection.size && !isEditing()) { e.preventDefault(); if (requireFeature("edit")) st.remove([...st.selection]); }
     };

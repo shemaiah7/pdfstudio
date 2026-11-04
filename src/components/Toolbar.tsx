@@ -1,12 +1,9 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useDocumentStore } from "../store/document";
-import { buildDocument } from "../pdf/pageOps";
-import { rasterizeWithPdfJs } from "../edit/flatten";
-import { extractPageText } from "../pdf/text";
+import { buildOutputBytes } from "../pdf/output";
+import { usePrintStore, printDocument } from "../store/print";
+import { useShareStore, shareDocument } from "../store/share";
 import { useFields } from "./useFields";
-import { useOcrStore, pageKey, isTextPage } from "../store/ocr";
-import { ocrStore } from "../ocr/store";
-import type { OcrPage } from "../ocr/types";
 import DeepOcrMenu from "./ocr/DeepOcrMenu";
 import OcrPill from "./ocr/OcrPill";
 import { Icon, type IconName } from "./icons";
@@ -31,7 +28,10 @@ const isPhone = () => typeof window.matchMedia === "function" && window.matchMed
 
 export default function Toolbar({ scale, setScale, onFiles, onTogglePages, pagesOpen }: Props) {
   const s = useDocumentStore();
-  const [busy, setBusy] = useState(false);
+  const [building, setBuilding] = useState(false);
+  const printing = usePrintStore((st) => st.busy);
+  const sharing = useShareStore((st) => st.busy);
+  const busy = building || printing || sharing;
   const phone = useSyncExternalStore(subscribePhone, isPhone, () => false);
   const [moreOpen, setMoreOpen] = useState(false);
   const installHint = useInstallStore((st) => st.platformHint);
@@ -49,30 +49,15 @@ export default function Toolbar({ scale, setScale, onFiles, onTogglePages, pages
   const firstFields = useFields(firstSource);
 
   const exportPages = async (entries: typeof s.pages, kind: "edited" | "pages") => {
-    const ids = new Set(entries.map((p) => p.id));
-    setBusy(true);
+    setBuilding(true);
     try {
-      const ocrPages = new Map<string, OcrPage>();
-      let ocrFailed = false;
-      const ocrState = useOcrStore.getState().pages;
-      for (const p of entries) {
-        const src = s.sources.get(p.sourceId);
-        if (!src?.hash || ocrState[pageKey(p.sourceId, p.sourcePageIndex)]?.state !== "done" || isTextPage(pageKey(p.sourceId, p.sourcePageIndex))) continue; // typed pages keep their real text: no invisible OCR layer
-        try {
-          const page = await ocrStore.get(src.hash, p.sourcePageIndex);
-          if (page) ocrPages.set(p.id, page);
-        } catch {
-          if (!ocrFailed) s.setError("Saved without searchable text layer.");
-          ocrFailed = true;
-        }
-      }
-      const bytes = await buildDocument(s.sources, entries, s.edits.filter((e) => ids.has(e.pageEntryId)), s.annotations.filter((a) => ids.has(a.pageEntryId)), s.formValues, (msg) => s.setError(msg), ocrPages, { rasterize: rasterizeWithPdfJs, editedText: async (src, p) => (await extractPageText(src, p)).items });
+      const bytes = await buildOutputBytes(entries);
       saveBlob(bytes, outputName(firstName, kind));
       if (kind === "edited") s.markClean();
     } catch (err) {
       s.setError(`Couldn't build the PDF: ${(err as Error).message}`);
     } finally {
-      setBusy(false);
+      setBuilding(false);
     }
   };
 
@@ -99,6 +84,10 @@ export default function Toolbar({ scale, setScale, onFiles, onTogglePages, pages
       <Icon name={icon} />
     </button>
   );
+
+  const printBtn = ib("print", "print", "Print", () => { void printDocument(); }, s.pages.length === 0 || busy, "Print (⌘P)");
+
+  const shareBtn = ib("share", "share", "Share", () => { void shareDocument(); }, s.pages.length === 0 || busy, "Share (email, AirDrop…)");
 
   const zoom = (
     <div className="tb-zoom">
@@ -141,6 +130,7 @@ export default function Toolbar({ scale, setScale, onFiles, onTogglePages, pages
           ? ib("clear-form", "clear-form", "Clear form", () => s.clearForm(firstSource.id, firstFields))
           : null}
       </div>
+      {phone ? <div className="tb-group">{printBtn}{shareBtn}</div> : null}
       <DeepOcrMenu />
       {phone ? null : <OcrPill />}
       {phone ? zoom : null}
@@ -153,8 +143,9 @@ export default function Toolbar({ scale, setScale, onFiles, onTogglePages, pages
         {phone || !clerkEnabled() ? null : <AccountEntry />}
         {phone ? null : <div className="tb-group">{installHint === "prompt" ? <InstallButton className="tb-icon" iconOnly /> : null}<ThemeToggle className="tb-icon" /></div>}
         {phone ? null : zoom}
+        {phone ? null : <>{printBtn}{shareBtn}</>}
         <button type="button" data-testid="download" className={`primary${editLocked && s.isDirty() ? " locked" : ""}`} disabled={s.pages.length === 0 || busy}
-          onClick={() => { if (s.isDirty() && !require("edit")) return; void exportPages(s.pages, "edited"); }}><Icon name="download" /><span className="tb-dl-label">{busy ? "Building…" : "Download"}</span></button>
+          onClick={() => { if (s.isDirty() && !require("edit")) return; void exportPages(s.pages, "edited"); }}><Icon name="download" /><span className="tb-dl-label">{building ? "Building…" : "Download"}</span></button>
       </div>
       {/* On phones the actions live in the More menu; keep OCR progress visible under the bar instead. */}
       {phone ? <OcrPill /> : null}
