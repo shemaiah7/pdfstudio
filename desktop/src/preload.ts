@@ -16,6 +16,7 @@ contextBridge.exposeInMainWorld("sentinelDesktop", {
     ipcRenderer.send("sentinel:ready");
     return () => { listeners.delete(cb); };
   },
+  share: (name: string, bytes: Uint8Array): Promise<"shown" | "unsupported"> => ipcRenderer.invoke("sentinel:share", name, bytes),
   retry: () => ipcRenderer.send("sentinel:retry"),
   startBrowserSignIn: () => ipcRenderer.send("sentinel:start-browser-signin"),
   onSignInTicket(cb: (t: string) => void) { ticketListeners.add(cb); ipcRenderer.send("sentinel:signin-ready"); return () => { ticketListeners.delete(cb); }; },

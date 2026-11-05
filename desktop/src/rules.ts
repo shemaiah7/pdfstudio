@@ -24,6 +24,13 @@ export function pdfPathsFromArgv(argv: string[]): string[] {
   return argv.slice(1).filter((a) => !a.startsWith("-") && !/^sentinelpdf:/i.test(a) && /\.pdf$/i.test(a));
 }
 
+/** Safe basename for a file handed to the share sheet, or null when it is not a usable .pdf name. */
+export function shareFileName(name: unknown): string | null {
+  if (typeof name !== "string") return null;
+  const base = name.split(/[\\/]/).pop()!.replace(/[\x00-\x1f]/g, "").trim();
+  return /\.pdf$/i.test(base) && base.length > 4 && base !== ".." ? base : null;
+}
+
 export const LINK_SCHEME = "sentinelpdf";
 
 /** Owner key from a sentinelpdf://owner#<key> link: the key ("" means turn off), or null if the URL isn't an owner link. */

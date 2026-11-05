@@ -1,9 +1,11 @@
-import { app, BrowserWindow, dialog, ipcMain, session, shell } from "electron";
-import { readFile, stat } from "node:fs/promises";
+import { app, BrowserWindow, dialog, ipcMain, session, shell, ShareMenu } from "electron";
+import { readFile, stat, mkdtemp, writeFile } from "node:fs/promises";
+import { rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { autoUpdater } from "electron-updater";
-import { APP_URL, APP_ORIGINS } from "./config";
-import { allowPermission, isOpenablePdf, navigationTarget, pdfPathsFromArgv, ownerKeyFromLink, linkFromArgv, LINK_SCHEME } from "./rules";
+import { APP_URL, APP_ORIGINS, MAX_PDF_BYTES } from "./config";
+import { allowPermission, isOpenablePdf, shareFileName, navigationTarget, pdfPathsFromArgv, ownerKeyFromLink, linkFromArgv, LINK_SCHEME } from "./rules";
 import { OpenQueue } from "./openQueue";
 import { randomBytes } from "node:crypto";
 import { createPendingSignIn, signInLinkFrom, consumeSignIn, type PendingSignIn } from "./signin";
@@ -151,6 +153,22 @@ if (!app.requestSingleInstanceLock()) {
   ipcMain.on("sentinel:signin-ready", (e) => { if (win && e.sender === win.webContents) { signInReady = true; flushSignIn(); } });
   ipcMain.on("sentinel:start-browser-signin", (e) => { if (win && e.sender === win.webContents) void startBrowserSignIn(); });
   ipcMain.on("sentinel:retry", (e) => { if (win && e.sender === win.webContents) void win.loadURL(url).catch(() => {}); });
+
+  const shareDirs: string[] = [];
+  ipcMain.handle("sentinel:share", async (e, name: unknown, bytes: unknown): Promise<"shown" | "unsupported"> => {
+    if (!win || e.sender !== win.webContents) throw new Error("Not allowed");
+    const safe = shareFileName(name);
+    if (!safe) throw new Error("Invalid file name");
+    if (!(bytes instanceof Uint8Array) || bytes.byteLength === 0 || bytes.byteLength > MAX_PDF_BYTES) throw new Error("Invalid file");
+    if (process.platform !== "darwin") return "unsupported";
+    const dir = await mkdtemp(join(app.getPath("temp") || tmpdir(), "sentinelpdf-share-"));
+    shareDirs.push(dir);
+    const path = join(dir, safe);
+    await writeFile(path, bytes);
+    new ShareMenu({ filePaths: [path] }).popup({ window: win });
+    return "shown";
+  });
+  app.on("will-quit", () => { for (const d of shareDirs) { try { rmSync(d, { recursive: true, force: true }); } catch { /* best effort */ } } });
 
   app.whenReady().then(() => {
     session.defaultSession.setPermissionRequestHandler((wc, permission, cb, details) =>

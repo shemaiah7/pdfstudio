@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { navigationTarget, allowPermission, isOpenablePdf, pdfPathsFromArgv, ownerKeyFromLink, linkFromArgv } from "../src/rules";
+import { navigationTarget, allowPermission, isOpenablePdf, pdfPathsFromArgv, ownerKeyFromLink, linkFromArgv, shareFileName } from "../src/rules";
 import { APP_ORIGINS, MAX_PDF_BYTES } from "../src/config";
 
 describe("navigationTarget", () => {
@@ -110,5 +110,19 @@ describe("pdfPathsFromArgv with links", () => {
   it("does not treat a sentinelpdf link as a PDF path", () => {
     expect(pdfPathsFromArgv(["x.exe", "sentinelpdf://owner#x.pdf"])).toEqual([]);
     expect(pdfPathsFromArgv(["x.exe", "SentinelPDF://owner#x.pdf", "C:\\a.pdf"])).toEqual(["C:\\a.pdf"]);
+  });
+});
+
+describe("shareFileName", () => {
+  it("keeps a plain pdf name", () => expect(shareFileName("report-edited.pdf")).toBe("report-edited.pdf"));
+  it("strips directories", () => {
+    expect(shareFileName("../../etc/evil.pdf")).toBe("evil.pdf");
+    expect(shareFileName("C:\\Users\\me\\a.PDF")).toBe("a.PDF");
+  });
+  it("rejects non-pdf, empty and non-string names", () => {
+    expect(shareFileName("a.txt")).toBeNull();
+    expect(shareFileName(".pdf")).toBeNull();
+    expect(shareFileName("dir/")).toBeNull();
+    expect(shareFileName(42)).toBeNull();
   });
 });

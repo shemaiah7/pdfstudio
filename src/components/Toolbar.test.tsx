@@ -1,11 +1,18 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, cleanup, fireEvent } from "@testing-library/react";
+import { render, screen, cleanup, fireEvent, waitFor } from "@testing-library/react";
 import Toolbar from "./Toolbar";
 import { useDocumentStore } from "../store/document";
 import { loadFixture } from "../test/loadFixture";
 import { useAccount } from "../account/store";
 import { useSheets } from "./account/useGate";
+import { buildOutputBytes } from "../pdf/output";
+import { printPdfBytes } from "../pdf/print";
+import { sharePdf } from "../pdf/share";
+
+vi.mock("../pdf/output", () => ({ buildOutputBytes: vi.fn(async () => new Uint8Array([7, 7])) }));
+vi.mock("../pdf/share", () => ({ sharePdf: vi.fn(async () => "shared") }));
+vi.mock("../pdf/print", () => ({ printPdfBytes: vi.fn(async () => {}) }));
 
 beforeEach(async () => {
   useDocumentStore.getState().reset();
@@ -84,5 +91,48 @@ describe("Toolbar plan gates", () => {
     expect(screen.getByTestId("download").className).toContain("locked");
     fireEvent.click(screen.getByTestId("download"));
     expect(useSheets.getState().open).toBe("paywall");
+  });
+});
+
+describe("Toolbar print", () => {
+  const renderBar = () => render(<Toolbar scale={1} setScale={() => {}} onFiles={() => {}} onTogglePages={() => {}} pagesOpen={false} />);
+  it("is disabled with no pages", () => {
+    useDocumentStore.getState().reset();
+    renderBar();
+    expect((screen.getByTestId("print") as HTMLButtonElement).disabled).toBe(true);
+  });
+  it("prints the shared builder's bytes without marking the document clean", async () => {
+    useDocumentStore.getState().rotate([useDocumentStore.getState().pages[0].id], 90);
+    const markClean = vi.spyOn(useDocumentStore.getState(), "markClean");
+    renderBar();
+    const btn = screen.getByTestId("print") as HTMLButtonElement;
+    expect(btn.disabled).toBe(false);
+    expect(btn.getAttribute("aria-label")).toBe("Print");
+    fireEvent.click(btn);
+    await waitFor(() => expect(printPdfBytes).toHaveBeenCalledTimes(1));
+    expect(buildOutputBytes).toHaveBeenCalledWith(useDocumentStore.getState().pages);
+    expect(vi.mocked(printPdfBytes).mock.calls[0][0]).toEqual(new Uint8Array([7, 7]));
+    expect(markClean).not.toHaveBeenCalled();
+    expect(useDocumentStore.getState().isDirty()).toBe(true);
+  });
+});
+
+describe("Toolbar share", () => {
+  const renderBar = () => render(<Toolbar scale={1} setScale={() => {}} onFiles={() => {}} onTogglePages={() => {}} pagesOpen={false} />);
+  it("is disabled with no pages", () => {
+    useDocumentStore.getState().reset();
+    renderBar();
+    expect((screen.getByTestId("share") as HTMLButtonElement).disabled).toBe(true);
+  });
+  it("shares the shared builder's bytes under the edited file name without marking clean", async () => {
+    useDocumentStore.getState().rotate([useDocumentStore.getState().pages[0].id], 90);
+    const markClean = vi.spyOn(useDocumentStore.getState(), "markClean");
+    renderBar();
+    const btn = screen.getByTestId("share") as HTMLButtonElement;
+    expect(btn.getAttribute("aria-label")).toBe("Share");
+    fireEvent.click(btn);
+    await waitFor(() => expect(sharePdf).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(sharePdf).mock.calls[0]).toEqual([new Uint8Array([7, 7]), "three-edited.pdf"]);
+    expect(markClean).not.toHaveBeenCalled();
   });
 });
