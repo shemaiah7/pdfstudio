@@ -28,6 +28,15 @@ function flushSignIn(): void {
   else win.webContents.send("sentinel:signin-failed", "expired");
 }
 const queue = new OpenQueue((f) => win?.webContents.send("sentinel:open-file", f));
+// Whether the page now showing has subscribed. A navigation start pauses delivery; these let a blocked one resume it.
+let filesSubscribed = false;
+let signInSubscribed = false;
+
+/** We blocked the navigation (it went to the browser), so the same page is still showing and can take files again. */
+function navigationBlocked(): void {
+  if (filesSubscribed) { try { queue.markReady(); } catch { /* undelivered files stay queued */ } }
+  if (signInSubscribed) { signInReady = true; flushSignIn(); }
+}
 
 async function openPath(path: string): Promise<void> {
   try {
@@ -116,12 +125,14 @@ function createWindow(): void {
   });
   win.webContents.on("will-navigate", (e, url) => {
     if (url.startsWith("file:") && url.endsWith("offline.html")) return;
-    if (navigationTarget(url, APP_ORIGINS) !== "app") { e.preventDefault(); openExternal(url); }
+    if (navigationTarget(url, APP_ORIGINS) !== "app") { e.preventDefault(); navigationBlocked(); openExternal(url); }
   });
   win.webContents.on("will-redirect", (e, url, _inPlace, isMainFrame) => {
-    if (isMainFrame && navigationTarget(url, APP_ORIGINS) !== "app") { e.preventDefault(); openExternal(url); }
+    if (isMainFrame && navigationTarget(url, APP_ORIGINS) !== "app") { e.preventDefault(); navigationBlocked(); openExternal(url); }
   });
+  // Fires before will-navigate/will-redirect, so it also pauses for navigations we then block (see navigationBlocked).
   win.webContents.on("did-start-navigation", (_e, _url, isInPlace, isMainFrame) => { if (isMainFrame && !isInPlace) { queue.markNotReady(); signInReady = false; } });
+  win.webContents.on("did-navigate", () => { filesSubscribed = false; signInSubscribed = false; }); // a new page replaced the old one
   win.webContents.on("did-fail-load", (_e, code, _desc, _url, isMainFrame) => {
     if (isMainFrame && code !== -3) void win?.loadFile(join(__dirname, "..", "offline.html")).catch(() => {});
   });
@@ -130,7 +141,7 @@ function createWindow(): void {
     const cancel = dialog.showMessageBoxSync(win!, { type: "question", buttons: ["Discard", "Cancel"], defaultId: 1, cancelId: 1, message: "Discard unsaved changes?" }) === 1;
     if (!cancel) e.preventDefault(); // preventDefault here means: proceed with the unload
   });
-  win.on("closed", () => { win = null; signInReady = false; queue.markNotReady(); });
+  win.on("closed", () => { win = null; signInReady = false; filesSubscribed = false; signInSubscribed = false; queue.markNotReady(); });
   void win.loadURL(url).catch(() => {});
 }
 
@@ -148,9 +159,9 @@ if (!app.requestSingleInstanceLock()) {
   app.on("open-url", (e, link) => { e.preventDefault(); void handleLink(link); }); // macOS; may fire before ready
 
   ipcMain.on("sentinel:ready", (e) => {
-    if (win && e.sender === win.webContents) { try { queue.markReady(); } catch { /* undelivered files stay queued */ } }
+    if (win && e.sender === win.webContents) { filesSubscribed = true; try { queue.markReady(); } catch { /* undelivered files stay queued */ } }
   });
-  ipcMain.on("sentinel:signin-ready", (e) => { if (win && e.sender === win.webContents) { signInReady = true; flushSignIn(); } });
+  ipcMain.on("sentinel:signin-ready", (e) => { if (win && e.sender === win.webContents) { signInSubscribed = true; signInReady = true; flushSignIn(); } });
   ipcMain.on("sentinel:start-browser-signin", (e) => { if (win && e.sender === win.webContents) void startBrowserSignIn(); });
   ipcMain.on("sentinel:retry", (e) => { if (win && e.sender === win.webContents) void win.loadURL(url).catch(() => {}); });
 
