@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { normalizeFont } from "../pdf/fonts";
 import { countPages, addRotation } from "../pdf/pageOps";
 import { sha256 } from "../pdf/hash";
+import { repairIfDamaged } from "../pdf/repair";
 import { decryptIfNeeded, PasswordRequiredError } from "../pdf/decrypt";
 import type { FieldDef } from "../pdf/formFill";
 import type { Annotation, AnnotationPatch, Edit, EditFont, FormValue, FormValues, LegacyEditFont, NewAnnotation, PageEntry, SourceFile, SourceId } from "../pdf/types";
@@ -12,7 +13,7 @@ export const SIZE_WARNING_BYTES = 100 * 1024 * 1024;
 // Lets the renderer free pdf.js documents without the store importing pdf.js.
 export const sourceReleasers: Array<(id: SourceId) => void> = [];
 
-export interface OpenResult { skipped: string[]; oversized: string[]; passwordProtected: string[] }
+export interface OpenResult { skipped: string[]; oversized: string[]; passwordProtected: string[]; repaired: { name: string; recovered: number; missing: number }[] }
 export interface ErrorAction { label: string; run(): void }
 
 export function describeOpenResult(res: OpenResult): string[] {
@@ -20,6 +21,10 @@ export function describeOpenResult(res: OpenResult): string[] {
   if (res.skipped.length) msgs.push(`Couldn't read ${res.skipped.join(", ")} as a PDF.`);
   if (res.passwordProtected.length) msgs.push(`${res.passwordProtected.join(", ")} is password-protected; SentinelPDF can't open it without the password.`);
   if (res.oversized.length) msgs.push(`${res.oversized.join(", ")} is very large; editing may be slow.`);
+  for (const r of res.repaired) {
+    if (r.missing > 0) msgs.push(`${r.name} is damaged; SentinelPDF recovered ${r.recovered} of ${r.recovered + r.missing} pages.`);
+    else msgs.push(`${r.name} was damaged; SentinelPDF repaired it.`);
+  }
   return msgs;
 }
 
@@ -112,11 +117,14 @@ async function loadSources(
   limit: number,
 ): Promise<{ sources: SourceFile[]; result: OpenResult }> {
   const sources: SourceFile[] = [];
-  const result: OpenResult = { skipped: [], oversized: [], passwordProtected: [] };
+  const result: OpenResult = { skipped: [], oversized: [], passwordProtected: [], repaired: [] };
   for (const f of files) {
     try {
-      const { bytes } = await decryptIfNeeded(f.bytes);
+      const decrypted = await decryptIfNeeded(f.bytes);
+      const fix = await repairIfDamaged(decrypted.bytes);
+      const bytes = fix.bytes;
       const pageCount = await countPages(bytes);
+      if (fix.repaired) result.repaired.push({ name: f.name, recovered: pageCount, missing: fix.missing });
       let hash: string | undefined;
       try { hash = await sha256(bytes); } catch { /* no crypto.subtle (e.g. plain http): open without a hash */ }
       sources.push({ id: nextId("src"), name: f.name, bytes, pageCount, hash });
