@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { PDFDocument } from "pdf-lib";
+import { PDFDocument, PDFDict, PDFName, PDFNumber, PDFRef } from "pdf-lib";
 import { repairIfDamaged } from "./repair";
 import { loadFixture } from "../test/loadFixture";
 import { openPdf } from "../test/pdfjs";
@@ -11,6 +11,16 @@ describe("repairIfDamaged", () => {
     const res = await repairIfDamaged(bytes);
     expect(res.repaired).toBe(false);
     expect(res.missing).toBe(0);
+    expect(res.bytes).toBe(bytes);
+  });
+
+  it("leaves an intact page tree alone even when /Count is wrong", async () => {
+    const doc = await PDFDocument.load(loadFixture("three"));
+    const root = doc.context.lookup(doc.catalog.get(PDFName.of("Pages")) as PDFRef, PDFDict);
+    root.set(PDFName.of("Count"), PDFNumber.of(5));
+    const bytes = await doc.save();
+    const res = await repairIfDamaged(bytes);
+    expect(res.repaired).toBe(false);
     expect(res.bytes).toBe(bytes);
   });
 

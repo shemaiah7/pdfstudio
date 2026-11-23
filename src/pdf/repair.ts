@@ -41,7 +41,8 @@ export async function repairIfDamaged(bytes: Uint8Array): Promise<RepairResult> 
   if (root instanceof PDFDict) {
     const count = root.lookup(PDFName.of("Count"));
     if (count instanceof PDFNumber) declared = count.asNumber();
-    damaged = declared !== found || !treeIsIntact(src, root, new Set());
+    // A wrong /Count on an intact tree is harmless (pdf-lib's count drives the page entries); rebuilding would drop forms and outlines.
+    damaged = !treeIsIntact(src, root, new Set());
   }
   if (!damaged) return { bytes, repaired: false, missing: 0 };
   if (found === 0) throw new Error("No readable pages");
