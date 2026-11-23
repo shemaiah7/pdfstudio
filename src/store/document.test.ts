@@ -2,6 +2,7 @@ import type { FieldDef } from "../pdf/formFill";
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { useDocumentStore, sourceReleasers, describeOpenResult } from "./document";
 import { loadFixture } from "../test/loadFixture";
+import { damagedPdf } from "../test/damagedFixture";
 import { loadEncryptedFixture } from "../test/loadEncryptedFixture";
 
 const three = () => ({ name: "three.pdf", bytes: loadFixture("three") });
@@ -78,14 +79,28 @@ describe("encrypted files", () => {
   });
 });
 
+describe("damaged files", () => {
+  it("opens a file with a missing page by recovering the readable pages", async () => {
+    const res = await s().openFiles([{ name: "broken.pdf", bytes: await damagedPdf() }]);
+    expect(order()).toEqual(["broken.pdf:0", "broken.pdf:1", "broken.pdf:2"]);
+    expect(res.repaired).toEqual([{ name: "broken.pdf", recovered: 3, missing: 1 }]);
+    expect(describeOpenResult(res)).toEqual(["broken.pdf is damaged; SentinelPDF recovered 3 of 4 pages."]);
+  });
+
+  it("says a file was repaired when no pages are missing", () => {
+    expect(describeOpenResult({ skipped: [], passwordProtected: [], oversized: [], repaired: [{ name: "x.pdf", recovered: 2, missing: 0 }] }))
+      .toEqual(["x.pdf was damaged; SentinelPDF repaired it."]);
+  });
+});
+
 describe("describeOpenResult", () => {
   it("lists skipped, password-protected, then oversized", () => {
-    expect(describeOpenResult({ skipped: ["a", "b"], passwordProtected: ["c"], oversized: ["d"] })).toEqual([
+    expect(describeOpenResult({ skipped: ["a", "b"], passwordProtected: ["c"], oversized: ["d"], repaired: [] })).toEqual([
       "Couldn't read a, b as a PDF.",
       "c is password-protected; SentinelPDF can't open it without the password.",
       "d is very large; editing may be slow.",
     ]);
-    expect(describeOpenResult({ skipped: [], passwordProtected: [], oversized: [] })).toEqual([]);
+    expect(describeOpenResult({ skipped: [], passwordProtected: [], oversized: [], repaired: [] })).toEqual([]);
   });
 });
 
